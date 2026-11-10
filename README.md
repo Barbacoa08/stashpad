@@ -2,9 +2,17 @@
 
 An independent research project exploring a developer-oriented replacement for the original Stashpad Lists note-taking app.
 
-**Status:** research and discussion. No application, technology stack, supported release target, or implementation plan has been selected. Application implementation requires a separately agreed next increment.
+**Status:** research and experiment planning. No application implementation has started. The next proposed comparison is SvelteKit with Tauri versus plain Svelte/Vite with Tauri, followed by the same maintenance task on both results. Implementation requires a separate go-ahead.
 
-The initial priorities are typing Markdown directly with natural rendering, especially code blocks and lists, and familiar keyboard shortcuts for editing and navigation. Desktop, mobile, and web options remain under evaluation. Tauri is a candidate; platform and styling dependencies are undecided.
+The editor must keep Markdown syntax visible and editable while styling the text live, especially emphasis, code blocks, and lists. Familiar editing and navigation shortcuts are central to the experience.
+
+## Product scope
+
+- **Alpha:** a local-only Mac desktop app with a flat note list, note editing, simple text search, and backup export/restore. It should read and save local data without waiting for a network connection.
+- **MVP:** one account for the initial user, one shared API and backend database, and background synchronization between personal and work desktops. Device-local copies retain immediate access and offline editing. Simple last-write-wins conflicts are acceptable; ordering and recovery details still need design.
+- **Later:** iPhone and Android companions, primarily for viewing, copying and pasting, and short Markdown capture. Tauri is the preferred runtime direction; Capacitor remains a fallback if mobile integration proves difficult. Mobile implementation is outside the alpha and initial desktop MVP.
+
+The frontend remains undecided pending comparable experiments. Editor, storage, and toolchain choices made for controlled trials do not automatically become permanent product decisions. Backend technology, authentication, sync implementation, and styling dependencies remain unselected.
 
 ## Working on this project
 
