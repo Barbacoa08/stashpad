@@ -84,6 +84,12 @@ export class MemoryRepository implements Repository {
     );
     return this.commit(s);
   }
+  async discardDraft(key: string) {
+    this.check('discard');
+    const s = structuredClone(this.snapshot);
+    s.drafts = s.drafts.filter((d) => d.key !== key);
+    return this.commit(s);
+  }
   async deleteNote(id: string) {
     this.check('delete');
     const s = structuredClone(this.snapshot);

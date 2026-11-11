@@ -182,6 +182,11 @@ impl Store {
             .retain(|d| d.key != draft_key || d.revision > revision);
         self.replace(&s)
     }
+    pub fn discard_draft(&mut self, key: &str) -> Result<WorkspaceSnapshot> {
+        let mut snapshot = self.load()?;
+        snapshot.drafts.retain(|draft| draft.key != key);
+        self.replace(&snapshot)
+    }
     pub fn delete(&mut self, id: &str) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
         let n = s

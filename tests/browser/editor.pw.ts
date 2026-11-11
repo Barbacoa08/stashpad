@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 const replace = async (page: import('@playwright/test').Page, text: string) => {
-  const e = page.getByRole('textbox', { name: 'Markdown source' });
+  const e = page.getByRole('textbox', { name: 'Capture Markdown' });
   await e.focus();
   await e.press('Meta+a');
   await page.keyboard.insertText(text);
 };
 const edit = (page: import('@playwright/test').Page) =>
-  page.getByRole('textbox', { name: 'Markdown source' });
+  page.getByRole('textbox', { name: 'Capture Markdown' });
 test.beforeEach(async ({ page }) => {
   await page.goto('/?fixture');
   await expect(edit(page)).toBeVisible();
@@ -47,25 +47,28 @@ test('visible live emphasis, combined markers, code fences, and dangling source'
   await replace(page, 'plain');
   await expect(editor.locator('.cm-emphasis')).toHaveCount(0);
 });
-test('Enter is multiline, source survives select/copy/paste and undo/redo', async ({
+test('Shift Enter is multiline, source survives select/copy/paste and undo/redo', async ({
   page,
 }) => {
   const editor = edit(page);
   await replace(page, 'α **bold**  ');
   await editor.press('End');
-  await editor.press('Enter');
+  await editor.press('Shift+Enter');
   await editor.press('x');
-  await expect(editor).toHaveText('α **bold**  \nx');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).__test.controller.sourceFor('compose'),
+      ),
+    )
+    .toBe('α **bold**  \nx');
   await editor.press('Meta+z');
   await expect(editor).not.toContainText('x');
   await editor.press('Meta+Shift+z');
   await expect(editor).toContainText('x');
-  await expect(page.getByRole('button', { name: 'Saved notes' })).toHaveCount(
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
     0,
   );
-  await expect(
-    page.getByRole('list', { name: 'Saved notes' }).getByRole('button'),
-  ).toHaveCount(0);
 });
 
 test('clipboard copies exact Markdown, pastes it, and IME Enter never submits', async ({
@@ -94,9 +97,9 @@ test('clipboard copies exact Markdown, pastes it, and IME Enter never submits', 
     metaKey: true,
     isComposing: true,
   });
-  await expect(
-    page.getByRole('list', { name: 'Saved notes' }).getByRole('button'),
-  ).toHaveCount(0);
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
+    0,
+  );
 });
 
 test('Command Enter persists exact Markdown without adding a line', async ({
@@ -117,5 +120,5 @@ test('Command Enter persists exact Markdown without adding a line', async ({
     .poll(() =>
       page.evaluate(() => (window as any).__test.controller.state.source),
     )
-    .toBe(source);
+    .toBe('');
 });

@@ -219,3 +219,177 @@ footer {
     padding: 0.7rem;
   }
 }
+/* Stream geometry; final visual styling is a separate fidelity stage. */
+html,
+body {
+  height: 100%;
+}
+main {
+  height: 100dvh;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.workspace {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 15.25rem minmax(0, 1fr) 17rem;
+}
+.sidebar,
+.details-rail {
+  min-width: 0;
+  overflow: auto;
+}
+.notes-column {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.stream-header,
+.composer-toolbar,
+.note-meta,
+.note-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.note-stream {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.25rem;
+}
+.note-card {
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid #556071;
+  border-radius: 0.4rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.note-card.selected {
+  outline: 1px solid #d9a36a;
+}
+.note-meta {
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
+}
+.note-actions {
+  margin-top: 0.5rem;
+}
+.composer {
+  flex: none;
+  margin-top: 0.5rem;
+}
+.composer .cm-editor {
+  min-height: 6rem;
+}
+.composer .cm-scroller {
+  max-height: 9rem;
+}
+.note-card .cm-editor {
+  min-height: 5rem;
+}
+.note-card .cm-scroller {
+  max-height: 24rem;
+}
+.cm-content {
+  font-family: inherit;
+}
+.code-block {
+  border: 1px solid #556071;
+  background: #101216;
+  padding: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+  counter-reset: code-line;
+}
+.code-block code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+}
+.code-line {
+  display: block;
+  counter-increment: code-line;
+}
+.code-line::before {
+  content: counter(code-line);
+  display: inline-block;
+  min-width: 2rem;
+  margin-right: 1rem;
+  color: #a2aebf;
+  user-select: none;
+  text-align: right;
+}
+.markdown-view {
+  min-width: 0;
+}
+.markdown-view :not(pre) > code {
+  color: #8fe5ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.tok-keyword {
+  color: #d5a6ff;
+}
+.tok-string {
+  color: #a9d4a4;
+}
+.tok-number {
+  color: #e5be8a;
+}
+.tok-comment {
+  color: #a2aebf;
+}
+.backup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.workspace-feedback {
+  flex: none;
+  padding-top: 0.3rem;
+  margin-top: 0.3rem;
+}
+.workspace-feedback [role='alert']:empty {
+  display: none;
+}
+.confirmation {
+  position: fixed;
+  z-index: 10;
+  top: 20%;
+  left: 15%;
+  right: 15%;
+  max-height: 65vh;
+  overflow: auto;
+}
+@media (max-width: 1050px) {
+  .workspace {
+    grid-template-columns: 12rem minmax(0, 1fr);
+  }
+  .details-rail {
+    display: none;
+  }
+}
+@media (max-width: 650px) {
+  .workspace {
+    grid-template-columns: 8rem minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+  .sidebar {
+    font-size: 0.8rem;
+  }
+  .sidebar .hint {
+    display: none;
+  }
+  main {
+    padding: 0.5rem;
+  }
+  .composer .cm-scroller {
+    max-height: 7rem;
+  }
+}

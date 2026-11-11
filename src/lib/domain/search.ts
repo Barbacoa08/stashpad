@@ -5,6 +5,6 @@ export function filterNotes(notes: Note[], query: string): Note[] {
     .filter((n) => n.deletedAt === null && n.markdown.toLowerCase().includes(q))
     .sort(
       (a, b) =>
-        b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
 }

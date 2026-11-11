@@ -1,12 +1,15 @@
 import { test, expect } from '@playwright/test';
 const replace = async (page: import('@playwright/test').Page, text: string) => {
-  const e = page.getByRole('textbox', { name: 'Markdown source' });
+  const e = await edit(page);
   await e.focus();
   await e.press('Meta+a');
   await page.keyboard.insertText(text);
 };
 const edit = (page: import('@playwright/test').Page) =>
-  page.getByRole('textbox', { name: 'Markdown source' });
+  page
+    .getByRole('textbox', { name: 'Edit Markdown' })
+    .or(page.getByRole('textbox', { name: 'Capture Markdown' }))
+    .first();
 test('save search selected-outside-results, clear, new, and compose recovery', async ({
   page,
 }) => {
@@ -15,18 +18,19 @@ test('save search selected-outside-results, clear, new, and compose recovery', a
   await replace(page, 'Alpha **saved**');
   await page.getByRole('button', { name: /^Save note/ }).click();
   await expect(page.getByRole('status')).toHaveText('Saved');
+  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   const search = page.getByRole('searchbox', { name: 'Search saved notes' });
   await search.fill('alpha');
   await replace(page, 'beta draft');
-  await page.getByRole('button', { name: /^Save note/ }).click();
-  await expect(
-    page.getByRole('list', { name: 'Saved notes' }).getByRole('button'),
-  ).toHaveCount(0);
-  await expect(editor).toHaveText('beta draft');
+  await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
+    0,
+  );
+  await expect(editor).toHaveText('');
   await search.press('Escape');
   await expect(search).toHaveValue('');
-  await expect(editor).toBeFocused();
-  await expect(editor).toHaveText('beta draft');
+  await expect(page.getByRole('region', { name: 'Note stream' })).toBeFocused();
+  await expect(editor).toHaveText('');
   await page.keyboard.press('Meta+n');
   await expect(editor).toHaveText('');
   await expect(editor).toBeFocused();
@@ -66,6 +70,7 @@ test('delete explicitly confirms discarded draft, cancel preserves it, and undo 
   const editor = edit(page);
   await replace(page, 'saved source');
   await page.getByRole('button', { name: /^Save note/ }).click();
+  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   await replace(page, 'unfinished edit');
   await page.getByRole('button', { name: 'Delete note', exact: true }).click();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
@@ -75,10 +80,8 @@ test('delete explicitly confirms discarded draft, cancel preserves it, and undo 
     .getByRole('button', { name: 'Discard draft and delete', exact: true })
     .click();
   await page.getByRole('button', { name: 'Undo delete', exact: true }).click();
-  await page
-    .getByRole('list', { name: 'Saved notes' })
-    .getByRole('button')
-    .click();
+  await page.getByRole('button', { name: 'Select note', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   await expect(editor).toHaveText('saved source');
 });
 test('named controls, visible focus, and 800px 150% text reflow', async ({
@@ -120,9 +123,9 @@ test('initial read failure offers retry, then save failure retains source and su
     (window as any).__test.repo.fail = null;
   });
   await page.getByRole('button', { name: 'Retry save', exact: true }).click();
-  await expect(
-    page.getByRole('list', { name: 'Saved notes' }).getByRole('button'),
-  ).toHaveCount(1);
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
+    1,
+  );
 });
 
 test('discard confirmation holds the note context until a choice is made', async ({
@@ -131,6 +134,7 @@ test('discard confirmation holds the note context until a choice is made', async
   await page.goto('/?fixture');
   await replace(page, 'saved');
   await page.getByRole('button', { name: /^Save note/ }).click();
+  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   await replace(page, 'unfinished');
   await page.getByRole('button', { name: 'Delete note', exact: true }).click();
   await expect(page.getByRole('button', { name: /^New note/ })).toBeDisabled();
@@ -191,6 +195,7 @@ test('Keep editing restores editor focus and the existing selection without chan
   await replace(page, 'saved source');
   await page.getByRole('button', { name: /^Save note/ }).click();
   await expect(page.getByRole('status')).toHaveText('Saved');
+  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   const key = await page.evaluate(
     () => (window as any).__test.controller.state.activeKey,
   );

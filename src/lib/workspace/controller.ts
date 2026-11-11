@@ -1,14 +1,18 @@
 import { emptyWorkspace, type WorkspaceSnapshot } from '../domain/notes';
 import { filterNotes } from '../domain/search';
 import type { Repository, RestorePreview } from '../platform/workspace';
+/** Save acknowledgments allow editing; other in-flight mutations lock editors. */
+export type WorkspaceOperation =
+  'save' | 'discard' | 'delete' | 'export' | 'preview-restore' | 'restore';
 export interface ViewState {
   snapshot: WorkspaceSnapshot;
   activeKey: string;
+  buffers: Record<string, { source: string; revision: number }>;
   source: string;
   revision: number;
   query: string;
   loaded: boolean;
-  pending: boolean;
+  operation: WorkspaceOperation | null;
   status: string;
   error: string;
   preview: RestorePreview | null;
@@ -17,11 +21,12 @@ export class WorkspaceController {
   state: ViewState = {
     snapshot: emptyWorkspace(),
     activeKey: 'compose',
+    buffers: { compose: { source: '', revision: 0 } },
     source: '',
     revision: 0,
     query: '',
     loaded: false,
-    pending: false,
+    operation: null,
     status: 'Loading…',
     error: '',
     preview: null,
@@ -31,7 +36,7 @@ export class WorkspaceController {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
   private saving: Promise<boolean> | null = null;
-  private dirty = false;
+  private dirty = new Set<string>();
   constructor(private repo: Repository) {}
   subscribe(fn: (s: ViewState) => void) {
     this.listeners.add(fn);
@@ -77,6 +82,7 @@ export class WorkspaceController {
         const s = await this.repo.loadWorkspace();
         if (this.disposed) return false;
         this.snapshot(s);
+        this.resetBuffers(s);
         this.context('compose');
         this.patch({ loaded: true, status: 'Ready', error: '' });
         return true;
@@ -86,22 +92,46 @@ export class WorkspaceController {
       }
     });
   }
-  private context(key: string) {
-    const draft = this.state.snapshot.drafts.find((d) => d.key === key);
-    const note = this.state.snapshot.notes.find((n) => n.id === key);
-    this.dirty = false;
+  private resetBuffers(snapshot: WorkspaceSnapshot) {
+    this.dirty.clear();
     this.patch({
-      activeKey: key,
-      source: draft?.markdown ?? note?.markdown ?? '',
-      revision: (draft?.revision ?? 0) + 1,
+      buffers: Object.fromEntries(
+        snapshot.drafts.map((d) => [
+          d.key,
+          { source: d.markdown, revision: d.revision },
+        ]),
+      ),
     });
   }
-  editSource(source: string) {
-    if (this.disposed || !this.state.loaded) return;
-    this.dirty = true;
+  private context(key: string) {
+    const buffer = this.state.buffers[key];
+    const note = this.state.snapshot.notes.find((n) => n.id === key);
+    const source = buffer?.source ?? note?.markdown ?? '';
+    const revision = buffer?.revision ?? 0;
     this.patch({
+      activeKey: key,
       source,
-      revision: this.state.revision + 1,
+      revision,
+      buffers: { ...this.state.buffers, [key]: { source, revision } },
+    });
+  }
+  sourceFor(key: string) {
+    return (
+      this.state.buffers[key]?.source ??
+      this.state.snapshot.notes.find((n) => n.id === key)?.markdown ??
+      ''
+    );
+  }
+  editSource(source: string) {
+    this.editContext(this.state.activeKey, source);
+  }
+  editContext(key: string, source: string) {
+    if (this.disposed || !this.state.loaded) return;
+    const revision = (this.state.buffers[key]?.revision ?? 0) + 1;
+    this.dirty.add(key);
+    this.patch({
+      buffers: { ...this.state.buffers, [key]: { source, revision } },
+      ...(key === this.state.activeKey ? { source, revision } : {}),
       status: 'Unsaved',
       error: '',
     });
@@ -111,16 +141,14 @@ export class WorkspaceController {
     }, 300);
   }
   private async checkpoint() {
-    // A flush acknowledges the latest editor revision, including input that
-    // arrives while an older checkpoint is awaiting persistence.
-    while (!this.disposed && this.dirty) {
+    while (!this.disposed && this.dirty.size) {
       clearTimeout(this.timer);
-      const { activeKey: key, source, revision } = this.state;
+      const key = this.dirty.values().next().value!;
+      const { source, revision } = this.state.buffers[key];
       try {
-        const s = await this.repo.checkpointDraft(key, source, revision);
-        this.snapshot(s);
-        if (this.state.activeKey === key && this.state.revision === revision) {
-          this.dirty = false;
+        this.snapshot(await this.repo.checkpointDraft(key, source, revision));
+        if (this.state.buffers[key]?.revision === revision) {
+          this.dirty.delete(key);
           this.patch({ status: 'Draft checkpointed', error: '' });
         }
       } catch (e) {
@@ -147,31 +175,43 @@ export class WorkspaceController {
   selectNote(id: string) {
     return this.navigate(id);
   }
+  feedback(status: string, error = '') {
+    this.patch({ status, error });
+  }
   setQuery(query: string) {
     this.patch({ query });
   }
-  save() {
+  save(key = this.state.activeKey) {
     if (this.saving) return this.saving;
-    const captured = { ...this.state };
+    const buffer = this.state.buffers[key];
+    if (!this.state.loaded || !buffer?.source.trim()) {
+      this.patch({
+        error:
+          'Enter non-whitespace text before saving. Your draft is retained.',
+      });
+      return Promise.resolve(false);
+    }
+    const captured = { ...buffer };
     this.saving = this.run(async () => {
-      if (!captured.loaded) return false;
-      this.patch({ pending: true, error: '', status: 'Saving…' });
+      this.patch({ operation: 'save', error: '', status: 'Saving…' });
       try {
         const s = await this.repo.saveNote(
-          captured.activeKey === 'compose' ? null : captured.activeKey,
+          key === 'compose' ? null : key,
           captured.source,
-          captured.activeKey,
+          key,
           captured.revision,
         );
         this.snapshot(s);
-        if (
-          this.state.activeKey === captured.activeKey &&
-          this.state.revision === captured.revision
-        ) {
-          const newId = s.notes.find(
-            (n) => !captured.snapshot.notes.some((old) => old.id === n.id),
-          )?.id;
-          this.context(newId ?? captured.activeKey);
+        if (this.state.buffers[key]?.revision === captured.revision) {
+          this.dirty.delete(key);
+          const buffers = { ...this.state.buffers };
+          // Advance the revision even when clearing to distinguish subsequent captures.
+          buffers[key] = {
+            source: key === 'compose' ? '' : captured.source,
+            revision: captured.revision + 1,
+          };
+          this.patch({ buffers });
+          if (this.state.activeKey === key) this.context('compose');
           this.patch({ status: 'Saved', error: '' });
         } else this.patch({ status: 'Unsaved' });
         return true;
@@ -179,12 +219,34 @@ export class WorkspaceController {
         this.error(e);
         return false;
       } finally {
-        this.patch({ pending: false });
+        this.patch({ operation: null });
       }
     }).finally(() => {
       this.saving = null;
     });
     return this.saving;
+  }
+  cancelEdit() {
+    const key = this.state.activeKey;
+    if (key === 'compose') return Promise.resolve(true);
+    return this.run(async () => {
+      this.patch({ operation: 'discard' });
+      try {
+        this.snapshot(await this.repo.discardDraft(key));
+        this.dirty.delete(key);
+        const buffers = { ...this.state.buffers };
+        delete buffers[key];
+        this.patch({ buffers });
+        this.context('compose');
+        this.patch({ status: 'Edit cancelled', error: '' });
+        return true;
+      } catch (e) {
+        this.error(e);
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    });
   }
   remove(discard = false) {
     return this.run(async () => {
@@ -196,10 +258,13 @@ export class WorkspaceController {
         return false;
       }
       const key = this.state.activeKey;
-      this.patch({ pending: true });
+      this.patch({ operation: 'delete' });
       try {
         this.snapshot(await this.repo.deleteNote(key));
-        clearTimeout(this.timer);
+        this.dirty.delete(key);
+        const buffers = { ...this.state.buffers };
+        delete buffers[key];
+        this.patch({ buffers });
         this.context('compose');
         this.patch({ status: 'Deleted. Undo delete is available.', error: '' });
         return true;
@@ -207,7 +272,7 @@ export class WorkspaceController {
         this.error(e);
         return false;
       } finally {
-        this.patch({ pending: false });
+        this.patch({ operation: null });
       }
     });
   }
@@ -226,7 +291,7 @@ export class WorkspaceController {
   export() {
     return this.run(async () => {
       if (!(await this.checkpoint())) return false;
-      this.patch({ pending: true });
+      this.patch({ operation: 'export' });
       try {
         const path = await this.repo.exportBackup();
         this.patch({
@@ -238,14 +303,14 @@ export class WorkspaceController {
         this.error(e);
         return false;
       } finally {
-        this.patch({ pending: false });
+        this.patch({ operation: null });
       }
     });
   }
   previewRestore() {
     return this.run(async () => {
       if (!(await this.checkpoint())) return false;
-      this.patch({ pending: true });
+      this.patch({ operation: 'preview-restore' });
       try {
         const preview = await this.repo.previewRestore();
         this.patch({
@@ -258,7 +323,7 @@ export class WorkspaceController {
         this.error(e);
         return false;
       } finally {
-        this.patch({ pending: false });
+        this.patch({ operation: null });
       }
     });
   }
@@ -267,12 +332,13 @@ export class WorkspaceController {
       const p = this.state.preview;
       if (!p) return false;
       if (confirm && !(await this.checkpoint())) return false;
-      this.patch({ pending: true });
+      this.patch({ operation: 'restore' });
       try {
         const s = await this.repo.confirmRestore(p.token, confirm);
         if (s) {
           clearTimeout(this.timer);
           this.snapshot(s);
+          this.resetBuffers(s);
           this.context('compose');
           this.patch({ query: '', status: 'Workspace restored', error: '' });
         } else this.patch({ status: 'Restore cancelled' });
@@ -282,7 +348,7 @@ export class WorkspaceController {
         this.error(e);
         return false;
       } finally {
-        this.patch({ pending: false });
+        this.patch({ operation: null });
       }
     });
   }

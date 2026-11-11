@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
 const replace = async (page: import('@playwright/test').Page, text: string) => {
-  const e = page.getByRole('textbox', { name: 'Markdown source' });
+  const e = page.getByRole('textbox', { name: 'Capture Markdown' });
   await e.focus();
   await e.press('Meta+a');
   await page.keyboard.insertText(text);
 };
 const edit = (page: import('@playwright/test').Page) =>
-  page.getByRole('textbox', { name: 'Markdown source' });
+  page.getByRole('textbox', { name: 'Capture Markdown' });
 test('dialog cancellations are neutral, and restore confirmation resets state only on success', async ({
   page,
 }) => {

@@ -1,10 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { EditorState, Transaction, Compartment } from '@codemirror/state';
+  import {
+    EditorState,
+    Transaction,
+    Compartment,
+    Prec,
+    StateEffect,
+  } from '@codemirror/state';
   import {
     EditorView,
     keymap,
-    lineNumbers,
     drawSelection,
     highlightActiveLine,
   } from '@codemirror/view';
@@ -14,7 +19,11 @@
     defaultKeymap,
     indentWithTab,
   } from '@codemirror/commands';
-  import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
+  import {
+    markdown,
+    markdownKeymap,
+    insertNewlineContinueMarkup,
+  } from '@codemirror/lang-markdown';
   import { javascript } from '@codemirror/lang-javascript';
   import { json } from '@codemirror/lang-json';
   import {
@@ -25,11 +34,19 @@
   import { tags } from '@lezer/highlight';
   let {
     contextKey,
+    label,
     source,
     readOnly = false,
     onchange,
+    onsubmit,
+    oncancel,
+    states,
   }: {
     contextKey: string;
+    label: string;
+    states?: Map<string, EditorState>;
+    onsubmit: () => void;
+    oncancel: () => void;
     source: string;
     readOnly?: boolean;
     onchange: (source: string) => void;
@@ -38,7 +55,6 @@
   let view = $state.raw<EditorView>();
   let applyingSource = false;
   let currentKey = '';
-  const states = new Map<string, EditorState>();
   const editable = new Compartment();
   const styles = HighlightStyle.define([
     { tag: tags.keyword, color: '#d5a6ff' },
@@ -53,59 +69,109 @@
     { tag: tags.link, class: 'cm-link' },
     { tag: tags.list, class: 'cm-list' },
   ]);
-  function makeEditorState(text: string) {
-    return EditorState.create({
-      doc: text,
-      extensions: [
-        lineNumbers(),
-        drawSelection(),
-        highlightActiveLine(),
-        history(),
-        indentOnInput(),
+  function extensions() {
+    return [
+      drawSelection(),
+      highlightActiveLine(),
+      history(),
+      indentOnInput(),
+      Prec.highest(
         keymap.of([
-          ...markdownKeymap,
-          ...defaultKeymap,
-          ...historyKeymap,
-          indentWithTab,
-        ]),
-        markdown({
-          codeLanguages: (info) => {
-            const lang = info.trim().split(/\s/)[0].toLowerCase();
-            return /^(js|javascript|ts|typescript)$/.test(lang)
-              ? javascript({
-                  typescript: lang === 'ts' || lang === 'typescript',
-                }).language
-              : lang === 'json'
-                ? json().language
-                : null;
+          {
+            key: 'Enter',
+            run: (v) => {
+              if (v.composing || readOnly) return true;
+              onsubmit();
+              return true;
+            },
           },
-        }),
-
-        syntaxHighlighting(styles),
-        EditorView.lineWrapping,
-        EditorView.contentAttributes.of({
-          'aria-label': 'Markdown source',
-          'aria-multiline': 'true',
-          spellcheck: 'false',
-        }),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged && !applyingSource)
-            onchange(update.state.doc.toString());
-        }),
-        editable.of([
-          EditorState.readOnly.of(readOnly),
-          EditorView.editable.of(!readOnly),
+          {
+            key: 'Mod-Enter',
+            run: (v) => {
+              if (v.composing || readOnly) return true;
+              onsubmit();
+              return true;
+            },
+          },
+          {
+            key: 'Shift-Enter',
+            run: (v) => readOnly || insertNewlineContinueMarkup(v) || false,
+          },
+          {
+            key: 'Escape',
+            run: (v) => {
+              if (v.composing || readOnly) return false;
+              oncancel();
+              return true;
+            },
+          },
         ]),
-      ],
-    });
+      ),
+
+      keymap.of([
+        ...markdownKeymap,
+        ...defaultKeymap,
+        ...historyKeymap,
+        indentWithTab,
+      ]),
+      markdown({
+        codeLanguages: (info) => {
+          const lang = info.trim().split(/\s/)[0].toLowerCase();
+          return /^(js|javascript|ts|typescript)$/.test(lang)
+            ? javascript({
+                typescript: lang === 'ts' || lang === 'typescript',
+              }).language
+            : lang === 'json'
+              ? json().language
+              : null;
+        },
+      }),
+
+      syntaxHighlighting(styles),
+      EditorView.lineWrapping,
+      EditorView.contentAttributes.of({
+        'aria-label': label,
+        'aria-multiline': 'true',
+        spellcheck: 'false',
+      }),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged && !applyingSource)
+          onchange(update.state.doc.toString());
+      }),
+      editable.of([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+      ]),
+    ];
+  }
+  function makeEditorState(text: string) {
+    return EditorState.create({ doc: text, extensions: extensions() });
+  }
+  function restoreState(saved: EditorState | undefined, text: string) {
+    return saved?.doc.toString() === text
+      ? saved.update({ effects: StateEffect.reconfigure.of(extensions()) })
+          .state
+      : makeEditorState(text);
   }
   onMount(() => {
+    // A capturing listener bypasses app/editor shortcuts without preventDefault:
+    // the browser must still commit its IME candidate on Enter.
+    function composingEnter(event: KeyboardEvent) {
+      if (event.key === 'Enter' && (event.isComposing || view?.composing))
+        event.stopPropagation();
+    }
+    host.addEventListener('keydown', composingEnter, true);
     currentKey = contextKey;
-    view = new EditorView({ state: makeEditorState(source), parent: host });
+    const saved = states?.get(contextKey);
+    view = new EditorView({
+      state: restoreState(saved, source),
+      parent: host,
+    });
     return () => {
+      host.removeEventListener('keydown', composingEnter, true);
+      if (view) states?.set(currentKey, view.state);
       view?.destroy();
       view = undefined;
-      states.clear();
     };
   });
   $effect(() => {
@@ -114,11 +180,9 @@
       disabled = readOnly;
     if (!view) return;
     if (key !== currentKey) {
-      states.set(currentKey, view.state);
-      const saved = states.get(key);
-      view.setState(
-        saved?.doc.toString() === text ? saved : makeEditorState(text),
-      );
+      states?.set(currentKey, view.state);
+      const saved = states?.get(key);
+      view.setState(restoreState(saved, text));
       currentKey = key;
     } else if (view.state.doc.toString() !== text) {
       applyingSource = true;

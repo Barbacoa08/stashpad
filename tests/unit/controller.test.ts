@@ -41,10 +41,11 @@ describe('ordered workspace', () => {
     await c.start();
     c.editSource('alpha');
     await c.save();
+    await c.selectNote(repo.snapshot.notes[0].id);
     c.setQuery('alpha');
     c.editSource('beta');
     await c.save();
-    expect(c.state.source).toBe('beta');
+    expect(repo.snapshot.notes[0].markdown).toBe('beta');
     expect(c.state.query).toBe('alpha');
     expect(c.visibleNotes).toHaveLength(0);
     c.dispose();
@@ -172,7 +173,8 @@ it('note selection waits for the latest checkpoint and restores that draft on re
     await c.start();
     c.editSource('saved');
     await c.save();
-    const id = c.state.activeKey;
+    const id = repo.snapshot.notes[0].id;
+    await c.selectNote(id);
     c.editSource('older edit');
     let release!: () => void;
     repo.delayCheckpoint = new Promise<void>((resolve) => (release = resolve));
@@ -187,4 +189,88 @@ it('note selection waits for the latest checkpoint and restores that draft on re
   } finally {
     c.dispose();
   }
+});
+
+it('capture clears only after success and stays in compose; whitespace is retained without a save', async () => {
+  const repo = new MemoryRepository();
+  const c = new WorkspaceController(repo);
+  await c.start();
+  c.editSource(' **capture** ');
+  await c.save();
+  expect(c.state.activeKey).toBe('compose');
+  expect(c.state.source).toBe('');
+  expect(repo.snapshot.notes[0].markdown).toBe(' **capture** ');
+  c.editSource('  \n');
+  expect(await c.save()).toBe(false);
+  expect(c.state.source).toBe('  \n');
+  expect(repo.snapshot.notes).toHaveLength(1);
+  c.dispose();
+});
+it('inline cancellation discards persisted edit while composer and resumable contexts remain independent', async () => {
+  const repo = new MemoryRepository();
+  const c = new WorkspaceController(repo);
+  await c.start();
+  c.editSource('saved');
+  await c.save();
+  const id = repo.snapshot.notes[0].id;
+  c.editSource('capture draft');
+  await c.selectNote(id);
+  c.editSource('unfinished');
+  await c.newNote();
+  expect(c.state.source).toBe('capture draft');
+  await c.selectNote(id);
+  expect(c.state.source).toBe('unfinished');
+  expect(await c.cancelEdit()).toBe(true);
+  expect(repo.snapshot.drafts.some((d) => d.key === id)).toBe(false);
+  expect(repo.snapshot.notes[0].markdown).toBe('saved');
+  expect(c.state.source).toBe('capture draft');
+  c.dispose();
+});
+it('persists composer typing independently during an inline save and retains a later inline revision', async () => {
+  const repo = new MemoryRepository();
+  const c = new WorkspaceController(repo);
+  await c.start();
+  c.editSource('saved');
+  await c.save();
+  const id = repo.snapshot.notes[0].id;
+  await c.selectNote(id);
+  c.editSource('captured edit');
+  let release!: () => void;
+  repo.delaySave = new Promise<void>((r) => (release = r));
+  const saving = c.save();
+  await tick();
+  c.editSource('later edit');
+  c.editContext('compose', 'new capture');
+  release();
+  expect(await saving).toBe(true);
+  expect(c.state.activeKey).toBe(id);
+  expect(c.state.source).toBe('later edit');
+  expect(repo.snapshot.notes[0].markdown).toBe('captured edit');
+  await c.flush();
+  expect(repo.snapshot.drafts.find((d) => d.key === id)?.markdown).toBe(
+    'later edit',
+  );
+  expect(repo.snapshot.drafts.find((d) => d.key === 'compose')?.markdown).toBe(
+    'new capture',
+  );
+  c.dispose();
+});
+it('failed ordinary cancellation retains the editable source and retry discards only that note', async () => {
+  const repo = new MemoryRepository();
+  const c = new WorkspaceController(repo);
+  await c.start();
+  c.editSource('saved');
+  await c.save();
+  const id = repo.snapshot.notes[0].id;
+  await c.selectNote(id);
+  c.editSource('unfinished');
+  await c.flush();
+  repo.fail = 'discard';
+  expect(await c.cancelEdit()).toBe(false);
+  expect(c.state.activeKey).toBe(id);
+  expect(c.state.source).toBe('unfinished');
+  repo.fail = null;
+  expect(await c.cancelEdit()).toBe(true);
+  expect(repo.snapshot.drafts).toEqual([]);
+  c.dispose();
 });

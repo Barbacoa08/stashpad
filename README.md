@@ -2,7 +2,17 @@
 
 An independent, local-only Mac notes alpha using SvelteKit 3 static client assets, Svelte 5, CodeMirror 6, Tauri 2, and native SQLite. This is the accepted desktop stack. No original Stashpad code, assets, note data, or import behavior is included.
 
-The adopted foundation currently uses a flat saved-note list and a separate Markdown editor. A compact rendered note stream, persistent composer, and inline editing are the next authorized increment; they are not yet supported. Accounts, synchronization, mobile, signing, distribution, and legacy import remain outside this increment.
+Capture notes in a persistent bottom composer, then read full saved Markdown in a scrollable stream. Select a card to edit its raw source inline, copy its Markdown, or delete it. New captures append; editing keeps cards in place. Accounts, synchronization, mobile, signing, distribution, and legacy import remain outside this increment.
+
+## Capture and edit
+
+Enter saves, Shift+Enter adds a line or continues a list, and Command+Enter also saves. Empty captures are rejected, and the composer clears only after acknowledgment. Markdown delimiters remain visible while emphasis, headings, lists, and code are styled. Standard copy, paste, selection, and undo operate on the actual source.
+
+Single click selects a card. Double click, Edit note, or E opens inline editing; Enter/Save edit commits, and Escape/Cancel edit discards that note's unfinished edit. Switching to New note retains an edit for resuming. Composer and inline drafts are independent; Escape from the composer preserves its text and focuses the stream. Search filters saved source case-insensitively, keeps capture available, and labels any active edit outside the results.
+
+Command+N or Space outside controls focuses capture. Command+F or / focuses search; Escape clears search and focuses the stream. Up/Down selects cards, E edits, C copies exact saved Markdown (or the visible active edit), and Command+Backspace deletes the selection. Single-letter shortcuts leave text inputs, selection, composition, and confirmations alone. Copy failure is shown without changing source.
+
+Saved rendering uses markdown-it with raw HTML disabled. Images become descriptive text and never fetch. JS/TS/JSON fences use Lezer highlighting; other code is escaped. Only explicit HTTP(S)/mailto link activation may open an external application; native validation repeats the frontend scheme/length checks. The narrow native clipboard command writes text only. Neither plugin grants frontend file-opening, shell, clipboard-reading, or general opener permissions.
 
 ## Run and verify
 
@@ -16,15 +26,13 @@ pnpm verify
 pnpm tauri:build
 ```
 
-`dev` opens a web development server; native storage requires `tauri:dev`. The browser-only synthetic workspace is available at `http://127.0.0.1:4511/?fixture` during development. It uses an in-memory test repository that resets on reload, not SQLite or a native profile. The ordinary browser URL does not provide a browser persistence fallback.
+`dev` opens a web development server; native storage requires `tauri:dev`. The browser-only synthetic workspace is available at `http://127.0.0.1:4511/?fixture` during development; add `&visual` for fixed public Markdown examples. It uses an in-memory test repository that resets on reload, not SQLite or a native profile. The ordinary browser URL does not provide a browser persistence fallback.
 
 `check` runs Kit type generation, Svelte/TypeScript checks, and formatting. `test:unit` checks framework-neutral policy and controller ordering. `test:browser` starts a strict loopback fixture server at port 4611 and runs Chromium tests with an injected synthetic repository. Install Playwright's matching Chromium if absent. The normal development server uses strict loopback port 4511. `build:web` produces static `build/` assets with no runtime server; `tauri:build` produces an unsigned aarch64 Mac `.app` without a DMG, signing, or publication. Rust tests use disposable file databases and validate actual SQLite persistence and recovery. Browser tests establish browser behavior, not native WebKit, IME, or screen-reader acceptance.
 
 Kit 3 config lives in `vite.config.ts`; `src/routes/+layout.ts` disables SSR. The sole root route mounts the workspace. Browser fixture code is behind a development-only branch and must not appear in production client assets. No server routes, remote functions, or application network service are present.
 
-## Editing and recovery
-
-The flat saved-note list supports deterministic case-insensitive substring search of saved Markdown. Select a note to edit its raw source. Markdown markers stay visible while emphasis, code, and list text are styled. Enter adds a line or continues a list; Command+Enter saves, Command+N opens compose, Command+F focuses search, and Escape from search clears it and returns to the editor. Standard copy, paste, selection, and undo use actual Markdown.
+## Persistence and backups
 
 Saving is explicit. Drafts checkpoint after 300 ms idle and flush before deliberate navigation, export, restore, and normal close. “Saved” appears only after native acknowledgment. Input typed during a save remains an unfinished draft. Forced termination or power loss can lose input before its checkpoint; ordinary close failures keep the window open with retry or an explicit discard-and-close choice.
 
@@ -46,6 +54,6 @@ For debug-only native failure checks, set `STASHPAD_ALPHA_TEST_FAILURE_FILE` to 
 
 ## Boundaries
 
-Domain/search/backup policy is in `src/lib/domain`; the framework-neutral controller owns editing/order in `src/lib/workspace`; the typed command boundary is in `src/lib/platform`; Svelte components own view/CodeMirror lifecycle. Rust model, store, backup, and narrow commands live in `src-tauri/src`. Later sync can operate behind the repository boundary, but revisions, ordering, conflicts, authentication, and recovery require a separate design. Mobile platform integration and editor/keyboard acceptance are also separate work. Accounts, network sync, phones, attachments, nesting, signing, distribution, and legacy import are outside this alpha.
+Domain/search/backup/rendering policy is in `src/lib/domain`; the framework-neutral controller owns keyed edit buffers, draft revisions, and serialized persistence in `src/lib/workspace`; successful save/cancel/delete affects only its buffer, while successful restore replaces all buffers; the typed command boundary is in `src/lib/platform`; Svelte components own view/CodeMirror lifecycle. Rust model, store, backup, and narrow commands live in `src-tauri/src`. Later sync can operate behind the repository boundary, but revisions, ordering, conflicts, authentication, and recovery require a separate design. Mobile platform integration and editor/keyboard acceptance are also separate work. Accounts, network sync, phones, attachments, nesting, signing, distribution, and legacy import are outside this alpha.
 
 See [AGENTS.md](AGENTS.md) for repository responsibilities and [.projects/README.md](.projects/README.md) for evidence retention. No public license is selected; the project is independent of the original Stashpad team.

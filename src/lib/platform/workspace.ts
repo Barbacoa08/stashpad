@@ -19,6 +19,7 @@ export interface Repository {
     draftKey: string,
     draftRevision: number,
   ): Promise<WorkspaceSnapshot>;
+  discardDraft(key: string): Promise<WorkspaceSnapshot>;
   deleteNote(id: string): Promise<WorkspaceSnapshot>;
   undoDelete(): Promise<WorkspaceSnapshot>;
   exportBackup(): Promise<string | null>;
@@ -34,6 +35,7 @@ export const nativeRepository: Repository = {
     invoke('draft_checkpoint', { key, markdown, revision }),
   saveNote: (id, markdown, draftKey, draftRevision) =>
     invoke('note_save', { id, markdown, draftKey, draftRevision }),
+  discardDraft: (key) => invoke('draft_discard', { key }),
   deleteNote: (id) => invoke('note_delete', { id }),
   undoDelete: () => invoke('note_undo_delete'),
   exportBackup: () => invoke('backup_export'),

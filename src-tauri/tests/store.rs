@@ -152,3 +152,19 @@ fn compact_envelope_exact_limit_includes_drafts_and_metadata() {
     assert!(db.checkpoint("compose", &over, 2).is_err());
     assert_eq!(db.load().unwrap(), committed);
 }
+#[test]
+fn cancel_edit_discards_only_its_draft_and_survives_reopen() {
+    let (dir, mut db) = store();
+    let s = db.save(None, "saved", "compose", 1).unwrap();
+    let id = s.notes[0].id.clone();
+    db.checkpoint("compose", "capture", 2).unwrap();
+    db.checkpoint(&id, "unfinished", 3).unwrap();
+    db.discard_draft(&id).unwrap();
+    drop(db);
+    let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
+    let s = db.load().unwrap();
+    assert_eq!(s.notes[0].markdown, "saved");
+    assert_eq!(s.drafts.len(), 1);
+    assert_eq!(s.drafts[0].key, "compose");
+    assert_eq!(s.drafts[0].markdown, "capture");
+}

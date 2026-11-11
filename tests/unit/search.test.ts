@@ -26,3 +26,11 @@ describe('saved-source search', () => {
     expect(filterNotes(notes, 'missing')).toEqual([]);
   });
 });
+it('keeps capture order after edits, appends newer captures, and breaks creation ties by ID', () => {
+  const source = [
+    { id: 'b', markdown: 'one', createdAt: 1, updatedAt: 100, deletedAt: null },
+    { id: 'c', markdown: 'two', createdAt: 2, updatedAt: 2, deletedAt: null },
+    { id: 'a', markdown: 'tie', createdAt: 1, updatedAt: 1, deletedAt: null },
+  ];
+  expect(filterNotes(source, '').map((n) => n.id)).toEqual(['a', 'b', 'c']);
+});

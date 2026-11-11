@@ -1,4 +1,5 @@
 pub mod backup;
+mod external;
 pub mod model;
 pub mod store;
 use model::*;
@@ -7,7 +8,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{Manager, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 struct Inner {
     store: Option<store::Store>,
     preview: Option<(String, WorkspaceSnapshot)>,
@@ -88,6 +91,21 @@ async fn note_save(
         s.save(id.as_deref(), &markdown, &draft_key, draft_revision)
     })
     .await
+}
+#[tauri::command]
+async fn draft_discard(state: State<'_, NativeState>, key: String) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.discard_draft(&key)).await
+}
+#[tauri::command]
+fn external_open_url(app: tauri::AppHandle, url: String) -> Result<()> {
+    external::validate_url(&url)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(storage_error)
+}
+#[tauri::command]
+fn clipboard_write_text(app: tauri::AppHandle, text: String) -> Result<()> {
+    app.clipboard().write_text(text).map_err(storage_error)
 }
 #[tauri::command]
 async fn note_delete(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
@@ -210,6 +228,12 @@ async fn backup_confirm_restore(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let path = app.path().app_data_dir()?.join("notes.sqlite3");
             app.manage(NativeState {
@@ -224,6 +248,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             workspace_load,
             draft_checkpoint,
+            draft_discard,
+            external_open_url,
+            clipboard_write_text,
             note_save,
             note_delete,
             note_undo_delete,
