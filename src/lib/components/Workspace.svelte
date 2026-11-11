@@ -57,6 +57,23 @@
     siblingDrag.clear();
     dragGuide = null;
   }
+  function rejectFileDrop(event: DragEvent) {
+    const transfer = event.dataTransfer;
+    if (
+      !transfer ||
+      (!transfer.files.length && !Array.from(transfer.types).includes('Files'))
+    )
+      return;
+    // CodeMirror otherwise reads dropped files as source before a bubble fallback.
+    event.preventDefault();
+    event.stopPropagation();
+    clearDrag();
+  }
+  function cancelUnhandledDrop(event: DragEvent) {
+    // Editor text and owned card drops run first; background drops must not navigate.
+    event.preventDefault();
+    clearDrag();
+  }
   let interaction = 0;
   let creating = false;
   let composer = $state<MarkdownEditor>();
@@ -314,7 +331,8 @@
     window.addEventListener('keyup', releaseCommand);
     window.addEventListener('blur', clearCommand);
     window.addEventListener('dragend', clearDrag);
-    window.addEventListener('drop', clearDrag);
+    window.addEventListener('drop', rejectFileDrop, true);
+    window.addEventListener('drop', cancelUnhandledDrop);
     document.addEventListener('visibilitychange', clearCommand);
     updateHintContext();
     document.addEventListener('focusin', updateHintContext);
@@ -335,7 +353,8 @@
       clearCommand();
       clearDrag();
       window.removeEventListener('dragend', clearDrag);
-      window.removeEventListener('drop', clearDrag);
+      window.removeEventListener('drop', rejectFileDrop, true);
+      window.removeEventListener('drop', cancelUnhandledDrop);
       window.removeEventListener('keydown', globalCommands, true);
       window.removeEventListener('keyup', releaseCommand);
       window.removeEventListener('blur', clearCommand);

@@ -32,6 +32,8 @@ pnpm verify
 pnpm tauri:build
 ```
 
+The frontend owns sibling drag and drop. Keep the native window’s `dragDropEnabled` set to `false` so its file-drop handler does not consume HTML drag events. The workspace rejects file drops before editors can import them and cancels unhandled background drops. Ordinary text dropped into an editor stays editable source with Undo/Redo.
+
 `dev` opens a web development server; native storage requires `tauri:dev`. The browser-only synthetic workspace is available at `http://127.0.0.1:4511/?fixture` during development; add `&visual` for fixed public Markdown examples. It uses an in-memory test repository that resets on reload, not SQLite or a native profile. The ordinary browser URL does not provide a browser persistence fallback.
 
 `check` runs Kit type generation, Svelte/TypeScript checks, and formatting. `test:unit` checks framework-neutral policy and controller ordering. `test:browser` starts a strict loopback fixture server at port 4611 and runs Chromium tests with an injected synthetic repository. Install Playwright's matching Chromium if absent. The normal development server uses strict loopback port 4511. `build:web` produces static `build/` assets with no runtime server; `tauri:build` produces an unsigned aarch64 Mac `.app` without a DMG, signing, or publication. Rust tests use disposable file databases and validate actual SQLite persistence and recovery. Browser tests establish browser behavior, not native WebKit, IME, or screen-reader acceptance.

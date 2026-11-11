@@ -1022,6 +1022,9 @@ main:has(.workspace) .details-rail {
   cursor: grab;
   opacity: 0;
 }
+.drag-handle:active {
+  cursor: grabbing;
+}
 .note-card:hover .drag-handle,
 .note-card:focus-within .drag-handle,
 .note-stream:focus .selected .drag-handle {
