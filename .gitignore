@@ -10,3 +10,12 @@
 # Task-local research, plans, reviews, and generated evidence.
 .projects/*
 !.projects/README.md
+
+node_modules/
+.svelte-kit/
+build/
+src-tauri/target/
+test-results/
+playwright-report/
+
+src-tauri/gen/

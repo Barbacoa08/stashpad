@@ -1,0 +1,9 @@
+{
+  "extends": "$app/tsconfig",
+  "include": ["src", "tests", "*"],
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
+}

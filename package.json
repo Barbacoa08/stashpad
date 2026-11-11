@@ -1,0 +1,51 @@
+{
+  "name": "stashpad-preview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.1",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4511 --strictPort",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && prettier --check .",
+    "format": "prettier --write .",
+    "test:unit": "vitest run",
+    "test:browser": "playwright test",
+    "build:web": "vite build",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --bundles app --target aarch64-apple-darwin",
+    "verify": "pnpm check && pnpm test:unit && pnpm test:browser && pnpm build:web && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "@opentelemetry/api": "1.10.0",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "2.8.4",
+    "markdown-it": "15.0.3",
+    "svelte": "5.57.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@sveltejs/adapter-static": "4.0.1",
+    "@sveltejs/kit": "3.2.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@tauri-apps/cli": "2.12.4",
+    "@types/markdown-it": "14.2.0",
+    "@types/node": "24.19.2",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte-check": "4.7.8",
+    "typescript": "6.0.3",
+    "vite": "8.3.7",
+    "vitest": "5.1.0"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  }
+}
