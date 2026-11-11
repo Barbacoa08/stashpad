@@ -431,7 +431,13 @@ for (const activation of ['click', 'keyboard'] as const)
       .poll(() =>
         page.evaluate(() => (window as any).__test.controller.state.source),
       )
-      .toBe('```js\nconst value = "synthetic";!Q\n```');
+      .toBe('```js\nconst value = "synthetic";!\n```Q');
+    await inline(page).press('Meta+z');
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window as any).__test.controller.state.source),
+      )
+      .toBe('```js\nconst value = "synthetic";!\n```');
     await inline(page).press('Escape');
     await page
       .getByRole('article', { name: 'Saved note' })

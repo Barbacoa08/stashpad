@@ -67,6 +67,7 @@
   let stream = $state<HTMLElement>();
   let closeFailed = $state(false);
   let detailsOpen = $state(false);
+  let commandHeld = $state(false);
   let detailsToggle = $state<HTMLButtonElement>();
   let detailsRail = $state<HTMLElement>();
   let composerEpochs = $state<Record<string, number>>({});
@@ -244,6 +245,11 @@
       }
       narrow = detailsMedia.matches;
     }
+    // Capture only global navigation keys before CodeMirror's comment keymap.
+    window.addEventListener('keydown', globalCommands, true);
+    window.addEventListener('keyup', releaseCommand);
+    window.addEventListener('blur', clearCommand);
+    document.addEventListener('visibilitychange', clearCommand);
     document.addEventListener('focusin', rememberFocus);
     document.addEventListener('focusout', forgetFocus);
     detailsMedia.addEventListener('change', respondToDetailsWidth);
@@ -256,6 +262,11 @@
       );
     return () => {
       disposed = true;
+      clearCommand();
+      window.removeEventListener('keydown', globalCommands, true);
+      window.removeEventListener('keyup', releaseCommand);
+      window.removeEventListener('blur', clearCommand);
+      document.removeEventListener('visibilitychange', clearCommand);
       for (const cleanup of focusRequestCleanups) cleanup();
       document.removeEventListener('focusin', rememberFocus);
       document.removeEventListener('focusout', forgetFocus);
@@ -278,7 +289,7 @@
       focus.stop();
     }
   }
-  async function edit(id: string) {
+  async function edit(id: string, end = false) {
     if (blocked) return;
     const request = ++interaction,
       focus = observeSubmissionFocus();
@@ -293,7 +304,7 @@
         if (request !== interaction) return;
         selected = id;
         await tick();
-        if (focus.mayRestore()) focusInline();
+        if (focus.mayRestore()) focusInline({ end });
       }
     } finally {
       focus.stop();
@@ -436,8 +447,8 @@
     stream?.focus();
     scrollSelection();
   }
-  function focusInline() {
-    noteBodies[controller.state.activeKey]?.focus();
+  function focusInline(options?: { end?: boolean }) {
+    noteBodies[controller.state.activeKey]?.focus(options);
   }
   function capturePrevious() {
     if (blocked) return false;
@@ -449,6 +460,36 @@
     stream?.focus();
     scrollSelection();
     return true;
+  }
+  function clearCommand() {
+    commandHeld = false;
+  }
+  function releaseCommand(event: KeyboardEvent) {
+    if (event.key === 'Meta' || !event.metaKey) clearCommand();
+  }
+  function globalCommands(event: KeyboardEvent) {
+    if (event.key === 'Meta' && !event.isComposing) commandHeld = true;
+    if (
+      event.defaultPrevented ||
+      event.isComposing ||
+      !viewState.loaded ||
+      blocked ||
+      !event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey
+    )
+      return;
+    if (event.key === '/') {
+      event.preventDefault();
+      event.stopPropagation();
+      search?.focus();
+      void controller.flush();
+    } else if (event.key === '1') {
+      event.preventDefault();
+      event.stopPropagation();
+      void openStash(null);
+    }
   }
   function commands(event: KeyboardEvent) {
     if (
@@ -489,7 +530,7 @@
       search?.focus();
     } else if (key === 'e' && selectedNote) {
       event.preventDefault();
-      void edit(selected);
+      void edit(selected, true);
     } else if (key === 'x' && selectedNote && !event.repeat) {
       event.preventDefault();
       void controller.setNoteDone(selectedNote.id, !selectedNote.done);
@@ -600,13 +641,23 @@
             onkeydown={searchKey}
             disabled={modal}
           />
+          {#if commandHeld && !blocked}<span
+              class="command-hint"
+              aria-hidden="true">⌘/</span
+            >{/if}
         </div>
-        <StashSidebar
-          presentation={hierarchy}
-          currentId={viewState.stashId}
-          disabled={blocked}
-          onopen={(id) => void openStash(id)}
-        />
+        <div class="navigation-hint-anchor">
+          <StashSidebar
+            presentation={hierarchy}
+            currentId={viewState.stashId}
+            disabled={blocked}
+            onopen={(id) => void openStash(id)}
+          />
+          {#if commandHeld && !blocked}<span
+              class="command-hint home-command-hint"
+              aria-hidden="true">⌘1</span
+            >{/if}
+        </div>
         <div class="backup-actions">
           <button onclick={() => controller.export()} disabled={blocked}
             ><Icon name="download" /> Export backup</button
@@ -852,12 +903,23 @@
               ><kbd>⌘</kbd><kbd>N</kbd></span
             >
           </div>
+          <div>
+            <span>Home</span><span class="shortcut-keys"
+              ><kbd>⌘</kbd><kbd>1</kbd></span
+            >
+          </div>
+          <div>
+            <span>Bold / Italic</span><span class="shortcut-keys"
+              ><kbd>⌘</kbd><kbd>B</kbd><span>/</span><kbd>⌘</kbd><kbd>I</kbd
+              ></span
+            >
+          </div>
           <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
           <div>
             <span aria-hidden="true">Search</span><span class="sr-only"
-              >Search: Command F or slash</span
+              >Search: Command slash, Command F, or slash</span
             ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>⌘</kbd><kbd>F</kbd><span aria-hidden="true">/</span><kbd
+              ><kbd>⌘</kbd><kbd>/</kbd><span aria-hidden="true">/</span><kbd
                 >/</kbd
               ></span
             >

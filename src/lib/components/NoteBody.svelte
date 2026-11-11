@@ -132,8 +132,8 @@
       observer.disconnect();
     };
   });
-  export function focus() {
-    editor?.focus();
+  export function focus(options?: { end?: boolean }) {
+    editor?.focus(options);
   }
   function grow(next: number) {
     if (naturalHeight !== next) naturalHeight = next;

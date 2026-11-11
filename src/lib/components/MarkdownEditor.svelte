@@ -33,6 +33,10 @@
     editorSource,
     sourceReplacement,
   } from '../editor/source';
+  import {
+    toggleMarkdownStyle,
+    formattingExtensions,
+  } from '../editor/formatting';
   import { enterKey, fencedSelection, captureUp } from '../editor/policy';
   let {
     contextKey,
@@ -105,10 +109,21 @@
       }),
       highlightActiveLine(),
       history(),
+      formattingExtensions,
       sourceExtensions(text),
       indentOnInput(),
       Prec.highest(
         keymap.of([
+          {
+            key: 'Mod-b',
+            run: (v) => toggleMarkdownStyle(v, 'bold'),
+            preventDefault: true,
+          },
+          {
+            key: 'Mod-i',
+            run: (v) => toggleMarkdownStyle(v, 'italic'),
+            preventDefault: true,
+          },
           { key: 'Enter', run: (v) => enterKey(v, false, readOnly, onsubmit) },
           {
             key: 'Mod-Enter',
@@ -194,7 +209,11 @@
     // A capturing listener bypasses app/editor shortcuts without preventDefault:
     // the browser must still commit its IME candidate on Enter.
     function composingEnter(event: KeyboardEvent) {
-      if (event.key === 'Enter' && (event.isComposing || view?.composing))
+      if (
+        (event.key === 'Enter' ||
+          ((event.metaKey || event.ctrlKey) && /^[bi]$/i.test(event.key))) &&
+        (event.isComposing || view?.composing)
+      )
         event.stopPropagation();
     }
     host.addEventListener('keydown', composingEnter, true);
@@ -242,7 +261,12 @@
     });
     view.contentDOM.setAttribute('aria-readonly', String(disabled));
   });
-  export function focus() {
+  export function focus(options?: { end?: boolean }) {
+    if (view && options?.end)
+      view.dispatch({
+        selection: { anchor: view.state.doc.length },
+        scrollIntoView: true,
+      });
     view?.focus();
   }
 </script>

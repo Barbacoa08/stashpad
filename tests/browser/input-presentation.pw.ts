@@ -121,7 +121,7 @@ test('shortcut hints expose individual keys and plain notes have no marker', asy
   const shortcuts = page.getByLabel('Keyboard shortcuts');
   await expect(
     shortcuts.locator('div').filter({ hasText: 'Search' }).locator('kbd'),
-  ).toHaveText(['⌘', 'F', '/']);
+  ).toHaveText(['⌘', '/', '/']);
   await expect(
     shortcuts.locator('div').filter({ hasText: 'Select note' }).locator('kbd'),
   ).toHaveText(['↑', '↓']);
@@ -190,7 +190,7 @@ test('shortcut descriptions are exposed as words in the accessibility tree', asy
   await page.goto('/?fixture');
   await expect(capture(page)).toBeVisible();
   const snapshot = await page.locator('body').ariaSnapshot();
-  expect(snapshot).toContain('Search: Command F or slash');
+  expect(snapshot).toContain('Search: Command slash, Command F, or slash');
   expect(snapshot).toContain('Shift Enter adds a line');
   expect(snapshot).toContain('Delete selected: Command Backspace');
 });
