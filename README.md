@@ -6,7 +6,7 @@ Capture notes in a persistent bottom composer, then read full saved Markdown in 
 
 ## Capture and edit
 
-Enter saves, Shift+Enter adds a line or continues a list, and Command+Enter also saves. Empty captures are rejected, and the composer clears only after acknowledgment. Markdown delimiters remain visible while emphasis, headings, lists, and code are styled. Standard copy, paste, selection, and undo operate on the actual source.
+Enter saves, Shift+Enter adds a line or continues a list, and Command+Enter also saves. Empty captures are rejected, and the composer clears only after acknowledgment. Markdown delimiters remain visible while emphasis, headings, lists, and code are styled. Standard copy, paste, selection, and undo operate on the actual source. LF, CRLF, and mixed source separators remain intact through edits and undo. New typed line breaks use the existing first separator, or LF when the document has none. Raw paste/input separators are retained when the browser exposes them; OS clipboard conversion remains a platform limit.
 
 Single click selects a card. Double click, Edit note, or E opens inline editing; Enter/Save edit commits, and Escape/Cancel edit discards that note's unfinished edit. Switching to New note retains an edit for resuming. Composer and inline drafts are independent; Escape from the composer preserves its text and focuses the stream. Search filters saved source case-insensitively, keeps capture available, and labels any active edit outside the results.
 

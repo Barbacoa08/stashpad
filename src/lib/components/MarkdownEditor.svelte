@@ -32,6 +32,11 @@
     indentOnInput,
   } from '@codemirror/language';
   import { tags } from '@lezer/highlight';
+  import {
+    sourceExtensions,
+    editorSource,
+    sourceReplacement,
+  } from '../editor/source';
   let {
     contextKey,
     label,
@@ -69,11 +74,12 @@
     { tag: tags.link, class: 'cm-link' },
     { tag: tags.list, class: 'cm-list' },
   ]);
-  function extensions() {
+  function extensions(text: string) {
     return [
       drawSelection(),
       highlightActiveLine(),
       history(),
+      sourceExtensions(text),
       indentOnInput(),
       Prec.highest(
         keymap.of([
@@ -136,7 +142,7 @@
       }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !applyingSource)
-          onchange(update.state.doc.toString());
+          onchange(editorSource(update.state));
       }),
       editable.of([
         EditorState.readOnly.of(readOnly),
@@ -145,11 +151,11 @@
     ];
   }
   function makeEditorState(text: string) {
-    return EditorState.create({ doc: text, extensions: extensions() });
+    return EditorState.create({ doc: text, extensions: extensions(text) });
   }
   function restoreState(saved: EditorState | undefined, text: string) {
-    return saved?.doc.toString() === text
-      ? saved.update({ effects: StateEffect.reconfigure.of(extensions()) })
+    return saved && editorSource(saved) === text
+      ? saved.update({ effects: StateEffect.reconfigure.of(extensions(text)) })
           .state
       : makeEditorState(text);
   }
@@ -184,10 +190,10 @@
       const saved = states?.get(key);
       view.setState(restoreState(saved, text));
       currentKey = key;
-    } else if (view.state.doc.toString() !== text) {
+    } else if (editorSource(view.state) !== text) {
       applyingSource = true;
       view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: text },
+        ...sourceReplacement(view.state, text),
         annotations: Transaction.addToHistory.of(false),
       });
       applyingSource = false;
@@ -205,4 +211,8 @@
   }
 </script>
 
-<div class="markdown-editor" bind:this={host}></div>
+<div
+  class="markdown-editor"
+  class:empty-capture={label === 'Capture Markdown' && !source}
+  bind:this={host}
+></div>

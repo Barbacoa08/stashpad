@@ -9,6 +9,7 @@
   import { nativeRepository, type Repository } from '../platform/workspace';
   import { copyMarkdown, openExternal } from '../platform/actions';
   import { filterNotes } from '../domain/search';
+  import { timestampPresentation } from '../domain/timestamps';
   import { attachCloseGuard } from '../platform/lifecycle';
   let {
     repository = nativeRepository,
@@ -297,7 +298,7 @@
 <svelte:window onkeydown={commands} />
 <main>
   <header class="app-header">
-    <h1>Stashpad Preview</h1>
+    <h1>Home / Notes</h1>
     <span class="local-label">Local workspace</span>
   </header>
   {#if !viewState.loaded}
@@ -311,23 +312,20 @@
   {:else}
     <div class="workspace">
       <aside class="sidebar" aria-label="Workspace navigation">
-        <h2>Home / Notes</h2>
+        <h2>⌂ &nbsp; Home</h2>
         <button onclick={compose} disabled={blocked}
           >New note <kbd>⌘N</kbd></button
         >
         <label for="search">Search saved notes</label><input
           id="search"
           type="search"
+          placeholder="Search"
           bind:this={search}
           value={viewState.query}
           oninput={(event) => controller.setQuery(event.currentTarget.value)}
           onkeydown={searchKey}
           disabled={modal}
         />
-        <p class="hint">
-          ⌘F or / Search · Space Capture<br />↑ ↓ Select · E Edit · C Copy<br
-          />⌘⌫ Delete selected note
-        </p>
         <div class="backup-actions">
           <button onclick={() => controller.export()} disabled={blocked}
             >Export backup</button
@@ -358,6 +356,7 @@
           bind:this={stream}
         >
           {#each shownNotes as note (note.id)}
+            {@const updated = timestampPresentation(note.updatedAt)}
             <!-- Selection and actions are separate from rendered content and links. -->
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
             <article
@@ -368,25 +367,59 @@
               onclick={(event) => cardClick(event, note.id)}
               ondblclick={(event) => cardDoubleClick(event, note.id)}
             >
+              <button
+                class="note-select"
+                aria-pressed={selected === note.id}
+                disabled={blocked}
+                onclick={() => {
+                  selected = note.id;
+                  stream?.focus();
+                }}
+                aria-label="Select note"
+                title="Select note">◦</button
+              >
               <div class="note-meta">
-                <button
-                  aria-pressed={selected === note.id}
-                  disabled={blocked}
-                  onclick={() => {
-                    selected = note.id;
-                    stream?.focus();
-                  }}>Select note</button
-                ><time datetime={new Date(note.updatedAt).toISOString()}
-                  >{new Date(note.updatedAt).toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}</time
-                >{#if viewState.snapshot.drafts.some((d) => d.key === note.id)}<span
-                    >Unfinished edit</span
-                  >{/if}
+                <time datetime={updated.datetime}>{updated.label}</time>
+                {#if selected === note.id}<div class="card-actions">
+                    {#if viewState.activeKey !== note.id}<button
+                        disabled={blocked}
+                        onclick={() => edit(note.id)}
+                        aria-label="Edit note"
+                        title="Edit note"
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true"
+                          ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
+                        >
+                      </button>{/if}
+                    <button
+                      disabled={blocked}
+                      onclick={() => copy(note.id)}
+                      aria-label="Copy Markdown"
+                      title="Copy Markdown"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true"
+                        ><path d="M6 5h7v9H6zM3 11H2V2h7v1" /></svg
+                      >
+                    </button>
+                    <button
+                      disabled={blocked}
+                      onclick={remove}
+                      aria-label="Delete note"
+                      title="Delete note"
+                    >
+                      <svg viewBox="0 0 16 16" aria-hidden="true"
+                        ><path
+                          d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10M7 6v6M9 6v6"
+                        /></svg
+                      >
+                    </button>
+                  </div>{/if}
               </div>
+              {#if viewState.snapshot.drafts.some((d) => d.key === note.id)}<p
+                  class="draft-indicator"
+                >
+                  Unfinished edit
+                </p>{/if}
               {#if viewState.activeKey === note.id}
                 {#if !visibleNotes.some((n) => n.id === note.id)}<p
                     class="editing-outside"
@@ -412,17 +445,6 @@
                   >
                 </div>
               {:else}<MarkdownView source={note.markdown} onopen={open} />{/if}
-              {#if selected === note.id}<div class="note-actions">
-                  {#if viewState.activeKey !== note.id}<button
-                      disabled={blocked}
-                      onclick={() => edit(note.id)}>Edit note</button
-                    >{/if}<button
-                    disabled={blocked}
-                    onclick={() => copy(note.id)}>Copy Markdown</button
-                  ><button disabled={blocked} onclick={remove}
-                    >Delete note</button
-                  >
-                </div>{/if}
             </article>
           {/each}
           {#if !shownNotes.length}<p class="empty-stream">
@@ -433,9 +455,11 @@
         </section>
         <section class="composer" aria-label="Capture note">
           <div class="composer-toolbar">
-            <h2>Capture</h2>
-            <button onclick={() => submit('compose')} disabled={blocked}
-              >Save note <kbd>↵</kbd></button
+            <button
+              onclick={() => submit('compose')}
+              disabled={blocked}
+              aria-label="Save note"
+              title="Save note (Enter)">➤</button
             >
           </div>
           <MarkdownEditor
@@ -455,14 +479,25 @@
         </section>
       </section>
       <aside class="details-rail" aria-label="Note details">
-        <h2>Local notes</h2>
+        <h2>Notes</h2>
         <p>
-          Markdown source stays editable. Select a card to edit, copy, or delete
-          it.
+          {visibleNotes.length}
+          {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace
         </p>
-        {#if selectedNote}<p>
-            Created {new Date(selectedNote.createdAt).toLocaleString()}
+        {#if selectedNote}{@const created = timestampPresentation(
+            selectedNote.createdAt,
+            'full',
+          )}
+          <p>
+            Created <time datetime={created.datetime}>{created.label}</time>
           </p>{/if}
+        <div class="shortcut-list" aria-label="Keyboard shortcuts">
+          <div><span>Focus capture</span><kbd>Space</kbd></div>
+          <div><span>Search</span><kbd>⌘F /</kbd></div>
+          <div><span>Select note</span><kbd>↑ ↓</kbd></div>
+          <div><span>Edit / Copy</span><kbd>E / C</kbd></div>
+          <div><span>Delete selected</span><kbd>⌘⌫</kbd></div>
+        </div>
       </aside>
     </div>
     <footer class="workspace-feedback">
