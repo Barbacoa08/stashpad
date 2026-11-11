@@ -41,7 +41,8 @@ test('inline edit resumes, preserves source/caret/undo, and Escape finishes only
   await replace(page, '*unfinished*', inline(page));
   await inline(page).press('Home');
   await inline(page).press('ArrowRight');
-  await page.getByRole('button', { name: /^New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(compose(page)).toHaveText('capture draft');
   await cards(page)
     .getByRole('button', { name: 'Edit note', exact: true })

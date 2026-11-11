@@ -532,10 +532,6 @@ kbd {
   border-color: transparent;
   padding-left: 0;
 }
-.sidebar input:focus {
-  border-color: #777;
-  padding-left: 0.4rem;
-}
 .sidebar button {
   background: transparent;
   border-color: transparent;
@@ -726,14 +722,13 @@ kbd {
 }
 .stash-link {
   display: grid;
-  grid-template-columns: 0.85rem minmax(0, 1fr);
+  grid-template-columns: 1.125rem minmax(0, 1fr);
   column-gap: 0.3rem;
   align-items: center;
 }
 .stash-link .stash-icon {
-  width: 0.85rem;
-  height: 0.85rem;
-  grid-row: 1 / span 2;
+  width: 1.125rem;
+  height: 1.125rem;
 }
 .stash-name {
   overflow: hidden;
@@ -757,10 +752,22 @@ kbd {
   gap: 0.4rem;
   margin-bottom: 0.75rem;
   min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 0.4rem;
+}
+.sidebar-search:focus-within {
+  border-color: #92caff;
 }
 .sidebar-search input {
   min-width: 0;
   padding-left: 0;
+  appearance: none;
+  outline: none;
+}
+.sidebar-search input::placeholder {
+  color: #aaa;
+  opacity: 1;
 }
 .icon {
   width: 1rem;
@@ -795,7 +802,16 @@ kbd {
   background: transparent;
   color: inherit;
 }
+.stash-row {
+  min-height: 2rem;
+}
+.stash-row .stash-expand .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
 .stash-row .stash-expand {
+  align-self: start;
+  padding-block: 0.4rem;
   display: grid;
   place-items: center;
 }
@@ -917,4 +933,37 @@ kbd {
   opacity: 0.7;
   text-decoration: line-through;
   text-decoration-color: var(--muted);
+}
+
+/* The sidebar starts at the content edge while the path occupies the other columns. */
+main:has(.workspace) .app-header {
+  position: absolute;
+  top: 0;
+  left: 15.5rem;
+  right: 0;
+  z-index: 1;
+  padding-left: 0.75rem;
+}
+main:has(.workspace) .sidebar {
+  padding-top: 0.5rem;
+}
+main:has(.workspace) .notes-column,
+main:has(.workspace) .details-rail {
+  margin-top: 2.5rem;
+}
+@media (max-width: 1050px) {
+  main:has(.workspace) .app-header {
+    left: calc(min(12rem, 192px) + 0.25rem);
+  }
+  main:has(.workspace) .sidebar {
+    padding-inline: 0.5rem;
+  }
+  main:has(.workspace) .details-rail.open {
+    top: 0;
+  }
+}
+@media (max-width: 650px) {
+  main:has(.workspace) .app-header {
+    left: 8.25rem;
+  }
 }

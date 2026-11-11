@@ -33,8 +33,8 @@ test('stream scrolls independently and constrained text remains reachable', asyn
   ).toBe(true);
   await backup.focus();
   await expect(backup).toBeFocused();
-  await page.getByRole('button', { name: /New note/ }).scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: /New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(composer).toBeFocused();
   const before = await composer.boundingBox();
   await stream.evaluate((el) => {

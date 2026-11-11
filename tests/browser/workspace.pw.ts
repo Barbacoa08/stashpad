@@ -56,7 +56,8 @@ test('delayed save keeps later typing and failed navigation has retry', async ({
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'checkpoint';
   });
-  await page.getByRole('button', { name: /^New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(page.getByRole('alert')).toContainText('failure');
   await expect(editor).toHaveText('newer input');
   await page.evaluate(() => {
@@ -141,7 +142,8 @@ test('failed finish retains note source and prevents navigation until retry', as
   await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
     'retained',
   );
-  await page.getByRole('button', { name: /New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
     'retained',
   );
@@ -162,7 +164,8 @@ for (const failFollowup of [false, true])
       t.delayCheckpoint();
       if (fail) t.repo.failCheckpointCall = 2;
     }, failFollowup);
-    await page.getByRole('button', { name: /^New note/ }).click();
+    await page.getByRole('region', { name: 'Note stream' }).focus();
+    await page.keyboard.press('Space');
     await expect
       .poll(() =>
         page.evaluate(() => (window as any).__test.repo.checkpointCalls),

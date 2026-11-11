@@ -247,12 +247,7 @@ test('constrained sidebar keeps actual nested navigation visible and stash creat
       return button.top >= nav.top && button.bottom <= nav.bottom;
     }),
   ).toBe(true);
-  const newStash = page.getByRole('button', {
-    name: 'New stash',
-    exact: true,
-  });
-  await newStash.scrollIntoViewIfNeeded();
-  await newStash.click();
+  await page.keyboard.press('Meta+n');
   await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
   await expect(capture(page)).toBeFocused();
 });

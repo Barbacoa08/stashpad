@@ -17,6 +17,8 @@
   {:else if name === 'chevron'}<path d="m6 3 5 5-5 5" />
   {:else if name === 'download'}<path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3" />
   {:else if name === 'upload'}<path d="M8 11V3M5 6l3-3 3 3M3 11v3h10v-3" />
-  {:else if name === 'undo'}<path d="M6 4 2.5 7 6 10M3 7h6a4 4 0 0 1 0 8" />
+  {:else if name === 'undo'}<path
+      d="M6 3.5 2.5 6.5 6 9.5M3 6.5h6a3.5 3.5 0 0 1 0 7"
+    />
   {:else}<circle cx="8" cy="8" r="6" /><path d="M8 7v4M8 4.5v.1" />{/if}
 </svg>

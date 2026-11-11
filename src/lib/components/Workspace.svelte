@@ -607,10 +607,6 @@
           disabled={blocked}
           onopen={(id) => void openStash(id)}
         />
-        <button onclick={() => void createStash()} disabled={blocked}
-          >New stash</button
-        >
-        <button onclick={compose} disabled={blocked}>New note</button>
         <div class="backup-actions">
           <button onclick={() => controller.export()} disabled={blocked}
             ><Icon name="download" /> Export backup</button

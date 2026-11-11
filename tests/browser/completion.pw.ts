@@ -65,7 +65,7 @@ test('X leaves typing, IME, DOM ranges, modifiers, and stashes alone', async ({
   await page.getByRole('searchbox').fill('x');
   await expect(page.getByRole('searchbox')).toHaveValue('x');
   await page.getByRole('searchbox').press('Escape');
-  await page.getByRole('button', { name: 'New stash', exact: true }).click();
+  await page.keyboard.press('Meta+n');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page
     .getByRole('article', { name: 'Stash Untitled', exact: true })

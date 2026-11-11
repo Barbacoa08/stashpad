@@ -51,7 +51,8 @@ for (const [name, source] of [
     await expect.poll(() => current(page)).toBe(source);
     await editor(page).press('Meta+Shift+z');
     await expect.poll(() => current(page)).toBe(edited);
-    await page.getByRole('button', { name: /New note/ }).click();
+    await page.getByRole('region', { name: 'Note stream' }).focus();
+    await page.keyboard.press('Space');
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
     await page.keyboard.insertText('y');
     await expect
