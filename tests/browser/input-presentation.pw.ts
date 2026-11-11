@@ -126,7 +126,7 @@ test('shortcut hints expose individual keys and plain notes have no marker', asy
     shortcuts.locator('div').filter({ hasText: 'Select note' }).locator('kbd'),
   ).toHaveText(['↑', '↓']);
   await expect(
-    page.getByRole('button', { name: /New stash/ }).locator('kbd'),
+    shortcuts.locator('div').filter({ hasText: 'New stash' }).locator('kbd'),
   ).toHaveText(['⌘', 'N']);
 });
 
@@ -151,7 +151,11 @@ for (const constrained of [false, true]) {
     ).not.toBe('none');
     await capture(page).fill('Synthetic focus view');
     await capture(page).press('Enter');
+    if (constrained)
+      await page.getByRole('button', { name: 'Details' }).click();
     await expect(page.getByRole('status')).toContainText('Saved');
+    if (constrained)
+      await page.getByRole('button', { name: 'Details' }).click();
     await cards(page).first().click();
     await expect(stream).toBeFocused();
     await page.keyboard.press('c');

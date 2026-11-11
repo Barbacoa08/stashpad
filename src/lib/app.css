@@ -746,3 +746,127 @@ kbd {
   line-height: 1.15;
   color: #aaa;
 }
+
+/* Sidebar controls share one scrolling surface. */
+.sidebar {
+  overflow-x: hidden;
+}
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  min-width: 0;
+}
+.sidebar-search input {
+  min-width: 0;
+  padding-left: 0;
+}
+.icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+  vertical-align: middle;
+}
+.stash-navigation {
+  max-height: none;
+  overflow: visible;
+  min-width: 0;
+}
+.stash-navigation > button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sidebar .stash-row button:hover:enabled {
+  background: transparent;
+}
+.stash-row.current,
+.stash-row:hover {
+  background: #303b4f;
+  color: #fff;
+}
+.stash-navigation .stash-row.current .stash-link {
+  background: transparent;
+  color: inherit;
+}
+.stash-row .stash-expand {
+  display: grid;
+  place-items: center;
+}
+.stash-expand span {
+  display: flex;
+}
+.stash-expand span.expanded {
+  transform: rotate(90deg);
+}
+.backup-actions button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.details-rail {
+  display: flex;
+  flex-direction: column;
+}
+.workspace-feedback {
+  margin-top: auto;
+  padding: 1rem 0 0;
+  border-top: 1px solid #303030;
+  background: transparent;
+  font-size: inherit;
+}
+.workspace-feedback h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.workspace-feedback button {
+  margin: 0 0.4rem 0.4rem 0;
+}
+.details-toggle {
+  display: none;
+}
+@media (max-width: 1050px) {
+  .details-toggle {
+    display: block;
+    margin-left: auto;
+  }
+  .workspace {
+    position: relative;
+  }
+  .details-rail {
+    display: none;
+  }
+  .details-rail.open {
+    display: flex;
+    position: absolute;
+    z-index: 3;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(22rem, 100%);
+    background: var(--panel);
+    box-shadow: -4px 0 12px #0009;
+  }
+}
+
+.narrow-announcement {
+  display: none;
+}
+@media (max-width: 1050px) {
+  .narrow-announcement:not(.open) {
+    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

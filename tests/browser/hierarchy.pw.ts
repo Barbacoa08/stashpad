@@ -248,7 +248,7 @@ test('constrained sidebar keeps actual nested navigation visible and stash creat
     }),
   ).toBe(true);
   const newStash = page.getByRole('button', {
-    name: 'New stash Command N',
+    name: 'New stash',
     exact: true,
   });
   await newStash.scrollIntoViewIfNeeded();

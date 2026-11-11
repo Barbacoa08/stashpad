@@ -5,6 +5,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import MarkdownView from './MarkdownView.svelte';
+  import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
   import StashCard from './StashCard.svelte';
   import StashDialog from './StashDialog.svelte';
@@ -40,6 +41,7 @@
   let search = $state<HTMLInputElement>();
   let stream = $state<HTMLElement>();
   let closeFailed = $state(false);
+  let detailsOpen = $state(false);
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
   let stashDialog = $state<{ id: string; name: string } | null>(null);
@@ -460,6 +462,14 @@
   <header class="app-header">
     <h1 title={destination}>{destination}</h1>
     <span class="local-label">Local workspace</span>
+    {#if viewState.loaded}<button
+        class="details-toggle"
+        aria-expanded={detailsOpen}
+        aria-controls="workspace-details"
+        onclick={() => (detailsOpen = !detailsOpen)}
+        >Details{#if viewState.error}
+          <span role="status">· error</span>{/if}</button
+      >{/if}
   </header>
   {#if !viewState.loaded}
     <section aria-label="Workspace loading">
@@ -470,9 +480,30 @@
         >{/if}
     </section>
   {:else}
+    <div
+      class="narrow-announcement"
+      class:open={detailsOpen}
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {viewState.error || viewState.status}
+    </div>
     <div class="workspace">
       <aside class="sidebar" aria-label="Workspace navigation">
-        <h2>Workspace</h2>
+        <div class="sidebar-search">
+          <label class="sr-only" for="search">Search saved notes</label>
+          <Icon name="search" />
+          <input
+            id="search"
+            type="search"
+            placeholder="Search"
+            bind:this={search}
+            value={viewState.query}
+            oninput={(event) => controller.setQuery(event.currentTarget.value)}
+            onkeydown={searchKey}
+            disabled={modal}
+          />
+        </div>
         <StashSidebar
           presentation={hierarchy}
           currentId={viewState.stashId}
@@ -480,36 +511,19 @@
           onopen={(id) => void openStash(id)}
         />
         <button onclick={() => void createStash()} disabled={blocked}
-          >New stash <span class="sr-only">Command N</span><span
-            class="shortcut-keys"
-            aria-hidden="true"><kbd>⌘</kbd><kbd>N</kbd></span
-          ></button
+          >New stash</button
         >
-        <button onclick={compose} disabled={blocked}
-          >New note <span class="sr-only">Space focuses capture</span><kbd
-            aria-hidden="true">Space</kbd
-          ></button
-        >
-        <label for="search">Search saved notes</label><input
-          id="search"
-          type="search"
-          placeholder="Search"
-          bind:this={search}
-          value={viewState.query}
-          oninput={(event) => controller.setQuery(event.currentTarget.value)}
-          onkeydown={searchKey}
-          disabled={modal}
-        />
+        <button onclick={compose} disabled={blocked}>New note</button>
         <div class="backup-actions">
           <button onclick={() => controller.export()} disabled={blocked}
-            >Export backup</button
+            ><Icon name="download" /> Export backup</button
           ><button
             onclick={() => controller.previewRestore()}
-            disabled={blocked}>Restore backup</button
+            disabled={blocked}><Icon name="upload" /> Restore backup</button
           ><button
             onclick={() => controller.undoRemove()}
             disabled={!viewState.snapshot.undoDeleteId || blocked}
-            >Undo delete</button
+            ><Icon name="undo" /> Undo delete</button
           >
         </div>
       </aside>
@@ -693,13 +707,6 @@
             >
             ·
             <span
-              ><span class="sr-only">Command Enter saves</span><span
-                aria-hidden="true"
-                ><span class="shortcut-keys"><kbd>⌘</kbd><kbd>Enter</kbd></span> saves</span
-              ></span
-            >
-            ·
-            <span
               ><span class="sr-only">Escape returns to notes</span><span
                 aria-hidden="true"><kbd>Esc</kbd> returns to notes</span
               ></span
@@ -707,7 +714,12 @@
           </p>
         </section>
       </section>
-      <aside class="details-rail" aria-label="Note details">
+      <aside
+        id="workspace-details"
+        class="details-rail"
+        class:open={detailsOpen}
+        aria-label="Note details"
+      >
         <h2>Details and shortcuts</h2>
         <p>
           {visibleNotes.length}
@@ -721,7 +733,12 @@
             Created <time datetime={created.datetime}>{created.label}</time>
           </p>{/if}
         <div class="shortcut-list" aria-label="Keyboard shortcuts">
-          <div><span>Focus capture</span><kbd>Space</kbd></div>
+          <div>
+            <span>New stash</span><span class="shortcut-keys"
+              ><kbd>⌘</kbd><kbd>N</kbd></span
+            >
+          </div>
+          <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
           <div>
             <span aria-hidden="true">Search</span><span class="sr-only"
               >Search: Command F or slash</span
@@ -753,18 +770,25 @@
             >
           </div>
         </div>
+        <section class="workspace-feedback" aria-label="Workspace status">
+          <h2><Icon name="info" /> Workspace status</h2>
+          <p>
+            Shows the latest local action, including this device’s note saves
+            and capture draft checkpoints. It does not indicate online
+            synchronization.
+          </p>
+          <p role="status" aria-live="polite">{viewState.status}</p>
+          <p role="alert">{viewState.error}</p>
+          {#if viewState.error}<button
+              disabled={blocked}
+              onclick={() => controller.flush()}>Retry checkpoint</button
+            ><button
+              disabled={blocked}
+              onclick={() => submit(viewState.activeKey)}>Retry save</button
+            >{/if}
+        </section>
       </aside>
     </div>
-    <footer class="workspace-feedback">
-      <p role="status" aria-live="polite">{viewState.status}</p>
-      <p role="alert">{viewState.error}</p>
-      {#if viewState.error}<button
-          disabled={blocked}
-          onclick={() => controller.flush()}>Retry checkpoint</button
-        ><button disabled={blocked} onclick={() => submit(viewState.activeKey)}
-          >Retry save</button
-        >{/if}
-    </footer>
     {#if stashDialog}<StashDialog
         title="Rename stash"
         initial={stashDialog.name}

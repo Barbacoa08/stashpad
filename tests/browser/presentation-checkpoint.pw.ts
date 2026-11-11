@@ -108,7 +108,7 @@ for (const constrained of [false, true]) {
     ).toHaveCount(0);
     await expect(page.locator('.capture-destination')).toHaveCount(0);
     await expect(page.locator('.app-header h1')).toContainText('Home');
-    await expect(page.locator('.details-rail h2')).toHaveText(
+    await expect(page.locator('.details-rail > h2')).toHaveText(
       'Details and shortcuts',
     );
     await page.screenshot({

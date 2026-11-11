@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import type { HierarchyPresentation } from '../domain/hierarchy';
+  import Icon from './Icon.svelte';
   import StashIcon from './StashIcon.svelte';
   let {
     presentation,
@@ -27,11 +28,12 @@
     class:current={currentId === null}
     aria-current={currentId === null ? 'page' : undefined}
     onclick={() => onopen(null)}
-    {disabled}>Home</button
+    {disabled}><Icon name="home" /> Home</button
   >
   {#each rows as row (row.stash.id)}
     <div
       class="stash-row"
+      class:current={currentId === row.stash.id}
       style:padding-left={`${Math.min(row.depth, 2) * 8}px`}
     >
       {#if row.hasChildren}<button
@@ -44,12 +46,14 @@
             if (next.has(row.stash.id)) next.delete(row.stash.id);
             else next.add(row.stash.id);
             expanded = next;
-          }}>{expanded.has(row.stash.id) ? '⌄' : '›'}</button
+          }}
+          ><span class:expanded={expanded.has(row.stash.id)}
+            ><Icon name="chevron" /></span
+          ></button
         >{:else}<span class="stash-expand-spacer" aria-hidden="true"
         ></span>{/if}
       <button
         class="stash-link"
-        class:current={currentId === row.stash.id}
         aria-current={currentId === row.stash.id ? 'page' : undefined}
         aria-label={`Open stash ${row.stash.name}`}
         title={row.stash.name}
