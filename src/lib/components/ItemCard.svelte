@@ -3,6 +3,7 @@
   import type { Item } from '../domain/notes';
   import { itemLabel } from '../domain/hierarchy';
   import StashIcon from './StashIcon.svelte';
+  import { markerColors } from '../workspace/colors';
   import { timestampPresentation } from '../domain/timestamps';
   import NoteBody from './NoteBody.svelte';
   let {
@@ -32,6 +33,14 @@
     oncontext,
     onopen,
     onexpand,
+    reorderable,
+    dropEdge,
+    ondragstart,
+    ondragend,
+    ondragover,
+    ondragleave,
+    ondrop,
+    onmovekey,
   }: {
     item: Item;
     selected: boolean;
@@ -59,6 +68,14 @@
     oncontext: (fenced: boolean) => void;
     onopen: (url: string) => void;
     onexpand: (expanded: boolean) => void;
+    reorderable: boolean;
+    dropEdge: 'before' | 'after' | null;
+    ondragstart: (event: DragEvent) => void;
+    ondragend: () => void;
+    ondragover: (event: DragEvent) => void;
+    ondragleave: (event: DragEvent) => void;
+    ondrop: (event: DragEvent) => void;
+    onmovekey: (event: KeyboardEvent) => void;
   } = $props();
   let body = $state<NoteBody>();
   let updated = $derived(timestampPresentation(item.updatedAt));
@@ -74,6 +91,11 @@
   class:selected
   class="note-card"
   class:editing
+  class:drop-before={dropEdge === 'before'}
+  class:drop-after={dropEdge === 'after'}
+  {ondragover}
+  {ondragleave}
+  {ondrop}
   class:done={item.done}
   data-note-id={item.id}
   data-kind={item.kind}
@@ -81,6 +103,16 @@
   onclick={onselect}
   ondblclick={ondoubleclick}
 >
+  {#if reorderable}<button
+      class="drag-handle"
+      draggable="true"
+      {disabled}
+      aria-label="Reorder item"
+      title="Drag to reorder · Command Up/Down"
+      {ondragstart}
+      {ondragend}
+      onkeydown={onmovekey}><span aria-hidden="true">⠿</span></button
+    >{/if}
   <button
     class="note-select"
     aria-pressed={selected}
@@ -88,7 +120,13 @@
     onclick={onselectbutton}
     aria-label={item.kind === 'stash' ? 'Select stash' : 'Select note'}
     title={item.kind === 'stash' ? 'Select stash' : 'Select note'}
-    >{#if item.kind === 'stash'}<StashIcon />{/if}</button
+    >{#if item.kind === 'stash'}<StashIcon
+        color={item.color}
+      />{:else if item.color}<span
+        class="note-color"
+        style:background={markerColors[item.color]}
+        aria-hidden="true"
+      ></span>{/if}</button
   >
   {#if item.done}<span class="sr-only">Done</span>{/if}
   <div class="note-meta">

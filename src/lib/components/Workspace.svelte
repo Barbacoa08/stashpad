@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import type { Location } from '../domain/notes';
+  import type { ColorToken, Location } from '../domain/notes';
   import type { EditorState } from '@codemirror/state';
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ItemCard from './ItemCard.svelte';
+  import ColorPalette from './ColorPalette.svelte';
+  import { SiblingDrag, siblingDragType } from '../workspace/sibling-drag';
+  import type { ReorderItem } from '../platform/workspace';
   import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
   import {
@@ -45,6 +48,15 @@
         Object.entries(expandedNotes).filter(([id]) => live.has(id)),
       );
   });
+  let palette = $state<{ id: string; returnTo: HTMLElement | null } | null>(
+    null,
+  );
+  const siblingDrag = new SiblingDrag();
+  let dragGuide = $state<{ id: string; edge: 'before' | 'after' } | null>(null);
+  function clearDrag() {
+    siblingDrag.clear();
+    dragGuide = null;
+  }
   let interaction = 0;
   let creating = false;
   let composer = $state<MarkdownEditor>();
@@ -66,11 +78,27 @@
   let closeFailed = $state(false);
   let detailsOpen = $state(false);
   let commandHeld = $state(false);
+  let hintFocus = $state.raw<EventTarget | null>(null);
+  let hintTextSelected = $state(false);
   let detailsToggle = $state<HTMLButtonElement>();
   let detailsRail = $state<HTMLElement>();
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
   let captureKey = $derived(composeKey(viewState.location));
+  let metadataView = $derived(
+    JSON.stringify([
+      captureKey,
+      viewState.location.scope,
+      viewState.query,
+      workspaceEpoch,
+    ]),
+  );
+  $effect(() => {
+    // A drag belongs to one exact view, including its search and replacement epoch.
+    void metadataView;
+    clearDrag();
+    palette = null;
+  });
   let scopes = $derived(scopeIndex(viewState.snapshot.items));
   let hierarchy = $derived(
     createHierarchyPresentation(
@@ -136,6 +164,41 @@
   let selectedNote = $derived(
     viewState.snapshot.items.find((n) => n.id === selected),
   );
+  let showCommandHints = $derived(
+    commandHeld && viewState.loaded && !blocked && !palette,
+  );
+  let streamCommandHint = $derived.by(() => {
+    const hints = ['⌘N New stash'];
+    const selectedVisible = shownEntries.some((x) => x.id === selected);
+    const typing = isTyping(hintFocus);
+    // Handles have their own Command-arrow binding; other controls use the
+    // existing window command's typing guard, including for Delete.
+    const handleId =
+      hintFocus instanceof Element && hintFocus.closest('.drag-handle')
+        ? hintFocus.closest('[data-entry-id]')?.getAttribute('data-entry-id')
+        : null;
+    if (!hintTextSelected && !viewState.query.trim()) {
+      const id = handleId ?? (!typing && selectedVisible ? selected : null);
+      const siblings = directEntries(viewState.snapshot, viewState.location);
+      const index = siblings.findIndex((x) => x.id === id);
+      const up = index > 0;
+      const down = index >= 0 && index < siblings.length - 1;
+      if (up || down)
+        hints.push(`⌘${up && down ? '↑/↓' : up ? '↑' : '↓'} Reorder`);
+    }
+    if (selectedVisible && !typing && !hintTextSelected)
+      hints.push('⌘⌫ Delete');
+    return hints.join(' · ');
+  });
+  function updateHintContext() {
+    // DOM removal/reordering can emit blur during a Svelte render. Observe
+    // the settled focus outside that render, without retaining stale targets.
+    queueMicrotask(() => {
+      if (disposed) return;
+      hintFocus = document.activeElement;
+      hintTextSelected = !!window.getSelection()?.toString();
+    });
+  }
   function scrollSelection() {
     stream
       ?.querySelector(`[data-entry-id="${selected}"]`)
@@ -250,7 +313,13 @@
     window.addEventListener('keydown', globalCommands, true);
     window.addEventListener('keyup', releaseCommand);
     window.addEventListener('blur', clearCommand);
+    window.addEventListener('dragend', clearDrag);
+    window.addEventListener('drop', clearDrag);
     document.addEventListener('visibilitychange', clearCommand);
+    updateHintContext();
+    document.addEventListener('focusin', updateHintContext);
+    document.addEventListener('focusout', updateHintContext);
+    document.addEventListener('selectionchange', updateHintContext);
     document.addEventListener('focusin', rememberFocus);
     document.addEventListener('focusout', forgetFocus);
     detailsMedia.addEventListener('change', respondToDetailsWidth);
@@ -264,11 +333,17 @@
     return () => {
       disposed = true;
       clearCommand();
+      clearDrag();
+      window.removeEventListener('dragend', clearDrag);
+      window.removeEventListener('drop', clearDrag);
       window.removeEventListener('keydown', globalCommands, true);
       window.removeEventListener('keyup', releaseCommand);
       window.removeEventListener('blur', clearCommand);
       document.removeEventListener('visibilitychange', clearCommand);
       for (const cleanup of focusRequestCleanups) cleanup();
+      document.removeEventListener('focusin', updateHintContext);
+      document.removeEventListener('focusout', updateHintContext);
+      document.removeEventListener('selectionchange', updateHintContext);
       document.removeEventListener('focusin', rememberFocus);
       document.removeEventListener('focusout', forgetFocus);
       detailsMedia.removeEventListener('change', respondToDetailsWidth);
@@ -478,6 +553,7 @@
   }
   async function retryAction() {
     if (blocked) return;
+    clearDrag();
     const ordinal = shownEntries.findIndex((x) => x.id === selected),
       before = JSON.stringify(controller.state.location),
       request = ++interaction,
@@ -506,6 +582,7 @@
   }
   async function restoreSelected() {
     if (!selectedNote || blocked) return;
+    clearDrag();
     const id = selectedNote.id,
       ordinal = shownEntries.findIndex((x) => x.id === id),
       request = ++interaction,
@@ -531,6 +608,7 @@
   }
   async function undoDelete() {
     if (blocked) return;
+    clearDrag();
     const id = controller.state.snapshot.undoDeleteId,
       ordinal = shownEntries.findIndex((x) => x.id === selected),
       request = ++interaction,
@@ -552,6 +630,160 @@
     } finally {
       focus.stop();
     }
+  }
+  function openPalette() {
+    if (
+      blocked ||
+      !selectedNote ||
+      !shownEntries.some((x) => x.id === selected)
+    )
+      return;
+    palette = {
+      id: selectedNote.id,
+      returnTo:
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null,
+    };
+  }
+  function closePalette(returnFocus: boolean) {
+    const previous = palette;
+    palette = null;
+    if (returnFocus && previous) {
+      if (
+        previous.returnTo?.isConnected &&
+        previous.returnTo.getClientRects().length
+      )
+        previous.returnTo.focus();
+      else stream?.focus();
+    }
+  }
+  async function chooseColor(color: ColorToken | null) {
+    const id = palette?.id;
+    return !!id && !blocked && controller.setItemColor(id, color);
+  }
+  async function moveItem(request: ReorderItem) {
+    if (blocked || viewState.query.trim()) return;
+    const intent = ++interaction,
+      before = JSON.stringify(controller.state.location),
+      query = controller.state.query;
+    const original = document.activeElement,
+      focus = observeSubmissionFocus();
+    try {
+      if (
+        !(await controller.reorderItem(request)) ||
+        intent !== interaction ||
+        before !== JSON.stringify(controller.state.location) ||
+        query !== controller.state.query
+      )
+        return;
+      selected = request.id;
+      selection.remember(controller.state.location, selected);
+      await tick();
+      scrollSelection();
+      if (focus.mayRestore()) {
+        if (
+          original instanceof HTMLButtonElement &&
+          original.classList.contains('drag-handle') &&
+          original.isConnected
+        )
+          original.focus();
+        else stream?.focus();
+      }
+    } finally {
+      focus.stop();
+    }
+  }
+  function moveKey(event: KeyboardEvent, id: string) {
+    if (
+      !event.metaKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.repeat ||
+      event.isComposing ||
+      event.defaultPrevented ||
+      blocked ||
+      window.getSelection()?.toString() ||
+      !['ArrowUp', 'ArrowDown'].includes(event.key)
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (viewState.query.trim()) {
+      controller.feedback(
+        'Open the containing stash to reorder search results.',
+      );
+      return;
+    }
+    const siblings = directEntries(
+      controller.state.snapshot,
+      controller.state.location,
+    );
+    const from = siblings.findIndex((x) => x.id === id),
+      toIndex = from + (event.key === 'ArrowUp' ? -1 : 1);
+    if (from < 0 || toIndex < 0 || toIndex >= siblings.length) return;
+    void moveItem({ id, group: { ...controller.state.location }, toIndex });
+  }
+  function startDrag(event: DragEvent, id: string) {
+    if (blocked || viewState.query.trim() || !event.dataTransfer) {
+      event.preventDefault();
+      return;
+    }
+    ++interaction;
+    selected = id;
+    selection.remember(viewState.location, id);
+    const token = siblingDrag.begin(id, controller.state.location);
+    event.dataTransfer.clearData();
+    event.dataTransfer.setData(siblingDragType, token);
+    event.dataTransfer.effectAllowed = 'move';
+    event.stopPropagation();
+  }
+  function dropPosition(event: DragEvent): 'before' | 'after' {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  }
+  function dragOver(event: DragEvent, id: string) {
+    const edge = dropPosition(event),
+      transfer = event.dataTransfer;
+    if (
+      blocked ||
+      !transfer ||
+      !siblingDrag.preview(
+        controller.state.snapshot,
+        controller.state.location,
+        controller.state.query,
+        id,
+        edge,
+        Array.from(transfer.types),
+      )
+    ) {
+      dragGuide = null;
+      return;
+    }
+    event.preventDefault();
+    transfer.dropEffect = 'move';
+    dragGuide = { id, edge };
+  }
+  function dropItem(event: DragEvent, id: string) {
+    const transfer = event.dataTransfer;
+    const request =
+      transfer && !blocked
+        ? siblingDrag.drop(
+            controller.state.snapshot,
+            controller.state.location,
+            controller.state.query,
+            id,
+            dropPosition(event),
+            Array.from(transfer.types),
+            transfer.getData(siblingDragType),
+          )
+        : null;
+    clearDrag();
+    // Never let files, URLs, or foreign HTML replace the workspace document.
+    event.preventDefault();
+    event.stopPropagation();
+    if (request) void moveItem(request);
   }
   function focusInline(options?: { end?: boolean }) {
     noteBodies[controller.state.activeKey]?.focus(options);
@@ -580,6 +812,7 @@
       event.isComposing ||
       !viewState.loaded ||
       blocked ||
+      palette ||
       !event.metaKey ||
       event.altKey ||
       event.ctrlKey ||
@@ -600,6 +833,7 @@
   function commands(event: KeyboardEvent) {
     if (
       event.isComposing ||
+      palette ||
       event.defaultPrevented ||
       !viewState.loaded ||
       blocked ||
@@ -610,7 +844,12 @@
       return;
     const key = event.key.toLowerCase();
     if (event.metaKey) {
-      if (key === 'n') {
+      if (
+        (key === 'arrowup' || key === 'arrowdown') &&
+        !isTyping(event.target)
+      ) {
+        moveKey(event, selected);
+      } else if (key === 'n') {
         event.preventDefault();
         void createStash();
       } else if (key === 'f') {
@@ -637,6 +876,9 @@
     } else if (key === 'e' && selectedNote) {
       event.preventDefault();
       void edit(selected, true);
+    } else if (key === 'l' && selectedNote && !event.repeat) {
+      event.preventDefault();
+      openPalette();
     } else if (key === 'x' && selectedNote && !event.repeat) {
       event.preventDefault();
       void controller.setNoteDone(selectedNote.id, !selectedNote.done);
@@ -751,9 +993,8 @@
             onkeydown={searchKey}
             disabled={modal}
           />
-          {#if commandHeld && !blocked}<span
-              class="command-hint"
-              aria-hidden="true">⌘/</span
+          {#if showCommandHints}<span class="command-hint" aria-hidden="true"
+              >⌘/</span
             >{/if}
         </div>
         <div class="navigation-hint-anchor">
@@ -764,7 +1005,7 @@
             disabled={blocked}
             onopen={(id) => void openStash(id)}
           />
-          {#if commandHeld && !blocked}<span
+          {#if showCommandHints}<span
               class="command-hint home-command-hint"
               aria-hidden="true">⌘1</span
             >{/if}
@@ -791,6 +1032,10 @@
       </aside>
       <section class="notes-column" aria-label="Notes workspace">
         <div class="stream-header">
+          {#if showCommandHints}<span
+              class="command-hint stream-command-hint"
+              aria-hidden="true">{streamCommandHint}</span
+            >{/if}
           <span
             >{visibleNotes.length}
             {visibleNotes.length === 1 ? 'note' : 'notes'}</span
@@ -809,6 +1054,22 @@
             <ItemCard
               bind:this={noteBodies[entry.id]}
               item={entry}
+              reorderable={!viewState.query.trim()}
+              dropEdge={dragGuide?.id === entry.id ? dragGuide.edge : null}
+              ondragstart={(event) => startDrag(event, entry.id)}
+              ondragend={clearDrag}
+              ondragover={(event) => dragOver(event, entry.id)}
+              ondragleave={(event) => {
+                if (
+                  !(event.relatedTarget instanceof Node) ||
+                  !(event.currentTarget as HTMLElement).contains(
+                    event.relatedTarget,
+                  )
+                )
+                  dragGuide = null;
+              }}
+              ondrop={(event) => dropItem(event, entry.id)}
+              onmovekey={(event) => moveKey(event, entry.id)}
               selected={selected === entry.id}
               editing={viewState.activeKey === entry.id}
               source={viewState.buffers[entry.id]?.source ?? entry.markdown}
@@ -930,7 +1191,13 @@
           )}
           <p>
             Created <time datetime={created.datetime}>{created.label}</time>
-          </p>{/if}
+          </p>
+          <button onclick={openPalette} disabled={blocked}>Assign color</button>
+          <p>Color: {selectedNote.color ?? 'None'}</p>
+          {#if viewState.query.trim()}<p>
+              Open the containing stash to reorder search results.
+            </p>{/if}
+        {/if}
         {#if viewState.location.scope === 'trash'}
           <section aria-label="Trash details">
             <h2>Trash</h2>
@@ -1003,6 +1270,14 @@
             >
           </div>
           <div><span>Mark done / not done</span><kbd>X</kbd></div>
+          <div><span>Assign color</span><kbd>L</kbd></div>
+          <div>
+            <span aria-hidden="true">Reorder siblings</span><span
+              class="sr-only">Reorder siblings: Command Up or Command Down</span
+            ><span class="shortcut-keys" aria-hidden="true"
+              ><kbd>⌘</kbd><kbd>↑</kbd><kbd>↓</kbd></span
+            >
+          </div>
           <div>
             <span aria-hidden="true">Delete selected</span><span class="sr-only"
               >Delete selected: Command Backspace</span
@@ -1088,6 +1363,16 @@
           disabled={viewState.operation !== null}>Replace workspace</button
         >
       </section>{/if}
+    {#if palette}{@const target = viewState.snapshot.items.find(
+        (x) => x.id === palette!.id,
+      )}
+      {#if target}<ColorPalette
+          color={target.color}
+          disabled={blocked}
+          onchoose={chooseColor}
+          onclose={closePalette}
+        />{/if}
+    {/if}
     {#if closeFailed}<section
         class="confirmation"
         aria-label="Draft could not be saved"

@@ -62,7 +62,8 @@
         title={itemLabel(row.stash)}
         {disabled}
         onclick={() => onopen(row.stash.id)}
-        ><StashIcon /><span class="stash-name">{itemLabel(row.stash)}</span
+        ><StashIcon color={row.stash.color} /><span class="stash-name"
+          >{itemLabel(row.stash)}</span
         >{#if row.depth >= 3}<span class="stash-level"
             >Level {row.depth + 1}</span
           >{/if}</button

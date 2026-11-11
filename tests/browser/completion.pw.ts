@@ -68,7 +68,9 @@ test('X leaves typing, IME, DOM ranges, and modifiers alone, and toggles selecte
   await page.keyboard.press('Meta+n');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   const stash = page.locator('.note-card[data-kind="stash"]');
-  await stash.click({ position: { x: 12, y: 12 } });
+  await stash
+    .getByRole('button', { name: 'Select stash', exact: true })
+    .click();
   await page.keyboard.press('x');
   await expect(stash).toHaveClass(/done/);
 });
