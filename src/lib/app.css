@@ -150,6 +150,13 @@ kbd {
   overflow: auto;
   padding: 0.15rem;
 }
+.note-stream:focus-visible:has(.note-card.selected) {
+  outline: none;
+}
+.note-stream:focus-visible .note-card.selected {
+  outline: 2px solid #92caff;
+  outline-offset: -2px;
+}
 .note-card {
   position: relative;
   min-width: 0;
@@ -513,6 +520,17 @@ kbd {
   gap: 0.5rem;
   margin-bottom: 0.45rem;
 }
+kbd {
+  background: #303030;
+  padding: 0 0.25rem;
+  border-radius: 2px;
+}
+.shortcut-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+}
 .shortcut-list kbd {
   background: #303030;
   padding: 0 0.25rem;
@@ -527,4 +545,16 @@ kbd {
   .app-header {
     padding-left: 1rem;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

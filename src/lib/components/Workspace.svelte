@@ -314,7 +314,10 @@
       <aside class="sidebar" aria-label="Workspace navigation">
         <h2>⌂ &nbsp; Home</h2>
         <button onclick={compose} disabled={blocked}
-          >New note <kbd>⌘N</kbd></button
+          >New note <span class="sr-only">Command N</span><span
+            class="shortcut-keys"
+            aria-hidden="true"><kbd>⌘</kbd><kbd>N</kbd></span
+          ></button
         >
         <label for="search">Search saved notes</label><input
           id="search"
@@ -376,8 +379,8 @@
                   stream?.focus();
                 }}
                 aria-label="Select note"
-                title="Select note">◦</button
-              >
+                title="Select note"
+              ></button>
               <div class="note-meta">
                 <time datetime={updated.datetime}>{updated.label}</time>
                 {#if selected === note.id}<div class="card-actions">
@@ -473,8 +476,33 @@
             oncancel={() => stream?.focus()}
           />
           <p class="hint">
-            Enter saves · Shift+Enter adds a line · ⌘Enter saves · Esc returns
-            to notes
+            <span
+              ><span class="sr-only">Enter saves</span><span aria-hidden="true"
+                ><kbd>Enter</kbd> saves</span
+              ></span
+            >
+            ·
+            <span
+              ><span class="sr-only">Shift Enter adds a line</span><span
+                aria-hidden="true"
+                ><span class="shortcut-keys"
+                  ><kbd>Shift</kbd><kbd>Enter</kbd></span
+                > adds a line</span
+              ></span
+            >
+            ·
+            <span
+              ><span class="sr-only">Command Enter saves</span><span
+                aria-hidden="true"
+                ><span class="shortcut-keys"><kbd>⌘</kbd><kbd>Enter</kbd></span> saves</span
+              ></span
+            >
+            ·
+            <span
+              ><span class="sr-only">Escape returns to notes</span><span
+                aria-hidden="true"><kbd>Esc</kbd> returns to notes</span
+              ></span
+            >
           </p>
         </section>
       </section>
@@ -493,10 +521,36 @@
           </p>{/if}
         <div class="shortcut-list" aria-label="Keyboard shortcuts">
           <div><span>Focus capture</span><kbd>Space</kbd></div>
-          <div><span>Search</span><kbd>⌘F /</kbd></div>
-          <div><span>Select note</span><kbd>↑ ↓</kbd></div>
-          <div><span>Edit / Copy</span><kbd>E / C</kbd></div>
-          <div><span>Delete selected</span><kbd>⌘⌫</kbd></div>
+          <div>
+            <span aria-hidden="true">Search</span><span class="sr-only"
+              >Search: Command F or slash</span
+            ><span class="shortcut-keys" aria-hidden="true"
+              ><kbd>⌘</kbd><kbd>F</kbd><span aria-hidden="true">/</span><kbd
+                >/</kbd
+              ></span
+            >
+          </div>
+          <div>
+            <span aria-hidden="true">Select note</span><span class="sr-only"
+              >Select note: up or down arrow</span
+            ><span class="shortcut-keys" aria-hidden="true"
+              ><kbd>↑</kbd><kbd>↓</kbd></span
+            >
+          </div>
+          <div>
+            <span aria-hidden="true">Edit / Copy</span><span class="sr-only"
+              >Edit: E; Copy: C</span
+            ><span class="shortcut-keys" aria-hidden="true"
+              ><kbd>E</kbd><span aria-hidden="true">/</span><kbd>C</kbd></span
+            >
+          </div>
+          <div>
+            <span aria-hidden="true">Delete selected</span><span class="sr-only"
+              >Delete selected: Command Backspace</span
+            ><span class="shortcut-keys" aria-hidden="true"
+              ><kbd>⌘</kbd><kbd>⌫</kbd></span
+            >
+          </div>
         </div>
       </aside>
     </div>

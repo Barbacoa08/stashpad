@@ -44,6 +44,8 @@ Export uses a native destination dialog and atomic temporary-file replacement. B
 
 Current alpha capacities are 10,000 notes, 10,001 drafts, 1 MiB UTF-8 per Markdown field, and 10 MiB for the complete compact backup envelope. Every prospective save/checkpoint/mutation checks these bounds and references before committing. Changes to these limits require explicit validation and recovery consideration.
 
+Client rendering errors show a readable diagnostic panel and an explicit Reload view control. Submitted notes may already be saved; uncheckpointed input may be lost on reload. Diagnostics retain only a reference, app version, time, error class/status, and sanitized app-module locations. At most three small records stay in browser local storage, with three write attempts per page load; storage failure does not block the panel. Select the displayed details to copy them when reporting a problem. Note contents, raw error messages, arbitrary paths, and query strings are excluded, and nothing is sent to a service.
+
 ## Native acceptance
 
 Run the packaged `.app` without Vite. Use synthetic notes and native dialogs to check offline reopen, exact Markdown/caret behavior, commands, draft close/reopen, delete/undo, and backup/restore. Confirm keyboard focus, 800×600 reflow at 150% text, and actual IME input separately. Browser tests include a synthetic composition event, which does not establish native IME acceptance. Record source/build identity, environment, results, and omissions under an ignored dated `.projects/` folder.

@@ -77,6 +77,10 @@
   function extensions(text: string) {
     return [
       drawSelection(),
+      EditorView.theme({
+        '&.cm-focused': { outline: '2px solid #92caff', outlineOffset: '2px' },
+        '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#fff' },
+      }),
       highlightActiveLine(),
       history(),
       sourceExtensions(text),
