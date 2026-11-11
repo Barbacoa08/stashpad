@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Stash } from '../domain/notes';
   import StashIcon from './StashIcon.svelte';
+  import { timestampPresentation } from '../domain/timestamps';
   let {
     stash,
-    count,
     selected,
     disabled,
     onselect,
@@ -11,13 +11,13 @@
     onrename,
   }: {
     stash: Stash;
-    count: number;
     selected: boolean;
     disabled: boolean;
     onselect: (event: MouseEvent) => void;
     onopen: () => void;
     onrename: () => void;
   } = $props();
+  let updated = $derived(timestampPresentation(stash.updatedAt));
 </script>
 
 <!-- The stream owns arrow/Enter navigation; each card also has explicit named actions. -->
@@ -32,12 +32,14 @@
     if (!(event.target as Element).closest('button')) onopen();
   }}
 >
-  <StashIcon />
-  <div class="stash-card-body">
-    <button class="stash-open" {disabled} onclick={onopen}>{stash.name}</button>
-    <p>{count} {count === 1 ? 'item' : 'items'}</p>
+  <span class="stash-card-icon"><StashIcon /></span>
+  <button class="stash-open" {disabled} onclick={onopen}>{stash.name}</button>
+  <div class="note-meta">
+    <time datetime={updated.datetime}>{updated.label}</time>
+    {#if selected}<button
+        {disabled}
+        onclick={onrename}
+        aria-label="Rename stash">Rename</button
+      >{/if}
   </div>
-  {#if selected}<button {disabled} onclick={onrename} aria-label="Rename stash"
-      >Rename</button
-    >{/if}
 </article>

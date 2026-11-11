@@ -45,12 +45,11 @@ for (const constrained of [false, true])
       await t.controller.openStash(owner.id);
       return { owner, ancestor: s.stashes[16], child: s.stashes[39] };
     });
-    const breadcrumbs = page.getByRole('navigation', { name: 'Breadcrumbs' }),
-      stream = page.getByRole('region', { name: 'Note stream' }),
+    const stream = page.getByRole('region', { name: 'Note stream' }),
       capture = page.getByRole('textbox', { name: 'Capture Markdown' });
-    expect(
-      await breadcrumbs.evaluate((el) => el.getBoundingClientRect().height),
-    ).toBeLessThanOrEqual(constrained ? 64 : 48);
+    await expect(
+      page.getByRole('navigation', { name: 'Breadcrumbs' }),
+    ).toHaveCount(0);
     expect(
       await stream.evaluate((el) => el.getBoundingClientRect().height),
     ).toBeGreaterThanOrEqual(80);
@@ -65,11 +64,6 @@ for (const constrained of [false, true])
         .locator('.app-header h1')
         .evaluate((el) => Array.from(el.textContent ?? '').length),
     ).toBeLessThanOrEqual(96);
-    expect(
-      await page
-        .locator('.capture-destination')
-        .evaluate((el) => Array.from(el.textContent ?? '').length),
-    ).toBeLessThanOrEqual(110);
     const sidebar = page.getByRole('navigation', { name: 'Stashes' }),
       owner = sidebar.getByRole('button', {
         name: `Open stash ${fixture.owner.name}`,
@@ -82,9 +76,6 @@ for (const constrained of [false, true])
         .evaluate((el) => el.getBoundingClientRect().width),
     ).toBeGreaterThanOrEqual(40);
     await expect(owner.locator('svg[aria-hidden="true"]')).toHaveCount(1);
-    await expect(
-      page.locator('.current-stash-heading svg[aria-hidden="true"]'),
-    ).toHaveCount(1);
     const toggle = sidebar.getByRole('button', {
       name: `Collapse stash ${fixture.owner.name}`,
       exact: true,
@@ -114,8 +105,11 @@ for (const constrained of [false, true])
         exact: true,
       })
       .click();
-    await breadcrumbs
-      .getByRole('button', { name: fixture.ancestor.name, exact: true })
+    await sidebar
+      .getByRole('button', {
+        name: `Open stash ${fixture.ancestor.name}`,
+        exact: true,
+      })
       .click();
     expect(
       await page.evaluate(

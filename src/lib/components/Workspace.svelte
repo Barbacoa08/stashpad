@@ -6,15 +6,12 @@
   import MarkdownEditor from './MarkdownEditor.svelte';
   import MarkdownView from './MarkdownView.svelte';
   import StashSidebar from './StashSidebar.svelte';
-  import StashBreadcrumbs from './StashBreadcrumbs.svelte';
   import StashCard from './StashCard.svelte';
   import StashDialog from './StashDialog.svelte';
-  import StashIcon from './StashIcon.svelte';
   import {
     composeKey,
     composeOwner,
     directEntries,
-    entryCounts,
     createHierarchyPresentation,
   } from '../domain/hierarchy';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
@@ -71,7 +68,6 @@
       ? [activeNote, ...visibleNotes]
       : visibleNotes,
   );
-  let counts = $derived(entryCounts(viewState.snapshot));
   let shownEntries = $derived.by(() => {
     if (viewState.query.trim())
       return shownNotes.map((note) => ({ ...note, kind: 'note' as const }));
@@ -453,20 +449,6 @@
       </aside>
       <section class="notes-column" aria-label="Notes workspace">
         <div class="stream-header">
-          <div>
-            <StashBreadcrumbs
-              presentation={hierarchy}
-              currentId={viewState.stashId}
-              disabled={blocked}
-              onopen={(id) => void openStash(id)}
-            />
-            <h2 class="current-stash-heading">
-              {#if currentStash}<StashIcon />{/if}<span
-                title={currentStash?.name ?? 'Notes'}
-                >{currentStash?.name ?? 'Notes'}</span
-              >
-            </h2>
-          </div>
           <span
             >{visibleNotes.length}
             {visibleNotes.length === 1 ? 'note' : 'notes'}</span
@@ -484,7 +466,6 @@
             {#if entry.kind === 'stash'}
               <StashCard
                 stash={entry}
-                count={counts.get(entry.id) ?? 0}
                 selected={selected === entry.id}
                 disabled={blocked}
                 onselect={(event) => cardClick(event, entry.id)}
@@ -600,9 +581,6 @@
             </p>{/if}
         </section>
         <section class="composer" aria-label="Capture note">
-          <p class="capture-destination" title={destination}>
-            Capture in {destination}
-          </p>
           <div class="composer-toolbar">
             <button
               onclick={() => submit(captureKey)}
@@ -658,7 +636,7 @@
         </section>
       </section>
       <aside class="details-rail" aria-label="Note details">
-        <h2>Notes</h2>
+        <h2>Details and shortcuts</h2>
         <p>
           {visibleNotes.length}
           {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace

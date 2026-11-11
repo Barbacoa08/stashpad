@@ -162,8 +162,8 @@ kbd {
   position: relative;
   min-width: 0;
   margin-bottom: 0.5rem;
-  padding: 0.45rem 7.5rem 0.45rem 1.8rem;
-  border: 1px solid transparent;
+  padding: calc(0.45rem - 1px) 7.5rem calc(0.45rem - 1px) 1.8rem;
+  border: 2px solid transparent;
   border-radius: 2px;
   background: var(--panel);
   overflow-wrap: anywhere;
@@ -309,9 +309,15 @@ kbd {
   position: relative;
   flex: none;
   margin-top: 0.5rem;
-  border: 1px solid #888;
+  border: 2px solid #888;
   border-radius: 3px;
   background: var(--panel);
+}
+.composer:focus-within {
+  border-color: #92caff;
+}
+.composer .cm-editor.cm-focused {
+  outline: none;
 }
 .composer-toolbar {
   position: absolute;
@@ -596,31 +602,14 @@ kbd {
   color: #fff;
   border-color: #657b98;
 }
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: nowrap;
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 3px;
+.stash-card-icon {
+  position: absolute;
+  left: 0.35rem;
+  top: 0.45rem;
 }
-.breadcrumbs button {
-  flex: 0 0 auto;
-  padding: 3px 5px;
-  font-size: 0.85rem;
-  max-width: 12rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.stash-card {
-  padding: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 15px;
+.stash-card-icon .stash-icon {
+  width: 1rem;
+  height: 1rem;
 }
 .stash-icon {
   width: 30px;
@@ -630,21 +619,13 @@ kbd {
   stroke-width: 1.5;
   flex: none;
 }
-.stash-card-body {
-  flex: 1;
-  min-width: 0;
-}
-.stash-card-body p {
-  margin: 5px 0;
-  color: #b4bdca;
-  font-size: 0.85rem;
-}
 .stash-open {
   background: transparent;
-  border-color: transparent;
+  border: 0;
   text-align: left;
   padding: 0;
-  font-weight: 600;
+  font: inherit;
+  line-height: inherit;
   overflow-wrap: anywhere;
   max-width: 100%;
 }

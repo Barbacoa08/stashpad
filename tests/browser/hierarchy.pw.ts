@@ -16,9 +16,7 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await page.goto('/?fixture');
   await capture(page).fill('Home draft');
   await create(page, 'Projects');
-  await expect(
-    page.getByRole('navigation', { name: 'Breadcrumbs' }),
-  ).toContainText('Projects');
+  await expect(page.locator('.app-header h1')).toContainText('Projects');
   await capture(page).fill('Parent draft');
   await create(page, 'Ideas');
   await capture(page).fill('Nested **source**');
@@ -29,8 +27,7 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await expect(capture(page)).toHaveText('');
   await capture(page).fill('Next nested capture');
   await page
-    .getByRole('navigation', { name: 'Breadcrumbs' })
-    .getByRole('button', { name: 'Projects', exact: true })
+    .getByRole('button', { name: 'Open stash Projects', exact: true })
     .click();
   await expect(capture(page)).toHaveText('Parent draft');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
@@ -38,9 +35,7 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   const stash = page.getByRole('article', { name: 'Stash Projects' });
   await stash.click();
   await page.keyboard.press('Enter');
-  await expect(
-    page.getByRole('navigation', { name: 'Breadcrumbs' }),
-  ).toContainText('Projects');
+  await expect(page.locator('.app-header h1')).toContainText('Projects');
   await page.getByRole('article', { name: 'Stash Ideas' }).dblclick();
   await expect(capture(page)).toHaveText('Next nested capture');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
@@ -160,9 +155,9 @@ test('sidebar expand state, parent keyboard navigation, and mixed stream orderin
   await capture(page).press('Enter');
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
-  await expect(
-    page.getByRole('navigation', { name: 'Breadcrumbs' }),
-  ).toHaveText(/Home\s*\/\s*Parent\s*$/);
+  await expect(page.locator('.app-header h1')).toHaveText(
+    /Home\s*\/\s*Parent\s*$/,
+  );
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
   const toggle = page.getByRole('button', { name: 'Collapse stash Parent' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');

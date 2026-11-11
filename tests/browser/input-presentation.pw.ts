@@ -45,8 +45,15 @@ async function checkEditor(editor: Locator) {
   ].sort((a, b) => a - b);
   expect((levels[1] + 0.05) / (levels[0] + 0.05)).toBeGreaterThanOrEqual(3);
   expect(parseFloat(presentation.width)).toBeGreaterThan(0);
-  expect(presentation.outline).not.toBe('none');
-  expect(presentation.outlineColor).not.toBe('rgb(0, 0, 0)');
+  if ((await editor.getAttribute('aria-label')) === 'Capture Markdown') {
+    expect(presentation.outline).toBe('none');
+    await expect(
+      editor.locator('xpath=ancestor::section[contains(@class, "composer")]'),
+    ).toHaveCSS('border-top-color', 'rgb(146, 202, 255)');
+  } else {
+    expect(presentation.outline).not.toBe('none');
+    expect(presentation.outlineColor).not.toBe('rgb(0, 0, 0)');
+  }
 }
 
 test('drawn caret and local focus remain visible in capture and inline editing', async ({
