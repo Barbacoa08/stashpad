@@ -64,7 +64,7 @@ export class MemoryRepository implements Repository {
   ) {
     await this.delaySave;
     this.check('save');
-    if (!markdown.trim())
+    if (id === null && !markdown.trim())
       throw {
         code: 'empty_note',
         message: 'Enter non-whitespace text before saving.',

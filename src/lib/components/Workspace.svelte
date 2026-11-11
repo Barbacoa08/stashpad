@@ -14,6 +14,7 @@
     directEntries,
     createHierarchyPresentation,
   } from '../domain/hierarchy';
+  import { LocationSelection } from '../workspace/selection';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
   import { nativeRepository, type Repository } from '../platform/workspace';
   import { copyMarkdown, openExternal } from '../platform/actions';
@@ -30,15 +31,18 @@
   const controller = new WorkspaceController(untrack(() => repository));
   let viewState: ViewState = $state(controller.state);
   let selected = $state('');
+  const selection = new LocationSelection();
+  let editHeights = $state<Record<string, number>>({});
+  let interaction = 0;
+  let creating = false;
   let composer = $state<MarkdownEditor>();
   let editor = $state<MarkdownEditor>();
   let search = $state<HTMLInputElement>();
   let stream = $state<HTMLElement>();
-  let deleteConfirm = $state(false);
   let closeFailed = $state(false);
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
-  let stashDialog = $state<{ id: string | null; name: string } | null>(null);
+  let stashDialog = $state<{ id: string; name: string } | null>(null);
   let dialogFocus: HTMLElement | null = null;
   let captureKey = $derived(composeKey(viewState.stashId));
   let hierarchy = $derived(
@@ -76,10 +80,10 @@
       ? [{ ...activeNote, kind: 'note' as const }, ...entries]
       : entries;
   });
-  let modal = $derived(
-    !!viewState.preview || deleteConfirm || closeFailed || !!stashDialog,
+  let modal = $derived(!!viewState.preview || closeFailed || !!stashDialog);
+  let blocked = $derived(
+    (viewState.operation !== null && viewState.operation !== 'save') || modal,
   );
-  let blocked = $derived(viewState.operation !== null || modal);
   let editorReadOnly = $derived(
     modal || (viewState.operation !== null && viewState.operation !== 'save'),
   );
@@ -91,15 +95,51 @@
   let selectedStash = $derived(
     viewState.snapshot.stashes.find((s) => s.id === selected),
   );
-  async function openStash(id: string | null) {
+  function scrollSelection() {
+    stream
+      ?.querySelector(`[data-entry-id="${selected}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }
+  async function openStash(id: string | null, preferred?: string) {
     if (blocked) return;
-    if (await controller.openStash(id)) {
-      selected = '';
-      await tick();
-      stream?.focus();
+    const request = ++interaction,
+      focus = observeSubmissionFocus();
+    selection.remember(viewState.stashId, selected);
+    try {
+      if (await controller.openStash(id)) {
+        if (request !== interaction) return;
+        selected = selection.open(
+          id,
+          directEntries(controller.state.snapshot, id).map((e) => e.id),
+          preferred,
+        );
+        await tick();
+        scrollSelection();
+        if (focus.mayRestore()) stream?.focus();
+      }
+    } finally {
+      focus.stop();
     }
   }
-  function nameStash(id: string | null = null) {
+  async function createStash() {
+    if (blocked || creating) return;
+    creating = true;
+    const request = ++interaction,
+      focus = observeSubmissionFocus();
+    selection.remember(viewState.stashId, selected);
+    try {
+      if (await controller.createStash('Untitled')) {
+        if (request !== interaction) return;
+        selected = '';
+        await tick();
+        if (focus.mayRestore()) composer?.focus();
+      }
+    } finally {
+      creating = false;
+      focus.stop();
+    }
+  }
+  function nameStash(id: string) {
     if (blocked) return;
     dialogFocus =
       document.activeElement instanceof HTMLElement
@@ -121,17 +161,10 @@
   }
   async function saveStash(name: string) {
     if (!stashDialog) return;
-    const ok =
-      stashDialog.id === null
-        ? await controller.createStash(name)
-        : await controller.renameStash(stashDialog.id, name);
-    if (ok) {
-      const created = stashDialog.id === null;
+    if (await controller.renameStash(stashDialog.id, name)) {
       stashDialog = null;
-      selected = '';
       await tick();
-      if (created) composer?.focus();
-      else if (dialogFocus?.isConnected) dialogFocus.focus();
+      if (dialogFocus?.isConnected) dialogFocus.focus();
       else stream?.focus();
     }
   }
@@ -158,18 +191,41 @@
   });
   async function compose() {
     if (blocked) return;
-    if (await controller.newNote()) {
-      await tick();
-      composer?.focus();
+    const request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (await controller.newNote()) {
+        await tick();
+        if (request === interaction && focus.mayRestore()) composer?.focus();
+      }
+    } finally {
+      focus.stop();
     }
   }
   async function edit(id: string) {
     if (blocked) return;
-    if (await controller.selectNote(id)) {
-      selected = id;
-      await tick();
-      editor?.focus();
+    const request = ++interaction,
+      focus = observeSubmissionFocus();
+    const body = stream?.querySelector(`[data-note-id="${id}"] .note-body`);
+    if (body)
+      editHeights = {
+        ...editHeights,
+        [id]: body.getBoundingClientRect().height,
+      };
+    try {
+      if (await controller.selectNote(id)) {
+        if (request !== interaction) return;
+        selected = id;
+        await tick();
+        if (focus.mayRestore()) editor?.focus();
+      }
+    } finally {
+      focus.stop();
     }
+  }
+  // Blur owns no focus continuation: the newly clicked control/card owns it.
+  function leaveEdit(key: string) {
+    void controller.finishEdit(key, 'blur');
   }
   function observeSubmissionFocus() {
     const original = document.activeElement;
@@ -211,8 +267,6 @@
           selected;
       }
       await tick();
-      if (!composeOwner(key) && composeOwner(controller.state.activeKey))
-        editorStates.delete(key);
       if (composeOwner(key)) {
         stream
           ?.querySelector(`[data-note-id="${selected}"]`)
@@ -227,13 +281,17 @@
       focus.stop();
     }
   }
-  async function cancelEdit() {
+  async function finishEdit() {
     if (blocked) return;
     const key = viewState.activeKey;
-    if (await controller.cancelEdit()) {
-      await tick();
-      editorStates.delete(key);
-      stream?.focus();
+    const focus = observeSubmissionFocus();
+    try {
+      if (await controller.finishEdit(key)) {
+        await tick();
+        if (focus.mayRestore()) stream?.focus();
+      }
+    } finally {
+      focus.stop();
     }
   }
   async function copy(id: string) {
@@ -269,7 +327,10 @@
       window.getSelection()?.toString()
     )
       return;
+    ++interaction;
     selected = id;
+    selection.remember(viewState.stashId, id);
+    if (activeNote && activeNote.id !== id) leaveEdit(activeNote.id);
     stream?.focus();
   }
   function cardDoubleClick(event: MouseEvent, id: string) {
@@ -288,13 +349,16 @@
       !(await controller.selectNote(selected))
     )
       return;
-    if (controller.hasUnsavedDraft) deleteConfirm = true;
-    else {
-      if (!(await controller.remove())) return;
-      selected = '';
-      await tick();
-      stream?.focus();
-    }
+    if (!(await controller.remove())) return;
+    selected = selection.open(
+      viewState.stashId,
+      directEntries(controller.state.snapshot, viewState.stashId).map(
+        (e) => e.id,
+      ),
+    );
+    await tick();
+    stream?.focus();
+    scrollSelection();
   }
   function commands(event: KeyboardEvent) {
     if (
@@ -311,7 +375,7 @@
     if (event.metaKey) {
       if (key === 'n') {
         event.preventDefault();
-        nameStash();
+        void createStash();
       } else if (key === 'f') {
         event.preventDefault();
         search?.focus();
@@ -344,7 +408,7 @@
       void openStash(selectedStash.id);
     } else if (key === 'arrowleft' && viewState.stashId !== null) {
       event.preventDefault();
-      void openStash(currentStash?.parentId ?? null);
+      void openStash(currentStash?.parentId ?? null, viewState.stashId);
     } else if (key === 'arrowup' || key === 'arrowdown') {
       event.preventDefault();
       const index = shownEntries.findIndex((n) => n.id === selected);
@@ -359,7 +423,9 @@
           )
         ];
       if (next) {
+        ++interaction;
         selected = next.id;
+        selection.remember(viewState.stashId, selected);
         stream
           ?.querySelector(`[data-entry-id="${next.id}"]`)
           ?.scrollIntoView({ block: 'nearest' });
@@ -413,7 +479,7 @@
           disabled={blocked}
           onopen={(id) => void openStash(id)}
         />
-        <button onclick={() => nameStash()} disabled={blocked}
+        <button onclick={() => void createStash()} disabled={blocked}
           >New stash <span class="sr-only">Command N</span><span
             class="shortcut-keys"
             aria-hidden="true"><kbd>⌘</kbd><kbd>N</kbd></span
@@ -481,6 +547,7 @@
                 aria-label="Saved note"
                 class:selected={selected === note.id}
                 class="note-card"
+                class:editing={viewState.activeKey === note.id}
                 data-note-id={note.id}
                 data-entry-id={note.id}
                 onclick={(event) => cardClick(event, note.id)}
@@ -491,7 +558,11 @@
                   aria-pressed={selected === note.id}
                   disabled={blocked}
                   onclick={() => {
+                    ++interaction;
                     selected = note.id;
+                    selection.remember(viewState.stashId, selected);
+                    if (activeNote && activeNote.id !== note.id)
+                      leaveEdit(activeNote.id);
                     stream?.focus();
                   }}
                   aria-label="Select note"
@@ -499,7 +570,9 @@
                 ></button>
                 <div class="note-meta">
                   <time datetime={updated.datetime}>{updated.label}</time>
-                  {#if selected === note.id}<div class="card-actions">
+                  {#if selected === note.id && viewState.activeKey !== note.id}<div
+                      class="card-actions"
+                    >
                       {#if viewState.activeKey !== note.id}<button
                           disabled={blocked}
                           onclick={() => edit(note.id)}
@@ -537,40 +610,39 @@
                 {#if viewState.query.trim()}<p class="note-location">
                     {hierarchy.label(note.stashId).text}
                   </p>{/if}
-                {#if viewState.snapshot.drafts.some((d) => d.key === note.id)}<p
-                    class="draft-indicator"
+                {#if viewState.activeKey === note.id && !visibleNotes.some((n) => n.id === note.id)}<p
+                    class="editing-outside"
                   >
-                    Unfinished edit
+                    Editing outside search results
                   </p>{/if}
-                {#if viewState.activeKey === note.id}
-                  {#if !visibleNotes.some((n) => n.id === note.id)}<p
-                      class="editing-outside"
-                    >
-                      Editing outside search results
-                    </p>{/if}
-                  <MarkdownEditor
-                    bind:this={editor}
-                    label="Edit Markdown"
-                    contextKey={note.id}
-                    states={editorStates}
-                    source={viewState.buffers[note.id]?.source ?? note.markdown}
-                    readOnly={editorReadOnly}
-                    onchange={(source) =>
-                      controller.editContext(note.id, source)}
-                    onsubmit={() => submit(note.id)}
-                    oncancel={cancelEdit}
-                  />
-                  <div class="note-actions">
-                    <button disabled={blocked} onclick={() => submit(note.id)}
-                      >Save edit</button
-                    ><button disabled={blocked} onclick={cancelEdit}
-                      >Cancel edit</button
-                    >
-                  </div>
-                {:else}<MarkdownView
-                    source={note.markdown}
-                    onopen={open}
-                  />{/if}
+                <div
+                  class="note-body"
+                  style:height={viewState.activeKey === note.id &&
+                  editHeights[note.id] !== undefined
+                    ? `${editHeights[note.id]}px`
+                    : undefined}
+                >
+                  {#if viewState.activeKey === note.id}
+                    <MarkdownEditor
+                      bind:this={editor}
+                      label="Edit Markdown"
+                      contextKey={note.id}
+                      states={editorStates}
+                      source={viewState.buffers[note.id]?.source ??
+                        note.markdown}
+                      readOnly={editorReadOnly}
+                      onchange={(source) =>
+                        controller.editContext(note.id, source)}
+                      onsubmit={() => submit(note.id)}
+                      oncancel={finishEdit}
+                      onblur={() => leaveEdit(note.id)}
+                      onfocus={() => controller.retainEdit(note.id)}
+                    />
+                  {:else}<MarkdownView
+                      source={note.markdown}
+                      onopen={open}
+                    />{/if}
+                </div>
               </article>
             {/if}
           {/each}
@@ -694,41 +766,13 @@
         >{/if}
     </footer>
     {#if stashDialog}<StashDialog
-        title={stashDialog.id === null ? 'New stash' : 'Rename stash'}
+        title="Rename stash"
         initial={stashDialog.name}
         busy={viewState.operation !== null}
         error={viewState.error}
         onsubmit={saveStash}
         oncancel={() => void closeStashDialog()}
       />{/if}
-    {#if deleteConfirm}<section
-        class="confirmation"
-        aria-label="Discard unsaved draft?"
-      >
-        <h2>Discard unsaved draft?</h2>
-        <p>
-          Delete the saved note and discard its unfinished edit? Undo restores
-          only the saved source.
-        </p>
-        <button
-          use:focusChoice
-          onclick={async () => {
-            deleteConfirm = false;
-            await tick();
-            editor?.focus();
-          }}>Keep editing</button
-        ><button
-          onclick={async () => {
-            deleteConfirm = false;
-            const key = viewState.activeKey;
-            if (!(await controller.remove(true))) return;
-            selected = '';
-            await tick();
-            editorStates.delete(key);
-            stream?.focus();
-          }}>Discard draft and delete</button
-        >
-      </section>{/if}
     {#if viewState.preview}<section
         class="confirmation"
         aria-label="Replace workspace?"
@@ -755,6 +799,7 @@
               selected = '';
               await tick();
               editorStates.clear();
+              selection.clear();
               composer?.focus();
             }
           }}

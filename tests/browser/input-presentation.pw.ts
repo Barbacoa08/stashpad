@@ -51,8 +51,11 @@ async function checkEditor(editor: Locator) {
       editor.locator('xpath=ancestor::section[contains(@class, "composer")]'),
     ).toHaveCSS('border-top-color', 'rgb(146, 202, 255)');
   } else {
-    expect(presentation.outline).not.toBe('none');
-    expect(presentation.outlineColor).not.toBe('rgb(0, 0, 0)');
+    expect(presentation.outline).toBe('none');
+    await expect(editor.locator('xpath=ancestor::article')).toHaveCSS(
+      'border-top-color',
+      'rgb(146, 202, 255)',
+    );
   }
 }
 

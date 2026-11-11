@@ -4,11 +4,13 @@ const capture = (page: Page) =>
 async function create(page: Page, name: string) {
   await expect(capture(page)).toBeVisible();
   await page.keyboard.press('Meta+n');
-  const dialog = page.getByRole('dialog', { name: 'New stash' });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('textbox', { name: 'Stash name' }).fill(name);
-  await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
-  await expect(dialog).toBeHidden();
+  await expect(capture(page)).toBeFocused();
+  await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
+  // Named fixtures use the existing Rename boundary after instant creation.
+  await page.evaluate(async (name) => {
+    const c = (window as any).__test.controller;
+    await c.renameStash(c.state.stashId, name);
+  }, name);
 }
 test('Command N preserves editor draft, creates nested stashes, captures there, and global search identifies ownership', async ({
   page,
@@ -56,22 +58,14 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
     await page.evaluate(() => (window as any).__test.controller.state.stashId),
   );
 });
-test('name validation, Escape focus, rename, and stash-only controls are truthful', async ({
+test('instant creation preserves drafts and Rename validates names with Escape focus', async ({
   page,
 }) => {
   await page.goto('/?fixture');
   await capture(page).fill('Retained');
-  await page.keyboard.press('Meta+n');
-  let dialog = page.getByRole('dialog', { name: 'New stash' });
-  await dialog.getByRole('textbox', { name: 'Stash name' }).fill('  ');
-  await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('alert')).toContainText('1 to 200');
-  await page.keyboard.press('Escape');
-  await expect(capture(page)).toBeFocused();
-  await expect(capture(page)).toHaveText('Retained');
   await create(page, 'Named');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await expect(capture(page)).toHaveText('Retained');
   const stash = page.getByRole('article', { name: 'Stash Named' });
   await stash.click();
   await expect(stash.getByRole('button', { name: 'Delete note' })).toHaveCount(
@@ -80,9 +74,16 @@ test('name validation, Escape focus, rename, and stash-only controls are truthfu
   await expect(
     stash.getByRole('button', { name: 'Copy Markdown' }),
   ).toHaveCount(0);
-  await expect(stash.locator('svg')).toBeVisible();
   await stash.getByRole('button', { name: 'Rename stash' }).click();
-  dialog = page.getByRole('dialog', { name: 'Rename stash' });
+  const dialog = page.getByRole('dialog', { name: 'Rename stash' });
+  await dialog.getByRole('textbox', { name: 'Stash name' }).fill('  ');
+  await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
+  await expect(dialog.getByRole('alert')).toContainText('1 to 200');
+  await page.keyboard.press('Escape');
+  await expect(
+    stash.getByRole('button', { name: 'Rename stash' }),
+  ).toBeFocused();
+  await stash.getByRole('button', { name: 'Rename stash' }).click();
   await dialog.getByRole('textbox', { name: 'Stash name' }).fill('Renamed');
   await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
   await expect(
@@ -120,8 +121,9 @@ test('search location stays inside its note card and cancellation restores edito
   await capture(page).press('Home');
   await capture(page).press('ArrowRight');
   await capture(page).press('ArrowRight');
-  await page.keyboard.press('Meta+n');
-  await page.getByRole('textbox', { name: 'Stash name' }).press('Escape');
+  await create(page, 'Temporary');
+  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.keyboard.press('Space');
   await page.keyboard.insertText('X');
   await expect(capture(page)).toHaveText('ReXtained');
   await create(page, 'Parent with a long meaningful name');
@@ -251,6 +253,6 @@ test('constrained sidebar keeps actual nested navigation visible and stash creat
   });
   await newStash.scrollIntoViewIfNeeded();
   await newStash.click();
-  await expect(page.getByRole('dialog', { name: 'New stash' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
+  await expect(capture(page)).toBeFocused();
 });

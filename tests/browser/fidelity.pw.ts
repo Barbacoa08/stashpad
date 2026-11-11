@@ -29,7 +29,7 @@ test('Enter captures exact source, renders full Markdown, and keeps a cleared fo
   await compose(page).press('Enter');
   await expect(cards(page)).toHaveCount(1);
 });
-test('inline edit resumes, preserves source/caret/undo, and ordinary cancellation removes only its draft', async ({
+test('inline edit resumes, preserves source/caret/undo, and Escape finishes only its draft', async ({
   page,
 }) => {
   await replace(page, '**saved**');
@@ -52,7 +52,7 @@ test('inline edit resumes, preserves source/caret/undo, and ordinary cancellatio
   await expect(inline(page)).toHaveText('*unfinished*');
   await inline(page).press('Escape');
   await expect(inline(page)).toHaveCount(0);
-  await expect(cards(page).locator('strong')).toHaveText('saved');
+  await expect(cards(page).locator('em')).toHaveText('unfinished');
   expect(
     await page.evaluate(() =>
       (window as any).__test.repo.snapshot.drafts.filter(
@@ -108,10 +108,8 @@ test('selection commands edit/copy/delete only outside inputs, and copy uses exa
   await page.keyboard.press('e');
   await expect(inline(page)).toBeVisible();
   await replace(page, 'draft  \n', inline(page));
-  await cards(page)
-    .filter({ has: inline(page) })
-    .getByRole('button', { name: 'Copy Markdown' })
-    .click();
+  await inline(page).press('Meta+a');
+  await inline(page).press('Meta+c');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     'draft  \n',
   );
@@ -141,9 +139,18 @@ test('search retains an active edit outside results and inert content cannot fet
   await compose(page).press('Enter');
   await cards(page).dblclick();
   await replace(page, 'draft', inline(page));
-  await page.getByRole('searchbox').fill('missing');
+  await page.evaluate(() =>
+    (window as any).__test.controller.setQuery('missing'),
+  );
   await expect(inline(page)).toBeVisible();
   await expect(page.getByText('Editing outside search results')).toBeVisible();
+  expect(
+    await inline(page).evaluate((el) => {
+      const editor = el.closest('.markdown-editor')!.getBoundingClientRect(),
+        card = el.closest('article')!.getBoundingClientRect();
+      return editor.bottom <= card.bottom - 2 && editor.top >= card.top + 2;
+    }),
+  ).toBe(true);
   await inline(page).press('Escape');
   await page.getByRole('searchbox').fill('');
   await expect(cards(page).locator('img,script,a')).toHaveCount(0);

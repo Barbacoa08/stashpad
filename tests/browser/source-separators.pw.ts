@@ -35,13 +35,13 @@ for (const [name, source] of [
       .getByRole('button', { name: 'Select note', exact: true })
       .click();
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Copy Markdown', exact: true })
-      .click();
+    await editor(page).press('Meta+a');
+    await editor(page).press('Meta+c');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       source,
     );
     await editor(page).focus();
+    await editor(page).press('Meta+Home');
     await editor(page).press('End');
     await editor(page).press('x');
     const edited = source.replace('line 1', 'line 1x');
@@ -63,13 +63,14 @@ for (const [name, source] of [
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       edited,
     );
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await editor(page).press('Enter');
     expect(
       await page.evaluate(
         () => (window as any).__test.repo.snapshot.notes[0].markdown,
       ),
     ).toBe(edited);
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
+    await editor(page).press('Meta+Home');
     await editor(page).press('End');
     await editor(page).press('Shift+Enter');
     const separator = name === 'LF' ? '\n' : '\r\n';

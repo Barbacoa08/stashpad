@@ -180,26 +180,18 @@ for (const constrained of [false, true])
       .getByRole('button', { name: 'Edit note', exact: true })
       .press('Enter');
     await expect(inline(page)).toBeFocused();
-    await page
-      .getByRole('button', { name: 'Save edit', exact: true })
-      .scrollIntoViewIfNeeded();
-    await selected.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+    await expect(selected.locator('time')).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Save edit', exact: true }),
-    ).toBeInViewport();
-    await expect(
-      page.getByRole('button', { name: 'Cancel edit', exact: true }),
-    ).toBeInViewport();
+      selected.getByRole('button', { name: 'Save edit' }),
+    ).toHaveCount(0);
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-inline.png`,
+      path: `.projects/2026-11-11-seamless-flow/inline-action-${suffix}.png`,
     });
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await inline(page).press('Enter');
     await selected
       .getByRole('button', { name: 'Edit note', exact: true })
       .click();
-    await page
-      .getByRole('button', { name: 'Cancel edit', exact: true })
-      .click();
+    await inline(page).press('Escape');
     await selected
       .getByRole('button', { name: 'Delete note', exact: true })
       .click();

@@ -87,6 +87,20 @@ for (const constrained of [false, true]) {
     await expect(stash).toHaveCSS('border-top-width', '2px');
     expect(await stash.boundingBox()).toEqual(stashBox);
     expect(await note.boundingBox()).toEqual(noteBox);
+    expect(
+      await stash
+        .getByRole('button', { name: 'Rename stash' })
+        .evaluate((el) => {
+          const r = el.getBoundingClientRect(),
+            card = el.closest('article')!.getBoundingClientRect();
+          return (
+            r.top >= card.top + 2 &&
+            r.bottom <= card.bottom - 2 &&
+            r.left >= card.left + 2 &&
+            r.right <= card.right - 2
+          );
+        }),
+    ).toBe(true);
     await expect(stash.locator('svg')).toHaveCount(1);
     await expect(stash.locator('p')).toHaveCount(0);
     await expect(

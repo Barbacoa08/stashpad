@@ -204,7 +204,7 @@ impl Store {
         revision: i64,
         stash_id: Option<&str>,
     ) -> Result<WorkspaceSnapshot> {
-        if markdown.trim().is_empty() {
+        if id.is_none() && markdown.trim().is_empty() {
             return Err(error(
                 "empty_note",
                 "Enter non-whitespace text before saving. Your draft is retained.",

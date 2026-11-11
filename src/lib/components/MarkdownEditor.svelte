@@ -45,6 +45,8 @@
     onchange,
     onsubmit,
     oncancel,
+    onblur,
+    onfocus,
     states,
   }: {
     contextKey: string;
@@ -52,6 +54,8 @@
     states?: Map<string, EditorState>;
     onsubmit: () => void;
     oncancel: () => void;
+    onblur?: () => void;
+    onfocus?: () => void;
     source: string;
     readOnly?: boolean;
     onchange: (source: string) => void;
@@ -138,6 +142,18 @@
 
       syntaxHighlighting(styles),
       EditorView.lineWrapping,
+      EditorView.domEventHandlers({
+        focus: () => {
+          onfocus?.();
+        },
+        blur: (event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !host.contains(event.relatedTarget)
+          )
+            onblur?.();
+        },
+      }),
       EditorView.contentAttributes.of({
         'aria-label': label,
         'aria-multiline': 'true',

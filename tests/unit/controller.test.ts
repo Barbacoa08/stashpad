@@ -166,7 +166,7 @@ for (const operation of ['newNote', 'flush'] as const) {
     }
   });
 }
-it('note selection waits for the latest checkpoint and restores that draft on return', async () => {
+it('note selection waits for the latest save and restores that source on return', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   try {
@@ -177,7 +177,7 @@ it('note selection waits for the latest checkpoint and restores that draft on re
     await c.selectNote(id);
     c.editSource('older edit');
     let release!: () => void;
-    repo.delayCheckpoint = new Promise<void>((resolve) => (release = resolve));
+    repo.delaySave = new Promise<void>((resolve) => (release = resolve));
     const navigate = c.newNote();
     await tick();
     c.editSource('latest edit');
@@ -206,7 +206,7 @@ it('capture clears only after success and stays in compose; whitespace is retain
   expect(repo.snapshot.notes).toHaveLength(1);
   c.dispose();
 });
-it('inline cancellation discards persisted edit while composer and resumable contexts remain independent', async () => {
+it('inline finish saves edits while composer and resumable contexts remain independent', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   await c.start();
@@ -220,9 +220,9 @@ it('inline cancellation discards persisted edit while composer and resumable con
   expect(c.state.source).toBe('capture draft');
   await c.selectNote(id);
   expect(c.state.source).toBe('unfinished');
-  expect(await c.cancelEdit()).toBe(true);
+  expect(await c.finishEdit()).toBe(true);
   expect(repo.snapshot.drafts.some((d) => d.key === id)).toBe(false);
-  expect(repo.snapshot.notes[0].markdown).toBe('saved');
+  expect(repo.snapshot.notes[0].markdown).toBe('unfinished');
   expect(c.state.source).toBe('capture draft');
   c.dispose();
 });
@@ -237,7 +237,7 @@ it('persists composer typing independently during an inline save and retains a l
   c.editSource('captured edit');
   let release!: () => void;
   repo.delaySave = new Promise<void>((r) => (release = r));
-  const saving = c.save();
+  const saving = c.flush();
   await tick();
   c.editSource('later edit');
   c.editContext('compose', 'new capture');
@@ -245,17 +245,15 @@ it('persists composer typing independently during an inline save and retains a l
   expect(await saving).toBe(true);
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('later edit');
-  expect(repo.snapshot.notes[0].markdown).toBe('captured edit');
+  expect(repo.snapshot.notes[0].markdown).toBe('later edit');
   await c.flush();
-  expect(repo.snapshot.drafts.find((d) => d.key === id)?.markdown).toBe(
-    'later edit',
-  );
+  expect(repo.snapshot.drafts.some((d) => d.key === id)).toBe(false);
   expect(repo.snapshot.drafts.find((d) => d.key === 'compose')?.markdown).toBe(
     'new capture',
   );
   c.dispose();
 });
-it('failed ordinary cancellation retains the editable source and retry discards only that note', async () => {
+it('failed finish retains the editable source and retry saves only that note', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   await c.start();
@@ -264,13 +262,12 @@ it('failed ordinary cancellation retains the editable source and retry discards 
   const id = repo.snapshot.notes[0].id;
   await c.selectNote(id);
   c.editSource('unfinished');
-  await c.flush();
-  repo.fail = 'discard';
-  expect(await c.cancelEdit()).toBe(false);
+  repo.fail = 'save';
+  expect(await c.finishEdit()).toBe(false);
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('unfinished');
   repo.fail = null;
-  expect(await c.cancelEdit()).toBe(true);
+  expect(await c.finishEdit()).toBe(true);
   expect(repo.snapshot.drafts).toEqual([]);
   c.dispose();
 });

@@ -324,3 +324,31 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     assert!(Store::open(&path).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }
+
+#[test]
+fn empty_existing_note_preserves_identity_owner_and_exact_whitespace() {
+    let (dir, mut db) = store();
+    let s = db.create_stash("Owner", None).unwrap();
+    let owner = s.stashes[0].id.clone();
+    let s = db
+        .save(
+            None,
+            "initial",
+            &format!("compose:{owner}"),
+            1,
+            Some(&owner),
+        )
+        .unwrap();
+    let id = s.notes[0].id.clone();
+    for source in ["", " \r\n\n\t"] {
+        let s = db.save(Some(&id), source, &id, 2, Some(&owner)).unwrap();
+        assert_eq!(s.notes[0].id, id);
+        assert_eq!(s.notes[0].stash_id.as_deref(), Some(owner.as_str()));
+        assert_eq!(s.notes[0].markdown, source);
+        assert!(s.notes[0].deleted_at.is_none());
+    }
+    assert!(db.save(None, "", "compose", 1, None).is_err());
+    drop(db);
+    let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
+    assert_eq!(db.load().unwrap().notes[0].markdown, " \r\n\n\t");
+}

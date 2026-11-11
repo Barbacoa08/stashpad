@@ -374,7 +374,39 @@ kbd {
   max-height: 9rem;
 }
 .note-card .cm-editor {
-  min-height: 4rem;
+  min-height: 0;
+  height: 100%;
+  font-size: inherit;
+  outline: none;
+}
+.note-card.editing:focus-within {
+  border-color: #92caff;
+}
+.note-card.editing .note-meta time {
+  display: block;
+}
+.note-body {
+  min-height: 1.4em;
+  display: flow-root;
+}
+.note-card .markdown-editor {
+  height: 100%;
+}
+.note-card .cm-scroller {
+  height: 100%;
+  max-height: none;
+}
+.note-card .cm-content {
+  padding: 0;
+  line-height: 1.4;
+}
+.note-card .cm-line {
+  padding: 0 !important;
+}
+.stash-card .note-meta button {
+  font-size: inherit;
+  line-height: 1.2;
+  padding: 0.15rem 0.3rem;
 }
 .cm-emphasis {
   font-style: italic;
