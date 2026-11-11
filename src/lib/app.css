@@ -870,3 +870,40 @@ kbd {
     white-space: nowrap;
   }
 }
+
+/* Saved bodies and active editors each own their vertical overflow. */
+.note-body {
+  --note-cap: 24;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.note-body.expanded {
+  max-height: 48rem;
+}
+.note-body.body-editing {
+  overflow: hidden;
+}
+.note-expand {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.35rem;
+}
+.inline-hint {
+  margin-top: 0.8rem;
+  font-size: 0.75rem;
+}
+.note-rendered {
+  display: flow-root;
+}
+.note-body {
+  position: relative;
+}
+.note-baseline {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  display: flow-root;
+}

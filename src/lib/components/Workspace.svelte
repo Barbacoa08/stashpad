@@ -4,7 +4,7 @@
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
-  import MarkdownView from './MarkdownView.svelte';
+  import NoteBody from './NoteBody.svelte';
   import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
   import StashCard from './StashCard.svelte';
@@ -34,10 +34,35 @@
   let selected = $state('');
   const selection = new LocationSelection();
   let editHeights = $state<Record<string, number>>({});
+  let expandedNotes = $state<Record<string, boolean>>({});
+  $effect(() => {
+    const live = new Set(
+      viewState.snapshot.notes
+        .filter((n) => n.deletedAt === null)
+        .map((n) => n.id),
+    );
+    const stale = Object.keys(expandedNotes).filter((id) => !live.has(id));
+    if (stale.length)
+      expandedNotes = Object.fromEntries(
+        Object.entries(expandedNotes).filter(([id]) => live.has(id)),
+      );
+  });
   let interaction = 0;
   let creating = false;
   let composer = $state<MarkdownEditor>();
-  let editor = $state<MarkdownEditor>();
+  let noteBodies = $state<Record<string, NoteBody | undefined>>({});
+  let captureFenced = $state(false);
+  let inlineFenced = $state(false);
+  let selectedEditingContext = $state<{ id: string; fenced: boolean } | null>(
+    null,
+  );
+  $effect(() => {
+    if (
+      selectedEditingContext &&
+      selectedEditingContext.id !== selectedNote?.id
+    )
+      selectedEditingContext = null;
+  });
   let search = $state<HTMLInputElement>();
   let stream = $state<HTMLElement>();
   let closeFailed = $state(false);
@@ -156,8 +181,7 @@
     stashDialog = null;
     await tick();
     if (dialogFocus?.closest('.composer')) composer?.focus();
-    else if (dialogFocus?.closest('.note-card .markdown-editor'))
-      editor?.focus();
+    else if (dialogFocus?.closest('.note-card .markdown-editor')) focusInline();
     else if (dialogFocus?.isConnected) dialogFocus.focus();
     else stream?.focus();
   }
@@ -219,7 +243,7 @@
         if (request !== interaction) return;
         selected = id;
         await tick();
-        if (focus.mayRestore()) editor?.focus();
+        if (focus.mayRestore()) focusInline();
       }
     } finally {
       focus.stop();
@@ -276,7 +300,7 @@
         if (focus.mayRestore() && composeKey(controller.state.stashId) === key)
           composer?.focus();
       } else if (focus.mayRestore()) {
-        if (controller.state.activeKey === key) editor?.focus();
+        if (controller.state.activeKey === key) focusInline();
         else stream?.focus();
       }
     } finally {
@@ -361,6 +385,20 @@
     await tick();
     stream?.focus();
     scrollSelection();
+  }
+  function focusInline() {
+    noteBodies[controller.state.activeKey]?.focus();
+  }
+  function capturePrevious() {
+    if (blocked) return false;
+    const note = visibleNotes.at(-1);
+    if (!note) return false;
+    ++interaction;
+    selected = note.id;
+    selection.remember(viewState.stashId, selected);
+    stream?.focus();
+    scrollSelection();
+    return true;
   }
   function commands(event: KeyboardEvent) {
     if (
@@ -629,34 +667,29 @@
                   >
                     Editing outside search results
                   </p>{/if}
-                <div
-                  class="note-body"
-                  style:height={viewState.activeKey === note.id &&
-                  editHeights[note.id] !== undefined
-                    ? `${editHeights[note.id]}px`
-                    : undefined}
-                >
-                  {#if viewState.activeKey === note.id}
-                    <MarkdownEditor
-                      bind:this={editor}
-                      label="Edit Markdown"
-                      contextKey={note.id}
-                      states={editorStates}
-                      source={viewState.buffers[note.id]?.source ??
-                        note.markdown}
-                      readOnly={editorReadOnly}
-                      onchange={(source) =>
-                        controller.editContext(note.id, source)}
-                      onsubmit={() => submit(note.id)}
-                      oncancel={finishEdit}
-                      onblur={() => leaveEdit(note.id)}
-                      onfocus={() => controller.retainEdit(note.id)}
-                    />
-                  {:else}<MarkdownView
-                      source={note.markdown}
-                      onopen={open}
-                    />{/if}
-                </div>
+                <NoteBody
+                  bind:this={noteBodies[note.id]}
+                  expanded={expandedNotes[note.id] ?? false}
+                  onexpand={(expanded) =>
+                    (expandedNotes = { ...expandedNotes, [note.id]: expanded })}
+                  id={note.id}
+                  markdown={note.markdown}
+                  source={viewState.buffers[note.id]?.source ?? note.markdown}
+                  editing={viewState.activeKey === note.id}
+                  baseline={editHeights[note.id]}
+                  states={editorStates}
+                  readOnly={editorReadOnly}
+                  onchange={(source) => controller.editContext(note.id, source)}
+                  onsubmit={() => submit(note.id)}
+                  oncancel={finishEdit}
+                  onblur={() => leaveEdit(note.id)}
+                  onfocus={() => controller.retainEdit(note.id)}
+                  oncontext={(fenced) => {
+                    inlineFenced = fenced;
+                    selectedEditingContext = { id: note.id, fenced };
+                  }}
+                  onopen={open}
+                />
               </article>
             {/if}
           {/each}
@@ -689,22 +722,28 @@
             onchange={(source) => controller.editContext(captureKey, source)}
             onsubmit={() => submit(captureKey)}
             oncancel={() => stream?.focus()}
+            onup={capturePrevious}
+            oncontext={(fenced) => (captureFenced = fenced)}
           />
           <p class="hint">
-            <span
-              ><span class="sr-only">Enter saves</span><span aria-hidden="true"
-                ><kbd>Enter</kbd> saves</span
-              ></span
-            >
-            ·
-            <span
-              ><span class="sr-only">Shift Enter adds a line</span><span
-                aria-hidden="true"
-                ><span class="shortcut-keys"
-                  ><kbd>Shift</kbd><kbd>Enter</kbd></span
-                > adds a line</span
-              ></span
-            >
+            {#if captureFenced}
+              Enter adds a code line · Move outside code to save
+            {:else}
+              <span
+                ><span class="sr-only">Enter saves</span><span
+                  aria-hidden="true"><kbd>Enter</kbd> saves</span
+                ></span
+              >
+              ·
+              <span
+                ><span class="sr-only">Shift Enter adds a line</span><span
+                  aria-hidden="true"
+                  ><span class="shortcut-keys"
+                    ><kbd>Shift</kbd><kbd>Enter</kbd></span
+                  > adds a line</span
+                ></span
+              >
+            {/if}
             ·
             <span
               ><span class="sr-only">Escape returns to notes</span><span
@@ -770,6 +809,19 @@
             >
           </div>
         </div>
+        {#if activeNote || (selectedNote && selectedEditingContext?.id === selectedNote.id)}<p
+            class="inline-hint"
+            aria-label="Inline editing keys"
+          >
+            <strong
+              >{activeNote
+                ? 'Editing shortcuts'
+                : 'Selected note editing'}</strong
+            ><br />
+            {(activeNote ? inlineFenced : selectedEditingContext?.fenced)
+              ? 'Enter adds a code line · Move outside code to finish editing'
+              : 'Enter finishes editing · Shift Enter adds a line'}
+          </p>{/if}
         <section class="workspace-feedback" aria-label="Workspace status">
           <h2><Icon name="info" /> Workspace status</h2>
           <p>
@@ -818,6 +870,9 @@
         ><button
           onclick={async () => {
             if (await controller.restore(true)) {
+              selectedEditingContext = null;
+              expandedNotes = {};
+              editHeights = {};
               workspaceEpoch++;
               composerEpochs = {};
               selected = '';
