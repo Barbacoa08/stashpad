@@ -1,11 +1,20 @@
 import { emptyWorkspace, type WorkspaceSnapshot } from '../domain/notes';
+import { composeKey, composeOwner, stashName } from '../domain/hierarchy';
 import { filterNotes } from '../domain/search';
 import type { Repository, RestorePreview } from '../platform/workspace';
 /** Save acknowledgments allow editing; other in-flight mutations lock editors. */
 export type WorkspaceOperation =
-  'save' | 'discard' | 'delete' | 'export' | 'preview-restore' | 'restore';
+  | 'save'
+  | 'create-stash'
+  | 'rename-stash'
+  | 'discard'
+  | 'delete'
+  | 'export'
+  | 'preview-restore'
+  | 'restore';
 export interface ViewState {
   snapshot: WorkspaceSnapshot;
+  stashId: string | null;
   activeKey: string;
   buffers: Record<string, { source: string; revision: number }>;
   source: string;
@@ -20,6 +29,7 @@ export interface ViewState {
 export class WorkspaceController {
   state: ViewState = {
     snapshot: emptyWorkspace(),
+    stashId: null,
     activeKey: 'compose',
     buffers: { compose: { source: '', revision: 0 } },
     source: '',
@@ -73,7 +83,8 @@ export class WorkspaceController {
       (n) => n.id === this.state.activeKey,
     );
     return (
-      this.state.activeKey !== 'compose' && this.state.source !== n?.markdown
+      composeOwner(this.state.activeKey) === null &&
+      this.state.source !== n?.markdown
     );
   }
   async start() {
@@ -83,7 +94,8 @@ export class WorkspaceController {
         if (this.disposed) return false;
         this.snapshot(s);
         this.resetBuffers(s);
-        this.context('compose');
+        this.patch({ stashId: null });
+        this.context(composeKey(null));
         this.patch({ loaded: true, status: 'Ready', error: '' });
         return true;
       } catch (e) {
@@ -161,19 +173,81 @@ export class WorkspaceController {
   flush() {
     return this.run(() => this.checkpoint());
   }
-  private navigate(key: string) {
+  private navigate(key: string, stashId: string | null, clearQuery = false) {
     return this.run(async () => {
+      if (
+        stashId !== null &&
+        !this.state.snapshot.stashes.some((s) => s.id === stashId)
+      ) {
+        this.error(new Error('This stash is unavailable.'));
+        return false;
+      }
       if (!(await this.checkpoint())) return false;
+      this.patch({ stashId, ...(clearQuery ? { query: '' } : {}) });
       this.context(key);
       this.patch({ error: '', status: 'Ready' });
       return true;
     });
   }
   newNote() {
-    return this.navigate('compose');
+    return this.navigate(composeKey(this.state.stashId), this.state.stashId);
+  }
+  openStash(id: string | null) {
+    return this.navigate(composeKey(id), id, true);
   }
   selectNote(id: string) {
-    return this.navigate(id);
+    const note = this.state.snapshot.notes.find(
+      (n) => n.id === id && n.deletedAt === null,
+    );
+    if (!note) {
+      this.error(new Error('This note is unavailable.'));
+      return Promise.resolve(false);
+    }
+    return this.navigate(id, note.stashId);
+  }
+  createStash(name: string) {
+    const parentId = this.state.stashId;
+    return this.run(async () => {
+      this.patch({ operation: 'create-stash', error: '' });
+      try {
+        const normalized = stashName(name);
+        if (!(await this.checkpoint())) return false;
+        const known = new Set(this.state.snapshot.stashes.map((s) => s.id));
+        const snapshot = await this.repo.createStash(normalized, parentId);
+        const created = snapshot.stashes.find((s) => !known.has(s.id));
+        if (!created)
+          throw new Error('The new stash is unavailable. Retry loading.');
+        this.snapshot(snapshot);
+        this.patch({
+          stashId: created.id,
+          query: '',
+          status: 'Stash created',
+          error: '',
+        });
+        this.context(composeKey(created.id));
+        return true;
+      } catch (e) {
+        this.error(e);
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    });
+  }
+  renameStash(id: string, name: string) {
+    return this.run(async () => {
+      this.patch({ operation: 'rename-stash', error: '' });
+      try {
+        this.snapshot(await this.repo.renameStash(id, stashName(name)));
+        this.patch({ status: 'Stash renamed', error: '' });
+        return true;
+      } catch (e) {
+        this.error(e);
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    });
   }
   feedback(status: string, error = '') {
     this.patch({ status, error });
@@ -192,14 +266,19 @@ export class WorkspaceController {
       return Promise.resolve(false);
     }
     const captured = { ...buffer };
+    const compose = composeOwner(key);
+    const stashId = compose
+      ? compose.stashId
+      : (this.state.snapshot.notes.find((n) => n.id === key)?.stashId ?? null);
     this.saving = this.run(async () => {
       this.patch({ operation: 'save', error: '', status: 'Saving…' });
       try {
         const s = await this.repo.saveNote(
-          key === 'compose' ? null : key,
+          compose ? null : key,
           captured.source,
           key,
           captured.revision,
+          stashId,
         );
         this.snapshot(s);
         if (this.state.buffers[key]?.revision === captured.revision) {
@@ -207,11 +286,12 @@ export class WorkspaceController {
           const buffers = { ...this.state.buffers };
           // Advance the revision even when clearing to distinguish subsequent captures.
           buffers[key] = {
-            source: key === 'compose' ? '' : captured.source,
+            source: compose ? '' : captured.source,
             revision: captured.revision + 1,
           };
           this.patch({ buffers });
-          if (this.state.activeKey === key) this.context('compose');
+          if (this.state.activeKey === key)
+            this.context(composeKey(this.state.stashId));
           this.patch({ status: 'Saved', error: '' });
         } else this.patch({ status: 'Unsaved' });
         return true;
@@ -228,7 +308,7 @@ export class WorkspaceController {
   }
   cancelEdit() {
     const key = this.state.activeKey;
-    if (key === 'compose') return Promise.resolve(true);
+    if (composeOwner(key)) return Promise.resolve(true);
     return this.run(async () => {
       this.patch({ operation: 'discard' });
       try {
@@ -237,7 +317,7 @@ export class WorkspaceController {
         const buffers = { ...this.state.buffers };
         delete buffers[key];
         this.patch({ buffers });
-        this.context('compose');
+        this.context(composeKey(this.state.stashId));
         this.patch({ status: 'Edit cancelled', error: '' });
         return true;
       } catch (e) {
@@ -250,7 +330,7 @@ export class WorkspaceController {
   }
   remove(discard = false) {
     return this.run(async () => {
-      if (this.state.activeKey === 'compose') return false;
+      if (composeOwner(this.state.activeKey)) return false;
       if (this.hasUnsavedDraft && !discard) {
         this.patch({
           error: 'Confirm discarding the unsaved edit before deleting.',
@@ -265,7 +345,7 @@ export class WorkspaceController {
         const buffers = { ...this.state.buffers };
         delete buffers[key];
         this.patch({ buffers });
-        this.context('compose');
+        this.context(composeKey(this.state.stashId));
         this.patch({ status: 'Deleted. Undo delete is available.', error: '' });
         return true;
       } catch (e) {
@@ -339,7 +419,8 @@ export class WorkspaceController {
           clearTimeout(this.timer);
           this.snapshot(s);
           this.resetBuffers(s);
-          this.context('compose');
+          this.patch({ stashId: null });
+          this.context(composeKey(null));
           this.patch({ query: '', status: 'Workspace restored', error: '' });
         } else this.patch({ status: 'Restore cancelled' });
         this.patch({ preview: null });

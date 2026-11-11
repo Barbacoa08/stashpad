@@ -2,7 +2,9 @@ use stashpad_alpha_kit::{backup, model::*, store::Store};
 fn snapshot() -> WorkspaceSnapshot {
     let id = "11111111-1111-4111-8111-111111111111".to_string();
     WorkspaceSnapshot {
+        stashes: vec![],
         notes: vec![Note {
+            stash_id: None,
             id: id.clone(),
             markdown: "α **source**  \n```js\nlet a='*';\n```\n".into(),
             created_at: 1,
@@ -46,7 +48,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
     ] {
         let mut v = valid.clone();
         match case {
-            "future" => v["version"] = 2.into(),
+            "future" => v["version"] = 3.into(),
             "duplicate" => {
                 let n = v["workspace"]["notes"][0].clone();
                 v["workspace"]["notes"].as_array_mut().unwrap().push(n)
@@ -98,7 +100,9 @@ fn oversized_source_and_unicode_timestamp_are_safe() {
 fn separate_store_roundtrip_and_safety_backup() {
     let dir = tempfile::tempdir().unwrap();
     let mut first = Store::open(&dir.path().join("first.sqlite3")).unwrap();
-    let created = first.save(None, "deleted source", "compose", 1).unwrap();
+    let created = first
+        .save(None, "deleted source", "compose", 1, None)
+        .unwrap();
     let id = created.notes[0].id.clone();
     first.checkpoint("compose", "new draft", 8).unwrap();
     let before = first.delete(&id).unwrap();
@@ -120,7 +124,7 @@ fn separate_store_roundtrip_and_safety_backup() {
 fn failed_safety_write_or_transaction_keeps_previous_workspace() {
     let dir = tempfile::tempdir().unwrap();
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
-    let before = db.save(None, "previous", "compose", 1).unwrap();
+    let before = db.save(None, "previous", "compose", 1, None).unwrap();
     let next = snapshot();
     assert!(db
         .restore_with_safety(&next, &dir.path().join("missing/safety.json"), false)
@@ -156,8 +160,10 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
     let active = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".to_string();
     let deleted = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB".to_string();
     let s = WorkspaceSnapshot {
+        stashes: vec![],
         notes: vec![
             Note {
+                stash_id: None,
                 id: active.clone(),
                 markdown: "saved uppercase".into(),
                 created_at: 1,
@@ -165,6 +171,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
                 deleted_at: None,
             },
             Note {
+                stash_id: None,
                 id: deleted.clone(),
                 markdown: "deleted uppercase".into(),
                 created_at: 1,
@@ -185,7 +192,9 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("uppercase.sqlite3");
     let mut db = Store::open(&path).unwrap();
-    let original = db.save(None, "previous workspace", "compose", 1).unwrap();
+    let original = db
+        .save(None, "previous workspace", "compose", 1, None)
+        .unwrap();
     for kind in ["draft", "undo", "duplicate"] {
         let mut malformed = staged.workspace.clone();
         match kind {
@@ -236,4 +245,108 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
         .unwrap()
         .deleted_at
         .is_none());
+}
+
+#[test]
+fn nested_v2_backup_preserves_hierarchy_and_scoped_draft() {
+    let v = serde_json::json!({"format":"stashpad-alpha","version":2,"exportedAt":"2026-11-11T00:00:00.000Z","workspace":{"stashes":[{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Parent","parentId":null,"createdAt":0,"updatedAt":0}],"notes":[],"drafts":[{"key":"compose:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","markdown":"exact\r\n","revision":1,"updatedAt":0}],"undoDeleteId":null}});
+    assert!(backup::validate(&serde_json::to_vec(&v).unwrap()).is_ok());
+}
+
+#[test]
+fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
+    let a = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
+    let b = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let n = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let base = serde_json::json!({"format":"stashpad-alpha","version":2,"exportedAt":"2026-11-11T00:00:00.000Z","workspace":{"stashes":[{"id":a,"name":"Parent","parentId":null,"createdAt":0,"updatedAt":0},{"id":b,"name":"Child","parentId":a,"createdAt":1,"updatedAt":1}],"notes":[{"id":n,"stashId":b,"markdown":"source","createdAt":2,"updatedAt":2,"deletedAt":null}],"drafts":[{"key":format!("compose:{b}"),"markdown":"draft","revision":1,"updatedAt":1}],"undoDeleteId":null}});
+    for case in [
+        "valid",
+        "cycle",
+        "parent",
+        "owner",
+        "case",
+        "compose",
+        "composeCase",
+        "crossType",
+        "name",
+        "empty",
+        "extra",
+        "orphanUndo",
+        "future",
+    ] {
+        let mut v = base.clone();
+        match case {
+            "cycle" => v["workspace"]["stashes"][0]["parentId"] = b.into(),
+            "parent" => v["workspace"]["stashes"][1]["parentId"] = n.into(),
+            "owner" => v["workspace"]["notes"][0]["stashId"] = n.into(),
+            "case" => v["workspace"]["stashes"][1]["parentId"] = a.to_lowercase().into(),
+            "compose" => v["workspace"]["drafts"][0]["key"] = format!("compose:{n}").into(),
+            "composeCase" => {
+                v["workspace"]["drafts"][0]["key"] = compose_key(Some(&a.to_lowercase())).into()
+            }
+            "crossType" => v["workspace"]["notes"][0]["id"] = a.to_lowercase().into(),
+            "name" => v["workspace"]["stashes"][0]["name"] = "😀".repeat(201).into(),
+            "empty" => v["workspace"]["stashes"][0]["name"] = "  ".into(),
+            "extra" => v["workspace"]["stashes"][0]["unknown"] = true.into(),
+            "orphanUndo" => v["workspace"]["undoDeleteId"] = b.into(),
+            "future" => v["version"] = 3.into(),
+            _ => {}
+        }
+        assert_eq!(
+            backup::validate(&serde_json::to_vec(&v).unwrap()).is_ok(),
+            case == "valid",
+            "case {case}"
+        );
+    }
+    let mut s = WorkspaceSnapshot::default();
+    for i in 0..10000 {
+        let id = uuid::Uuid::from_u128(i + 1).to_string();
+        let parent_id = s.stashes.last().map(|stash| stash.id.clone());
+        s.stashes.push(Stash {
+            id: id.clone(),
+            name: "😀".repeat(200),
+            parent_id,
+            created_at: 0,
+            updated_at: 0,
+        });
+        s.drafts.push(Draft {
+            key: compose_key(Some(&id)),
+            markdown: String::new(),
+            revision: 0,
+            updated_at: 0,
+        });
+        let note_id = uuid::Uuid::from_u128(i + 10001).to_string();
+        s.notes.push(Note {
+            id: note_id.clone(),
+            stash_id: Some(id),
+            markdown: "x".into(),
+            created_at: 0,
+            updated_at: 0,
+            deleted_at: None,
+        });
+        s.drafts.push(Draft {
+            key: note_id,
+            markdown: String::new(),
+            revision: 0,
+            updated_at: 0,
+        });
+    }
+    // Keep the complete envelope within capacity while checking maximum legal contexts.
+    for stash in &mut s.stashes {
+        stash.name = "x".into();
+    }
+    s.drafts.push(Draft {
+        key: "compose".into(),
+        markdown: String::new(),
+        revision: 0,
+        updated_at: 0,
+    });
+    assert_eq!(
+        backup::validate(&backup::encode(&s).unwrap())
+            .unwrap()
+            .workspace,
+        s
+    );
+    s.stashes.push(s.stashes[0].clone());
+    assert!(backup::encode(&s).is_err());
 }

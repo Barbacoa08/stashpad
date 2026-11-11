@@ -5,6 +5,18 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import MarkdownView from './MarkdownView.svelte';
+  import StashSidebar from './StashSidebar.svelte';
+  import StashBreadcrumbs from './StashBreadcrumbs.svelte';
+  import StashCard from './StashCard.svelte';
+  import StashDialog from './StashDialog.svelte';
+  import StashIcon from './StashIcon.svelte';
+  import {
+    composeKey,
+    composeOwner,
+    directEntries,
+    entryCounts,
+    createHierarchyPresentation,
+  } from '../domain/hierarchy';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
   import { nativeRepository, type Repository } from '../platform/workspace';
   import { copyMarkdown, openExternal } from '../platform/actions';
@@ -27,16 +39,31 @@
   let stream = $state<HTMLElement>();
   let deleteConfirm = $state(false);
   let closeFailed = $state(false);
-  let composerEpoch = $state(0);
+  let composerEpochs = $state<Record<string, number>>({});
+  let workspaceEpoch = $state(0);
+  let stashDialog = $state<{ id: string | null; name: string } | null>(null);
+  let dialogFocus: HTMLElement | null = null;
+  let captureKey = $derived(composeKey(viewState.stashId));
+  let hierarchy = $derived(
+    createHierarchyPresentation(viewState.snapshot.stashes),
+  );
+  let currentStash = $derived(
+    viewState.stashId === null
+      ? undefined
+      : hierarchy.index.get(viewState.stashId),
+  );
+  let destination = $derived(hierarchy.label(viewState.stashId).text);
   const editorStates = new Map<string, EditorState>();
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
   let visibleNotes = $derived(
-    filterNotes(viewState.snapshot.notes, viewState.query),
+    filterNotes(viewState.snapshot.notes, viewState.query).filter(
+      (n) => viewState.query.trim() || n.stashId === viewState.stashId,
+    ),
   );
   let activeNote = $derived(
     viewState.snapshot.notes.find(
-      (n) => n.id === viewState.activeKey && !n.deletedAt,
+      (n) => n.id === viewState.activeKey && n.deletedAt === null,
     ),
   );
   let shownNotes = $derived(
@@ -44,14 +71,74 @@
       ? [activeNote, ...visibleNotes]
       : visibleNotes,
   );
-  let modal = $derived(!!viewState.preview || deleteConfirm || closeFailed);
+  let counts = $derived(entryCounts(viewState.snapshot));
+  let shownEntries = $derived.by(() => {
+    if (viewState.query.trim())
+      return shownNotes.map((note) => ({ ...note, kind: 'note' as const }));
+    const entries = directEntries(viewState.snapshot, viewState.stashId);
+    return activeNote && !entries.some((x) => x.id === activeNote.id)
+      ? [{ ...activeNote, kind: 'note' as const }, ...entries]
+      : entries;
+  });
+  let modal = $derived(
+    !!viewState.preview || deleteConfirm || closeFailed || !!stashDialog,
+  );
   let blocked = $derived(viewState.operation !== null || modal);
   let editorReadOnly = $derived(
     modal || (viewState.operation !== null && viewState.operation !== 'save'),
   );
   let selectedNote = $derived(
-    viewState.snapshot.notes.find((n) => n.id === selected && !n.deletedAt),
+    viewState.snapshot.notes.find(
+      (n) => n.id === selected && n.deletedAt === null,
+    ),
   );
+  let selectedStash = $derived(
+    viewState.snapshot.stashes.find((s) => s.id === selected),
+  );
+  async function openStash(id: string | null) {
+    if (blocked) return;
+    if (await controller.openStash(id)) {
+      selected = '';
+      await tick();
+      stream?.focus();
+    }
+  }
+  function nameStash(id: string | null = null) {
+    if (blocked) return;
+    dialogFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    stashDialog = {
+      id,
+      name: viewState.snapshot.stashes.find((s) => s.id === id)?.name ?? '',
+    };
+  }
+  async function closeStashDialog() {
+    stashDialog = null;
+    await tick();
+    if (dialogFocus?.closest('.composer')) composer?.focus();
+    else if (dialogFocus?.closest('.note-card .markdown-editor'))
+      editor?.focus();
+    else if (dialogFocus?.isConnected) dialogFocus.focus();
+    else stream?.focus();
+  }
+  async function saveStash(name: string) {
+    if (!stashDialog) return;
+    const ok =
+      stashDialog.id === null
+        ? await controller.createStash(name)
+        : await controller.renameStash(stashDialog.id, name);
+    if (ok) {
+      const created = stashDialog.id === null;
+      stashDialog = null;
+      selected = '';
+      await tick();
+      if (created) composer?.focus();
+      else if (dialogFocus?.isConnected) dialogFocus.focus();
+      else stream?.focus();
+    }
+  }
   function focusChoice(node: HTMLButtonElement) {
     node.focus();
   }
@@ -117,20 +204,25 @@
       const known = new Set(viewState.snapshot.notes.map((n) => n.id));
       const ok = await controller.save(key);
       if (!ok || disposed) return;
-      if (key === 'compose') {
-        if (!controller.sourceFor('compose')) composerEpoch++;
+      if (composeOwner(key)) {
+        if (!controller.sourceFor(key))
+          composerEpochs = {
+            ...composerEpochs,
+            [key]: (composerEpochs[key] ?? 0) + 1,
+          };
         selected =
           controller.state.snapshot.notes.find((n) => !known.has(n.id))?.id ??
           selected;
       }
       await tick();
-      if (key !== 'compose' && controller.state.activeKey === 'compose')
+      if (!composeOwner(key) && composeOwner(controller.state.activeKey))
         editorStates.delete(key);
-      if (key === 'compose') {
+      if (composeOwner(key)) {
         stream
           ?.querySelector(`[data-note-id="${selected}"]`)
           ?.scrollIntoView({ block: 'nearest' });
-        if (focus.mayRestore()) composer?.focus();
+        if (focus.mayRestore() && composeKey(controller.state.stashId) === key)
+          composer?.focus();
       } else if (focus.mayRestore()) {
         if (controller.state.activeKey === key) editor?.focus();
         else stream?.focus();
@@ -194,7 +286,7 @@
     void edit(id);
   }
   async function remove() {
-    if (!selected || blocked) return;
+    if (!selectedNote || blocked) return;
     if (
       viewState.activeKey !== selected &&
       !(await controller.selectNote(selected))
@@ -223,7 +315,7 @@
     if (event.metaKey) {
       if (key === 'n') {
         event.preventDefault();
-        void compose();
+        nameStash();
       } else if (key === 'f') {
         event.preventDefault();
         search?.focus();
@@ -251,15 +343,21 @@
     } else if (key === 'c' && selectedNote) {
       event.preventDefault();
       void copy(selected);
+    } else if ((key === 'enter' || key === 'arrowright') && selectedStash) {
+      event.preventDefault();
+      void openStash(selectedStash.id);
+    } else if (key === 'arrowleft' && viewState.stashId !== null) {
+      event.preventDefault();
+      void openStash(currentStash?.parentId ?? null);
     } else if (key === 'arrowup' || key === 'arrowdown') {
       event.preventDefault();
-      const index = visibleNotes.findIndex((n) => n.id === selected);
+      const index = shownEntries.findIndex((n) => n.id === selected);
       const next =
-        visibleNotes[
+        shownEntries[
           Math.max(
             0,
             Math.min(
-              visibleNotes.length - 1,
+              shownEntries.length - 1,
               index + (key === 'arrowup' ? -1 : 1),
             ),
           )
@@ -267,7 +365,7 @@
       if (next) {
         selected = next.id;
         stream
-          ?.querySelector(`[data-note-id="${next.id}"]`)
+          ?.querySelector(`[data-entry-id="${next.id}"]`)
           ?.scrollIntoView({ block: 'nearest' });
       }
     }
@@ -298,7 +396,7 @@
 <svelte:window onkeydown={commands} />
 <main>
   <header class="app-header">
-    <h1>Home / Notes</h1>
+    <h1 title={destination}>{destination}</h1>
     <span class="local-label">Local workspace</span>
   </header>
   {#if !viewState.loaded}
@@ -312,11 +410,22 @@
   {:else}
     <div class="workspace">
       <aside class="sidebar" aria-label="Workspace navigation">
-        <h2>⌂ &nbsp; Home</h2>
-        <button onclick={compose} disabled={blocked}
-          >New note <span class="sr-only">Command N</span><span
+        <h2>Workspace</h2>
+        <StashSidebar
+          presentation={hierarchy}
+          currentId={viewState.stashId}
+          disabled={blocked}
+          onopen={(id) => void openStash(id)}
+        />
+        <button onclick={() => nameStash()} disabled={blocked}
+          >New stash <span class="sr-only">Command N</span><span
             class="shortcut-keys"
             aria-hidden="true"><kbd>⌘</kbd><kbd>N</kbd></span
+          ></button
+        >
+        <button onclick={compose} disabled={blocked}
+          >New note <span class="sr-only">Space focuses capture</span><kbd
+            aria-hidden="true">Space</kbd
           ></button
         >
         <label for="search">Search saved notes</label><input
@@ -344,7 +453,20 @@
       </aside>
       <section class="notes-column" aria-label="Notes workspace">
         <div class="stream-header">
-          <h2>Notes</h2>
+          <div>
+            <StashBreadcrumbs
+              presentation={hierarchy}
+              currentId={viewState.stashId}
+              disabled={blocked}
+              onopen={(id) => void openStash(id)}
+            />
+            <h2 class="current-stash-heading">
+              {#if currentStash}<StashIcon />{/if}<span
+                title={currentStash?.name ?? 'Notes'}
+                >{currentStash?.name ?? 'Notes'}</span
+              >
+            </h2>
+          </div>
           <span
             >{visibleNotes.length}
             {visibleNotes.length === 1 ? 'note' : 'notes'}</span
@@ -358,108 +480,132 @@
           tabindex="0"
           bind:this={stream}
         >
-          {#each shownNotes as note (note.id)}
-            {@const updated = timestampPresentation(note.updatedAt)}
-            <!-- Selection and actions are separate from rendered content and links. -->
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-            <article
-              aria-label="Saved note"
-              class:selected={selected === note.id}
-              class="note-card"
-              data-note-id={note.id}
-              onclick={(event) => cardClick(event, note.id)}
-              ondblclick={(event) => cardDoubleClick(event, note.id)}
-            >
-              <button
-                class="note-select"
-                aria-pressed={selected === note.id}
+          {#each shownEntries as entry (entry.id)}
+            {#if entry.kind === 'stash'}
+              <StashCard
+                stash={entry}
+                count={counts.get(entry.id) ?? 0}
+                selected={selected === entry.id}
                 disabled={blocked}
-                onclick={() => {
-                  selected = note.id;
-                  stream?.focus();
-                }}
-                aria-label="Select note"
-                title="Select note"
-              ></button>
-              <div class="note-meta">
-                <time datetime={updated.datetime}>{updated.label}</time>
-                {#if selected === note.id}<div class="card-actions">
-                    {#if viewState.activeKey !== note.id}<button
+                onselect={(event) => cardClick(event, entry.id)}
+                onopen={() => void openStash(entry.id)}
+                onrename={() => nameStash(entry.id)}
+              />
+            {:else}
+              {@const note = entry}
+              {@const updated = timestampPresentation(note.updatedAt)}
+              <!-- Selection and actions are separate from rendered content and links. -->
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+              <article
+                aria-label="Saved note"
+                class:selected={selected === note.id}
+                class="note-card"
+                data-note-id={note.id}
+                data-entry-id={note.id}
+                onclick={(event) => cardClick(event, note.id)}
+                ondblclick={(event) => cardDoubleClick(event, note.id)}
+              >
+                <button
+                  class="note-select"
+                  aria-pressed={selected === note.id}
+                  disabled={blocked}
+                  onclick={() => {
+                    selected = note.id;
+                    stream?.focus();
+                  }}
+                  aria-label="Select note"
+                  title="Select note"
+                ></button>
+                <div class="note-meta">
+                  <time datetime={updated.datetime}>{updated.label}</time>
+                  {#if selected === note.id}<div class="card-actions">
+                      {#if viewState.activeKey !== note.id}<button
+                          disabled={blocked}
+                          onclick={() => edit(note.id)}
+                          aria-label="Edit note"
+                          title="Edit note"
+                        >
+                          <svg viewBox="0 0 16 16" aria-hidden="true"
+                            ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
+                          >
+                        </button>{/if}
+                      <button
                         disabled={blocked}
-                        onclick={() => edit(note.id)}
-                        aria-label="Edit note"
-                        title="Edit note"
+                        onclick={() => copy(note.id)}
+                        aria-label="Copy Markdown"
+                        title="Copy Markdown"
                       >
                         <svg viewBox="0 0 16 16" aria-hidden="true"
-                          ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
+                          ><path d="M6 5h7v9H6zM3 11H2V2h7v1" /></svg
                         >
-                      </button>{/if}
-                    <button
-                      disabled={blocked}
-                      onclick={() => copy(note.id)}
-                      aria-label="Copy Markdown"
-                      title="Copy Markdown"
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true"
-                        ><path d="M6 5h7v9H6zM3 11H2V2h7v1" /></svg
+                      </button>
+                      <button
+                        disabled={blocked}
+                        onclick={remove}
+                        aria-label="Delete note"
+                        title="Delete note"
                       >
-                    </button>
-                    <button
-                      disabled={blocked}
-                      onclick={remove}
-                      aria-label="Delete note"
-                      title="Delete note"
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true"
-                        ><path
-                          d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10M7 6v6M9 6v6"
-                        /></svg
-                      >
-                    </button>
-                  </div>{/if}
-              </div>
-              {#if viewState.snapshot.drafts.some((d) => d.key === note.id)}<p
-                  class="draft-indicator"
-                >
-                  Unfinished edit
-                </p>{/if}
-              {#if viewState.activeKey === note.id}
-                {#if !visibleNotes.some((n) => n.id === note.id)}<p
-                    class="editing-outside"
-                  >
-                    Editing outside search results
-                  </p>{/if}
-                <MarkdownEditor
-                  bind:this={editor}
-                  label="Edit Markdown"
-                  contextKey={note.id}
-                  states={editorStates}
-                  source={viewState.buffers[note.id]?.source ?? note.markdown}
-                  readOnly={editorReadOnly}
-                  onchange={(source) => controller.editContext(note.id, source)}
-                  onsubmit={() => submit(note.id)}
-                  oncancel={cancelEdit}
-                />
-                <div class="note-actions">
-                  <button disabled={blocked} onclick={() => submit(note.id)}
-                    >Save edit</button
-                  ><button disabled={blocked} onclick={cancelEdit}
-                    >Cancel edit</button
-                  >
+                        <svg viewBox="0 0 16 16" aria-hidden="true"
+                          ><path
+                            d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10M7 6v6M9 6v6"
+                          /></svg
+                        >
+                      </button>
+                    </div>{/if}
                 </div>
-              {:else}<MarkdownView source={note.markdown} onopen={open} />{/if}
-            </article>
+                {#if viewState.query.trim()}<p class="note-location">
+                    {hierarchy.label(note.stashId).text}
+                  </p>{/if}
+                {#if viewState.snapshot.drafts.some((d) => d.key === note.id)}<p
+                    class="draft-indicator"
+                  >
+                    Unfinished edit
+                  </p>{/if}
+                {#if viewState.activeKey === note.id}
+                  {#if !visibleNotes.some((n) => n.id === note.id)}<p
+                      class="editing-outside"
+                    >
+                      Editing outside search results
+                    </p>{/if}
+                  <MarkdownEditor
+                    bind:this={editor}
+                    label="Edit Markdown"
+                    contextKey={note.id}
+                    states={editorStates}
+                    source={viewState.buffers[note.id]?.source ?? note.markdown}
+                    readOnly={editorReadOnly}
+                    onchange={(source) =>
+                      controller.editContext(note.id, source)}
+                    onsubmit={() => submit(note.id)}
+                    oncancel={cancelEdit}
+                  />
+                  <div class="note-actions">
+                    <button disabled={blocked} onclick={() => submit(note.id)}
+                      >Save edit</button
+                    ><button disabled={blocked} onclick={cancelEdit}
+                      >Cancel edit</button
+                    >
+                  </div>
+                {:else}<MarkdownView
+                    source={note.markdown}
+                    onopen={open}
+                  />{/if}
+              </article>
+            {/if}
           {/each}
-          {#if !shownNotes.length}<p class="empty-stream">
+          {#if !shownEntries.length}<p class="empty-stream">
               {viewState.query
                 ? 'No saved notes match your search.'
                 : 'Capture your first note below.'}
             </p>{/if}
         </section>
         <section class="composer" aria-label="Capture note">
+          <p class="capture-destination" title={destination}>
+            Capture in {destination}
+          </p>
           <div class="composer-toolbar">
             <button
-              onclick={() => submit('compose')}
+              onclick={() => submit(captureKey)}
               disabled={blocked}
               aria-label="Save note"
               title="Save note (Enter)">➤</button
@@ -468,11 +614,16 @@
           <MarkdownEditor
             bind:this={composer}
             label="Capture Markdown"
-            contextKey={'compose:' + composerEpoch}
-            source={viewState.buffers.compose?.source ?? ''}
+            contextKey={captureKey +
+              ':workspace:' +
+              workspaceEpoch +
+              ':epoch:' +
+              (composerEpochs[captureKey] ?? 0)}
+            states={editorStates}
+            source={viewState.buffers[captureKey]?.source ?? ''}
             readOnly={editorReadOnly}
-            onchange={(source) => controller.editContext('compose', source)}
-            onsubmit={() => submit('compose')}
+            onchange={(source) => controller.editContext(captureKey, source)}
+            onsubmit={() => submit(captureKey)}
             oncancel={() => stream?.focus()}
           />
           <p class="hint">
@@ -564,6 +715,14 @@
           >Retry save</button
         >{/if}
     </footer>
+    {#if stashDialog}<StashDialog
+        title={stashDialog.id === null ? 'New stash' : 'Rename stash'}
+        initial={stashDialog.name}
+        busy={viewState.operation !== null}
+        error={viewState.error}
+        onsubmit={saveStash}
+        oncancel={() => void closeStashDialog()}
+      />{/if}
     {#if deleteConfirm}<section
         class="confirmation"
         aria-label="Discard unsaved draft?"
@@ -598,7 +757,8 @@
       >
         <h2>Replace workspace?</h2>
         <p>
-          {viewState.preview.notes} notes and {viewState.preview.drafts} drafts.
+          {viewState.preview.notes} notes, {viewState.preview.stashes} stashes, and
+          {viewState.preview.drafts} drafts.
         </p>
         <p>{viewState.preview.warning}</p>
         <button
@@ -612,7 +772,8 @@
         ><button
           onclick={async () => {
             if (await controller.restore(true)) {
-              composerEpoch++;
+              workspaceEpoch++;
+              composerEpochs = {};
               selected = '';
               await tick();
               editorStates.clear();

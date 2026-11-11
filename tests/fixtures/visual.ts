@@ -15,5 +15,6 @@ export const visualNotes: Note[] = sources.map((markdown, index) => ({
   markdown,
   createdAt: 1794351600000 + index * 60000,
   updatedAt: 1794351600000 + index * 60000,
+  stashId: null,
   deletedAt: null,
 }));

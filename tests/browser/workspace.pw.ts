@@ -31,7 +31,7 @@ test('save search selected-outside-results, clear, new, and compose recovery', a
   await expect(search).toHaveValue('');
   await expect(page.getByRole('region', { name: 'Note stream' })).toBeFocused();
   await expect(editor).toHaveText('');
-  await page.keyboard.press('Meta+n');
+  await page.keyboard.press('Space');
   await expect(editor).toHaveText('');
   await expect(editor).toBeFocused();
 });

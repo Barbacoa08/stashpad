@@ -5,6 +5,8 @@ pub const MAX_SAFE: i64 = 9_007_199_254_740_991;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Note {
+    #[serde(deserialize_with = "required_nullable")]
+    pub stash_id: Option<String>,
     pub id: String,
     pub markdown: String,
     pub created_at: i64,
@@ -20,9 +22,20 @@ pub struct Draft {
     pub revision: i64,
     pub updated_at: i64,
 }
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Stash {
+    pub id: String,
+    pub name: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub parent_id: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceSnapshot {
+    pub stashes: Vec<Stash>,
     pub notes: Vec<Note>,
     pub drafts: Vec<Draft>,
     #[serde(deserialize_with = "required_nullable")]
@@ -30,12 +43,88 @@ pub struct WorkspaceSnapshot {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BackupV1 {
+pub struct BackupV2 {
     pub format: String,
     pub version: i64,
     pub exported_at: String,
     pub workspace: WorkspaceSnapshot,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LegacyNote {
+    pub id: String,
+    pub markdown: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub deleted_at: Option<i64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LegacyWorkspace {
+    pub notes: Vec<LegacyNote>,
+    pub drafts: Vec<Draft>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub undo_delete_id: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupV1 {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub workspace: LegacyWorkspace,
+}
+impl From<BackupV1> for BackupV2 {
+    fn from(b: BackupV1) -> Self {
+        Self {
+            format: b.format,
+            version: 2,
+            exported_at: b.exported_at,
+            workspace: WorkspaceSnapshot {
+                stashes: Vec::new(),
+                drafts: b.workspace.drafts,
+                undo_delete_id: b.workspace.undo_delete_id,
+                notes: b
+                    .workspace
+                    .notes
+                    .into_iter()
+                    .map(|n| Note {
+                        id: n.id,
+                        stash_id: None,
+                        markdown: n.markdown,
+                        created_at: n.created_at,
+                        updated_at: n.updated_at,
+                        deleted_at: n.deleted_at,
+                    })
+                    .collect(),
+            },
+        }
+    }
+}
+pub fn compose_key(stash_id: Option<&str>) -> String {
+    stash_id.map_or_else(|| "compose".into(), |id| format!("compose:{id}"))
+}
+pub fn compose_owner(key: &str) -> Option<Option<&str>> {
+    if key == "compose" {
+        Some(None)
+    } else {
+        key.strip_prefix("compose:").map(Some)
+    }
+}
+pub fn stash_name(name: &str) -> Result<String> {
+    // ECMAScript trim whitespace keeps command validation identical to the frontend.
+    let trimmed=name.trim_matches(|c:char| matches!(c,'\u{0009}'..='\u{000d}'|'\u{0020}'|'\u{00a0}'|'\u{1680}'|'\u{2000}'..='\u{200a}'|'\u{2028}'|'\u{2029}'|'\u{202f}'|'\u{205f}'|'\u{3000}'|'\u{feff}'));
+    if trimmed.is_empty() || trimmed.chars().count() > 200 {
+        return Err(error(
+            "invalid_name",
+            "Use a stash name with 1 to 200 characters.",
+        ));
+    }
+    Ok(trimmed.into())
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct AppError {
     pub code: String,

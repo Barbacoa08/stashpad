@@ -22,6 +22,7 @@ async function nativeMock(
           args.markdown,
           args.draftKey,
           args.draftRevision,
+          args.stashId,
         );
       }
       throw new Error('Unexpected synthetic command');
@@ -54,8 +55,8 @@ async function nativeMock(
 const capture = (page: Page) =>
   page.getByRole('textbox', { name: 'Capture Markdown' });
 async function typeCapture(page: Page, source: string) {
-  await page.getByRole('searchbox').focus();
-  await page.keyboard.press('Meta+n');
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(capture(page)).toBeFocused();
   await page.keyboard.type(source);
   await page.keyboard.press('Enter');

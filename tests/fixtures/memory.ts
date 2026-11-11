@@ -6,11 +6,13 @@ import {
   emptyWorkspace,
   type WorkspaceSnapshot,
 } from '../../src/lib/domain/notes';
+import { composeKey, stashName } from '../../src/lib/domain/hierarchy';
 import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
 export class MemoryRepository implements Repository {
   snapshot = emptyWorkspace();
   fail: string | null = null;
   delaySave: Promise<void> | null = null;
+  delayCreate: Promise<void> | null = null;
   delayCheckpoint: Promise<void> | null = null;
   checkpointCalls = 0;
   failCheckpointCall: number | null = null;
@@ -58,6 +60,7 @@ export class MemoryRepository implements Repository {
     markdown: string,
     draftKey: string,
     draftRevision: number,
+    stashId: string | null,
   ) {
     await this.delaySave;
     this.check('save');
@@ -67,7 +70,13 @@ export class MemoryRepository implements Repository {
         message: 'Enter non-whitespace text before saving.',
       };
     const s = structuredClone(this.snapshot);
-    const n = s.notes.find((n) => n.id === id);
+    if (
+      draftKey !== (id ?? composeKey(stashId)) ||
+      (stashId !== null && !s.stashes.some((x) => x.id === stashId))
+    )
+      throw new Error('Invalid capture destination.');
+    const n = s.notes.find((n) => n.id === id && n.deletedAt === null);
+    if (id !== null && !n) throw new Error('This note is unavailable.');
     if (n) {
       n.markdown = markdown;
       n.updatedAt = Math.max(Date.now(), n.updatedAt + 1);
@@ -78,10 +87,34 @@ export class MemoryRepository implements Repository {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         deletedAt: null,
+        stashId,
       });
     s.drafts = s.drafts.filter(
       (d) => d.key !== draftKey || d.revision > draftRevision,
     );
+    return this.commit(s);
+  }
+  async createStash(name: string, parentId: string | null) {
+    await this.delayCreate;
+    this.check('create');
+    const s = structuredClone(this.snapshot),
+      time = Date.now();
+    s.stashes.push({
+      id: crypto.randomUUID(),
+      name: stashName(name),
+      parentId,
+      createdAt: time,
+      updatedAt: time,
+    });
+    return this.commit(s);
+  }
+  async renameStash(id: string, name: string) {
+    this.check('rename');
+    const s = structuredClone(this.snapshot);
+    const stash = s.stashes.find((x) => x.id === id);
+    if (!stash) throw new Error('This stash is unavailable.');
+    stash.name = stashName(name);
+    stash.updatedAt = Math.max(Date.now(), stash.updatedAt + 1);
     return this.commit(s);
   }
   async discardDraft(key: string) {
@@ -123,6 +156,7 @@ export class MemoryRepository implements Repository {
       token: 'synthetic-token',
       notes: b.workspace.notes.length,
       drafts: b.workspace.drafts.length,
+      stashes: b.workspace.stashes.length,
       warning:
         'Replace the entire local workspace. A safety backup is required.',
     };

@@ -77,13 +77,46 @@ pub fn iso_now() -> String {
     )
 }
 pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
-    if s.notes.len() > 10000 || s.drafts.len() > 10001 {
+    if s.notes.len() > 10000 || s.stashes.len() > 10000 || s.drafts.len() > 20001 {
         return Err(invalid());
+    }
+    let mut stashes = HashMap::new();
+    let mut all_ids = HashSet::new();
+    for stash in &s.stashes {
+        if !uuid(&stash.id)
+            || !all_ids.insert(stash.id.to_lowercase())
+            || stash_name(&stash.name).as_ref().ok() != Some(&stash.name)
+            || !(0..=MAX_SAFE).contains(&stash.created_at)
+            || !(stash.created_at..=MAX_SAFE).contains(&stash.updated_at)
+        {
+            return Err(invalid());
+        }
+        stashes.insert(stash.id.as_str(), stash);
+    }
+    let mut done = HashSet::new();
+    for stash in &s.stashes {
+        let mut id = Some(stash.id.as_str());
+        let mut pending = HashSet::new();
+        while let Some(key) = id {
+            if done.contains(key) {
+                break;
+            }
+            if !pending.insert(key) {
+                return Err(invalid());
+            }
+            let current = stashes.get(key).ok_or_else(invalid)?;
+            id = current.parent_id.as_deref();
+        }
+        done.extend(pending);
     }
     let mut ids = HashMap::new();
     for n in &s.notes {
         if !uuid(&n.id)
+            || !all_ids.insert(n.id.to_lowercase())
             || ids.insert(n.id.to_lowercase(), n).is_some()
+            || n.stash_id
+                .as_ref()
+                .is_some_and(|id| !stashes.contains_key(id.as_str()))
             || n.markdown.len() > MAX_SOURCE
             || n.created_at < 0
             || n.created_at > MAX_SAFE
@@ -97,19 +130,24 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
     }
     let mut keys = HashSet::new();
     for d in &s.drafts {
-        if (d.key != "compose" && !uuid(&d.key))
+        if (compose_owner(&d.key).is_none() && !uuid(&d.key))
             || !keys.insert(d.key.to_lowercase())
             || d.markdown.len() > MAX_SOURCE
             || d.revision < 0
             || d.revision > MAX_SAFE
             || d.updated_at < 0
             || d.updated_at > MAX_SAFE
-            || (d.key != "compose"
+            || (compose_owner(&d.key).is_none()
                 && !ids
                     .get(&d.key.to_lowercase())
                     .is_some_and(|n| n.id == d.key && n.deleted_at.is_none()))
         {
             return Err(invalid());
+        }
+        if let Some(Some(id)) = compose_owner(&d.key) {
+            if !stashes.contains_key(id) {
+                return Err(invalid());
+            }
         }
     }
     if let Some(id) = &s.undo_delete_id {
@@ -125,9 +163,9 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
 }
 pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     validate_snapshot(s)?;
-    let b = BackupV1 {
+    let b = BackupV2 {
         format: "stashpad-alpha".into(),
-        version: 1,
+        version: 2,
         exported_at: iso_now(),
         workspace: s.clone(),
     };
@@ -140,12 +178,23 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub fn validate(bytes: &[u8]) -> Result<BackupV1> {
+pub fn validate(bytes: &[u8]) -> Result<BackupV2> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
-    let b: BackupV1 = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    if b.format != "stashpad-alpha" || b.version != 1 || !timestamp(&b.exported_at) {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
+    let b: BackupV2 = match value.get("version").and_then(|v| v.as_i64()) {
+        Some(1) => {
+            let legacy: BackupV1 = serde_json::from_value(value).map_err(|_| invalid())?;
+            if legacy.version != 1 || legacy.workspace.drafts.len() > 10001 {
+                return Err(invalid());
+            }
+            legacy.into()
+        }
+        Some(2) => serde_json::from_value(value).map_err(|_| invalid())?,
+        _ => return Err(invalid()),
+    };
+    if b.format != "stashpad-alpha" || !timestamp(&b.exported_at) {
         return Err(invalid());
     }
     validate_snapshot(&b.workspace)?;

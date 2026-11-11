@@ -11,12 +11,14 @@ import {
 const id = '11111111-1111-4111-8111-111111111111',
   deleted = '22222222-2222-4222-8222-222222222222';
 const snapshot = (): WorkspaceSnapshot => ({
+  stashes: [],
   notes: [
     {
       id,
       markdown: 'α **source**  \n```json\n{"a":1}\n```\n',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
       deletedAt: null,
     },
     {
@@ -24,6 +26,7 @@ const snapshot = (): WorkspaceSnapshot => ({
       markdown: 'deleted',
       createdAt: 0,
       updatedAt: 3,
+      stashId: null,
       deletedAt: 3,
     },
   ],
@@ -53,7 +56,7 @@ describe('strict whole-envelope backup validation', () => {
     'undoActive',
   ])('rejects %s without normalizing', (kind) => {
     const b = valid();
-    if (kind === 'future') b.version = 2;
+    if (kind === 'future') b.version = 3;
     if (kind === 'duplicate') b.workspace.notes.push(b.workspace.notes[0]);
     if (kind === 'draftDuplicate')
       b.workspace.drafts.push(b.workspace.drafts[0]);
@@ -85,7 +88,7 @@ it('validates public reusable fixtures', () => {
         'utf8',
       ),
     ),
-  ).toHaveProperty('version', 1);
+  ).toHaveProperty('version', 2);
   expect(
     validateBackup(
       readFileSync(
@@ -99,12 +102,14 @@ it('validates public reusable fixtures', () => {
 const upperActive = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
   upperDeleted = 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB';
 const upperWorkspace = (): WorkspaceSnapshot => ({
+  stashes: [],
   notes: [
     {
       id: upperActive,
       markdown: 'saved uppercase',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
       deletedAt: null,
     },
     {
@@ -112,6 +117,7 @@ const upperWorkspace = (): WorkspaceSnapshot => ({
       markdown: 'deleted uppercase',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
       deletedAt: 3,
     },
   ],

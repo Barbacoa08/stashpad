@@ -85,12 +85,35 @@ async fn note_save(
     markdown: String,
     draft_key: String,
     draft_revision: i64,
+    stash_id: Option<String>,
 ) -> Result<WorkspaceSnapshot> {
     fail_operation("save")?;
     mutate(state, move |s| {
-        s.save(id.as_deref(), &markdown, &draft_key, draft_revision)
+        s.save(
+            id.as_deref(),
+            &markdown,
+            &draft_key,
+            draft_revision,
+            stash_id.as_deref(),
+        )
     })
     .await
+}
+#[tauri::command]
+async fn stash_create(
+    state: State<'_, NativeState>,
+    name: String,
+    parent_id: Option<String>,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.create_stash(&name, parent_id.as_deref())).await
+}
+#[tauri::command]
+async fn stash_rename(
+    state: State<'_, NativeState>,
+    id: String,
+    name: String,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.rename_stash(&id, &name)).await
 }
 #[tauri::command]
 async fn draft_discard(state: State<'_, NativeState>, key: String) -> Result<WorkspaceSnapshot> {
@@ -120,6 +143,7 @@ struct Preview {
     token: String,
     notes: usize,
     drafts: usize,
+    stashes: usize,
     warning: String,
 }
 #[tauri::command]
@@ -172,7 +196,8 @@ async fn backup_preview_restore(
             token: token.clone(),
             notes: b.workspace.notes.len(),
             drafts: b.workspace.drafts.len(),
-            warning: "Replace all local notes and drafts. A safety backup will be written first."
+            stashes: b.workspace.stashes.len(),
+            warning: "Replace all local notes, stashes, and drafts. A safety backup will be written first."
                 .into(),
         };
         inner.lock().map_err(storage_error)?.preview = Some((token, b.workspace));
@@ -252,6 +277,8 @@ pub fn run() {
             external_open_url,
             clipboard_write_text,
             note_save,
+            stash_create,
+            stash_rename,
             note_delete,
             note_undo_delete,
             backup_export,

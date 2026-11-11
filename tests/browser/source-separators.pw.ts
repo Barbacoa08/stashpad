@@ -25,6 +25,7 @@ for (const [name, source] of [
           markdown,
           createdAt: 0,
           updatedAt: 0,
+          stashId: null,
           deletedAt: null,
         },
       ];

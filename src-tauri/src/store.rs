@@ -13,15 +13,36 @@ impl Store {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(storage_error)?;
-        if version > 1 {
+        if !(0..=2).contains(&version) {
             return Err(error(
                 "schema_version",
                 "This workspace needs a newer app. No data were replaced.",
             ));
         }
-        connection.execute_batch("BEGIN; CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY, markdown TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER); CREATE TABLE IF NOT EXISTS drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT); PRAGMA user_version=1; COMMIT;").map_err(storage_error)?;
         let mut store = Self { connection };
-        store.load()?;
+        if version < 2 {
+            store
+                .connection
+                .execute_batch("BEGIN IMMEDIATE;")
+                .map_err(storage_error)?;
+            let migration = (|| {
+                if version == 0 {
+                    store.connection.execute_batch("CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY,markdown TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER);CREATE TABLE IF NOT EXISTS drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);").map_err(storage_error)?;
+                }
+                store.connection.execute_batch("CREATE TABLE stashes(id TEXT PRIMARY KEY,name TEXT NOT NULL,parent_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);ALTER TABLE notes ADD COLUMN stash_id TEXT;PRAGMA user_version=2;").map_err(storage_error)?;
+                store.load()?;
+                store
+                    .connection
+                    .execute_batch("COMMIT;")
+                    .map_err(storage_error)
+            })();
+            if let Err(e) = migration {
+                let _ = store.connection.execute_batch("ROLLBACK;");
+                return Err(e);
+            }
+        } else {
+            store.load()?;
+        }
         Ok(store)
     }
     pub fn load(&mut self) -> Result<WorkspaceSnapshot> {
@@ -30,7 +51,7 @@ impl Store {
             let mut statement = self
                 .connection
                 .prepare(
-                    "SELECT id,markdown,created_at,updated_at,deleted_at FROM notes ORDER BY id",
+                    "SELECT id,markdown,created_at,updated_at,deleted_at,stash_id FROM notes ORDER BY id",
                 )
                 .map_err(storage_error)?;
             let rows = statement
@@ -41,11 +62,30 @@ impl Store {
                         created_at: r.get(2)?,
                         updated_at: r.get(3)?,
                         deleted_at: r.get(4)?,
+                        stash_id: r.get(5)?,
                     })
                 })
                 .map_err(storage_error)?;
             for n in rows {
                 s.notes.push(n.map_err(storage_error)?)
+            }
+            let mut statement = self
+                .connection
+                .prepare("SELECT id,name,parent_id,created_at,updated_at FROM stashes ORDER BY id")
+                .map_err(storage_error)?;
+            let rows = statement
+                .query_map([], |r| {
+                    Ok(Stash {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        parent_id: r.get(2)?,
+                        created_at: r.get(3)?,
+                        updated_at: r.get(4)?,
+                    })
+                })
+                .map_err(storage_error)?;
+            for stash in rows {
+                s.stashes.push(stash.map_err(storage_error)?);
             }
             let mut statement = self
                 .connection
@@ -91,10 +131,25 @@ impl Store {
         tx.execute("DELETE FROM notes", []).map_err(storage_error)?;
         tx.execute("DELETE FROM settings", [])
             .map_err(storage_error)?;
+        tx.execute("DELETE FROM stashes", [])
+            .map_err(storage_error)?;
+        for stash in &s.stashes {
+            tx.execute(
+                "INSERT INTO stashes VALUES (?1,?2,?3,?4,?5)",
+                params![
+                    stash.id,
+                    stash.name,
+                    stash.parent_id,
+                    stash.created_at,
+                    stash.updated_at
+                ],
+            )
+            .map_err(storage_error)?;
+        }
         for n in &s.notes {
             tx.execute(
-                "INSERT INTO notes VALUES (?1,?2,?3,?4,?5)",
-                params![n.id, n.markdown, n.created_at, n.updated_at, n.deleted_at],
+                "INSERT INTO notes (id,markdown,created_at,updated_at,deleted_at,stash_id) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![n.id, n.markdown, n.created_at, n.updated_at, n.deleted_at,n.stash_id],
             )
             .map_err(storage_error)?;
         }
@@ -147,6 +202,7 @@ impl Store {
         markdown: &str,
         draft_key: &str,
         revision: i64,
+        stash_id: Option<&str>,
     ) -> Result<WorkspaceSnapshot> {
         if markdown.trim().is_empty() {
             return Err(error(
@@ -155,6 +211,15 @@ impl Store {
             ));
         }
         let mut s = self.load()?;
+        let expected_key = id.map_or_else(|| compose_key(stash_id), str::to_string);
+        if draft_key != expected_key
+            || stash_id.is_some_and(|id| !s.stashes.iter().any(|stash| stash.id == id))
+        {
+            return Err(error(
+                "invalid_context",
+                "This capture destination is unavailable. Your input is retained.",
+            ));
+        }
         if let Some(id) = id {
             let n = s
                 .notes
@@ -176,10 +241,40 @@ impl Store {
                 created_at: time,
                 updated_at: time,
                 deleted_at: None,
+                stash_id: stash_id.map(str::to_string),
             });
         }
         s.drafts
             .retain(|d| d.key != draft_key || d.revision > revision);
+        self.replace(&s)
+    }
+    pub fn create_stash(
+        &mut self,
+        name: &str,
+        parent_id: Option<&str>,
+    ) -> Result<WorkspaceSnapshot> {
+        let name = stash_name(name)?;
+        let mut s = self.load()?;
+        let time = now();
+        s.stashes.push(Stash {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            parent_id: parent_id.map(str::to_string),
+            created_at: time,
+            updated_at: time,
+        });
+        self.replace(&s)
+    }
+    pub fn rename_stash(&mut self, id: &str, name: &str) -> Result<WorkspaceSnapshot> {
+        let name = stash_name(name)?;
+        let mut s = self.load()?;
+        let stash = s
+            .stashes
+            .iter_mut()
+            .find(|s| s.id == id)
+            .ok_or_else(|| error("not_found", "This stash is unavailable."))?;
+        stash.name = name;
+        stash.updated_at = now().max(stash.updated_at.saturating_add(1));
         self.replace(&s)
     }
     pub fn discard_draft(&mut self, key: &str) -> Result<WorkspaceSnapshot> {
