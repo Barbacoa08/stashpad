@@ -119,7 +119,12 @@ for (const constrained of [false, true])
       await card
         .getByRole('button', { name: 'Select note', exact: true })
         .focus();
-      for (const name of ['Edit note', 'Copy Markdown', 'Delete note']) {
+      for (const name of [
+        'Edit note',
+        'Mark done',
+        'Copy Markdown',
+        'Delete note',
+      ]) {
         await page.keyboard.press('Tab');
         const action = card.getByRole('button', { name, exact: true });
         await expect(action).toBeFocused();
@@ -146,7 +151,7 @@ for (const constrained of [false, true])
           body = node.querySelector('.markdown-view')!.getBoundingClientRect();
         return {
           contained:
-            actions.length === 3 &&
+            actions.length === 4 &&
             actions.every(
               (r) =>
                 r.left >= card.left &&

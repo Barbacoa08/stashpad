@@ -99,6 +99,7 @@ fn full_note_draft_count_boundary_roundtrips() {
             markdown: "x".into(),
             created_at: 0,
             updated_at: 0,
+            done: false,
             deleted_at: None,
         });
         s.drafts.push(Draft {
@@ -132,6 +133,7 @@ fn compact_envelope_exact_limit_includes_drafts_and_metadata() {
             markdown: "x".repeat(MAX_SOURCE),
             created_at: 0,
             updated_at: 0,
+            done: false,
             deleted_at: None,
         });
     }
@@ -318,7 +320,7 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     drop(db);
     let path = dir.path().join("notes.sqlite3");
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("PRAGMA user_version=3;").unwrap();
+    c.execute_batch("PRAGMA user_version=4;").unwrap();
     drop(c);
     let before = std::fs::read(&path).unwrap();
     assert!(Store::open(&path).is_err());

@@ -23,5 +23,5 @@ it('accepts complete version2 hierarchy before replacement', () => {
         },
       }),
     ),
-  ).toHaveProperty('version', 2);
+  ).toHaveProperty('version', 3);
 });

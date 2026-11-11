@@ -5,6 +5,7 @@ pub const MAX_SAFE: i64 = 9_007_199_254_740_991;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Note {
+    pub done: bool,
     #[serde(deserialize_with = "required_nullable")]
     pub stash_id: Option<String>,
     pub id: String,
@@ -43,7 +44,7 @@ pub struct WorkspaceSnapshot {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BackupV2 {
+pub struct BackupV3 {
     pub format: String,
     pub version: i64,
     pub exported_at: String,
@@ -76,11 +77,69 @@ pub struct BackupV1 {
     pub exported_at: String,
     pub workspace: LegacyWorkspace,
 }
-impl From<BackupV1> for BackupV2 {
+// Frozen version-2 wire fields; current Note must never be used here.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V2Note {
+    #[serde(deserialize_with = "required_nullable")]
+    pub stash_id: Option<String>,
+    pub id: String,
+    pub markdown: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub deleted_at: Option<i64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V2Workspace {
+    pub stashes: Vec<Stash>,
+    pub notes: Vec<V2Note>,
+    pub drafts: Vec<Draft>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub undo_delete_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupV2 {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub workspace: V2Workspace,
+}
+impl From<BackupV2> for BackupV3 {
+    fn from(b: BackupV2) -> Self {
+        Self {
+            format: b.format,
+            version: 3,
+            exported_at: b.exported_at,
+            workspace: WorkspaceSnapshot {
+                stashes: b.workspace.stashes,
+                drafts: b.workspace.drafts,
+                undo_delete_id: b.workspace.undo_delete_id,
+                notes: b
+                    .workspace
+                    .notes
+                    .into_iter()
+                    .map(|n| Note {
+                        done: false,
+                        id: n.id,
+                        stash_id: n.stash_id,
+                        markdown: n.markdown,
+                        created_at: n.created_at,
+                        updated_at: n.updated_at,
+                        deleted_at: n.deleted_at,
+                    })
+                    .collect(),
+            },
+        }
+    }
+}
+impl From<BackupV1> for BackupV3 {
     fn from(b: BackupV1) -> Self {
         Self {
             format: b.format,
-            version: 2,
+            version: 3,
             exported_at: b.exported_at,
             workspace: WorkspaceSnapshot {
                 stashes: Vec::new(),
@@ -91,6 +150,7 @@ impl From<BackupV1> for BackupV2 {
                     .notes
                     .into_iter()
                     .map(|n| Note {
+                        done: false,
                         id: n.id,
                         stash_id: None,
                         markdown: n.markdown,

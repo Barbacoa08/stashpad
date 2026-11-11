@@ -5,6 +5,7 @@ import type { Repository, RestorePreview } from '../platform/workspace';
 /** Save acknowledgments allow editing; other in-flight mutations lock editors. */
 export type WorkspaceOperation =
   | 'save'
+  | 'completion'
   | 'create-stash'
   | 'rename-stash'
   | 'delete'
@@ -24,6 +25,7 @@ export interface ViewState {
   status: string;
   error: string;
   preview: RestorePreview | null;
+  completionRetry: { id: string; done: boolean } | null;
 }
 export class WorkspaceController {
   state: ViewState = {
@@ -39,6 +41,7 @@ export class WorkspaceController {
     status: 'Loading…',
     error: '',
     preview: null,
+    completionRetry: null,
   };
   private listeners = new Set<(s: ViewState) => void>();
   private disposed = false;
@@ -49,6 +52,7 @@ export class WorkspaceController {
   private dirty = new Set<string>();
   private queryRevision = 0;
   private editIntentRevision = 0;
+  private completionIntent = 0;
   constructor(private repo: Repository) {}
   subscribe(fn: (s: ViewState) => void) {
     this.listeners.add(fn);
@@ -366,6 +370,47 @@ export class WorkspaceController {
       return true;
     });
   }
+  setNoteDone(id: string, done: boolean) {
+    const intent = { id, done },
+      revision = ++this.completionIntent;
+    return this.run(async () => {
+      this.patch({ operation: 'completion', error: '' });
+      try {
+        if (!(await this.checkpoint())) {
+          if (revision === this.completionIntent)
+            this.patch({
+              completionRetry: intent,
+              status: 'Completion needs retry',
+            });
+          return false;
+        }
+        this.snapshot(await this.repo.setNoteDone(intent.id, intent.done));
+        if (revision === this.completionIntent)
+          this.patch({
+            completionRetry: null,
+            error: '',
+            status: intent.done ? 'Marked done' : 'Marked not done',
+          });
+        return true;
+      } catch (e) {
+        this.error(e);
+        if (revision === this.completionIntent)
+          this.patch({
+            completionRetry: intent,
+            status: 'Completion needs retry',
+          });
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    });
+  }
+  retryCompletion() {
+    const intent = this.state.completionRetry;
+    return intent
+      ? this.setNoteDone(intent.id, intent.done)
+      : Promise.resolve(false);
+  }
   remove() {
     const key = this.state.activeKey;
     if (composeOwner(key)) return Promise.resolve(false);
@@ -456,7 +501,13 @@ export class WorkspaceController {
           this.resetBuffers(s);
           this.patch({ stashId: null });
           this.context(composeKey(null));
-          this.patch({ query: '', status: 'Workspace restored', error: '' });
+          this.completionIntent++;
+          this.patch({
+            query: '',
+            status: 'Workspace restored',
+            error: '',
+            completionRetry: null,
+          });
         } else this.patch({ status: 'Restore cancelled' });
         this.patch({ preview: null });
         return true;

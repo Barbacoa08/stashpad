@@ -13,14 +13,14 @@ impl Store {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(storage_error)?;
-        if !(0..=2).contains(&version) {
+        if !(0..=3).contains(&version) {
             return Err(error(
                 "schema_version",
                 "This workspace needs a newer app. No data were replaced.",
             ));
         }
         let mut store = Self { connection };
-        if version < 2 {
+        if version < 3 {
             store
                 .connection
                 .execute_batch("BEGIN IMMEDIATE;")
@@ -29,7 +29,10 @@ impl Store {
                 if version == 0 {
                     store.connection.execute_batch("CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY,markdown TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER);CREATE TABLE IF NOT EXISTS drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);").map_err(storage_error)?;
                 }
-                store.connection.execute_batch("CREATE TABLE stashes(id TEXT PRIMARY KEY,name TEXT NOT NULL,parent_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);ALTER TABLE notes ADD COLUMN stash_id TEXT;PRAGMA user_version=2;").map_err(storage_error)?;
+                if version < 2 {
+                    store.connection.execute_batch("CREATE TABLE stashes(id TEXT PRIMARY KEY,name TEXT NOT NULL,parent_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);ALTER TABLE notes ADD COLUMN stash_id TEXT;").map_err(storage_error)?;
+                }
+                store.connection.execute_batch("ALTER TABLE notes ADD COLUMN done INTEGER NOT NULL DEFAULT 0 CHECK(done IN (0,1));PRAGMA user_version=3;").map_err(storage_error)?;
                 store.load()?;
                 store
                     .connection
@@ -51,12 +54,17 @@ impl Store {
             let mut statement = self
                 .connection
                 .prepare(
-                    "SELECT id,markdown,created_at,updated_at,deleted_at,stash_id FROM notes ORDER BY id",
+                    "SELECT id,markdown,created_at,updated_at,deleted_at,stash_id,done FROM notes ORDER BY id",
                 )
                 .map_err(storage_error)?;
             let rows = statement
                 .query_map([], |r| {
+                    let raw: i64 = r.get(6)?;
+                    if raw != 0 && raw != 1 {
+                        return Err(rusqlite::Error::IntegralValueOutOfRange(6, raw));
+                    }
                     Ok(Note {
+                        done: raw == 1,
                         id: r.get(0)?,
                         markdown: r.get(1)?,
                         created_at: r.get(2)?,
@@ -113,7 +121,13 @@ impl Store {
                 s.undo_delete_id = row.get(0).map_err(storage_error)?;
             }
         }
-        backup::encode(&s).map_err(|_|error("storage_invalid","The local workspace is invalid. Retry or use a verified recovery copy; no empty substitute was loaded."))?;
+        backup::encode(&s).map_err(|e| {
+            if e.code == "capacity_exceeded" {
+                error("capacity_exceeded", "The current workspace exceeds the 10 MiB backup capacity, including completion metadata. Prior data are retained; use a compatible app or a verified smaller recovery copy.")
+            } else {
+                error("storage_invalid", "The local workspace is invalid. Retry or use a verified recovery copy; no empty substitute was loaded.")
+            }
+        })?;
         Ok(s)
     }
     pub fn replace(&mut self, s: &WorkspaceSnapshot) -> Result<WorkspaceSnapshot> {
@@ -148,8 +162,8 @@ impl Store {
         }
         for n in &s.notes {
             tx.execute(
-                "INSERT INTO notes (id,markdown,created_at,updated_at,deleted_at,stash_id) VALUES (?1,?2,?3,?4,?5,?6)",
-                params![n.id, n.markdown, n.created_at, n.updated_at, n.deleted_at,n.stash_id],
+                "INSERT INTO notes (id,markdown,created_at,updated_at,deleted_at,stash_id,done) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![n.id, n.markdown, n.created_at, n.updated_at, n.deleted_at,n.stash_id,n.done],
             )
             .map_err(storage_error)?;
         }
@@ -236,6 +250,7 @@ impl Store {
         } else {
             let time = now();
             s.notes.push(Note {
+                done: false,
                 id: uuid::Uuid::new_v4().to_string(),
                 markdown: markdown.into(),
                 created_at: time,
@@ -247,6 +262,34 @@ impl Store {
         s.drafts
             .retain(|d| d.key != draft_key || d.revision > revision);
         self.replace(&s)
+    }
+    pub fn set_done(&mut self, id: &str, done: bool) -> Result<WorkspaceSnapshot> {
+        let mut s = self.load()?;
+        let n = s
+            .notes
+            .iter_mut()
+            .find(|n| n.id == id && n.deleted_at.is_none())
+            .ok_or_else(|| {
+                error(
+                    "not_found",
+                    "This active note is unavailable. Completion was not changed.",
+                )
+            })?;
+        if n.done == done {
+            return Ok(s);
+        }
+        n.done = done;
+        n.updated_at = now().max(n.updated_at.saturating_add(1));
+        let updated_at = n.updated_at;
+        backup::encode(&s)?;
+        let tx = self.connection.transaction().map_err(storage_error)?;
+        tx.execute(
+            "UPDATE notes SET done=?1,updated_at=?2 WHERE id=?3 AND deleted_at IS NULL",
+            params![done, updated_at, id],
+        )
+        .map_err(storage_error)?;
+        tx.commit().map_err(storage_error)?;
+        Ok(s)
     }
     pub fn create_stash(
         &mut self,

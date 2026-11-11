@@ -33,6 +33,7 @@ for (const constrained of [false, true]) {
             markdown: 'Plain note',
             createdAt: 2,
             updatedAt: 2,
+            done: false,
             deletedAt: null,
           },
         ],

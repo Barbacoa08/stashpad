@@ -292,7 +292,7 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 2,
+      version: 3,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });

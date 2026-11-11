@@ -1,7 +1,7 @@
 import {
   MAX_SOURCE,
   MAX_ENVELOPE,
-  type BackupV2,
+  type BackupV3,
   type WorkspaceSnapshot,
   type AppError,
 } from './notes';
@@ -17,7 +17,7 @@ const integer = (v: unknown): v is number =>
 const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-export function validateBackup(text: string): BackupV2 | AppError {
+export function validateBackup(text: string): BackupV3 | AppError {
   const invalid = (message: string): AppError => ({
     code: 'invalid_backup',
     message,
@@ -34,14 +34,14 @@ export function validateBackup(text: string): BackupV2 | AppError {
     !record(b) ||
     !fields(b, ['format', 'version', 'exportedAt', 'workspace']) ||
     b.format !== 'stashpad-alpha' ||
-    (b.version !== 1 && b.version !== 2) ||
+    (b.version !== 1 && b.version !== 2 && b.version !== 3) ||
     typeof b.exportedAt !== 'string' ||
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(b.exportedAt) ||
     !Number.isFinite(Date.parse(b.exportedAt)) ||
     new Date(b.exportedAt).toISOString() !== b.exportedAt
   )
     return invalid(
-      'Expected a complete version 1 or 2 Stashpad alpha backup with a UTC timestamp.',
+      'Expected a complete version 1, 2, or 3 Stashpad alpha backup with a UTC timestamp.',
     );
   const s = b.workspace;
   if (
@@ -71,6 +71,27 @@ export function validateBackup(text: string): BackupV2 | AppError {
     s.notes = s.notes.map((n) => ({
       ...(n as Record<string, unknown>),
       stashId: null,
+    }));
+  }
+  if (b.version !== 3) {
+    if (
+      (s.notes as unknown[]).some(
+        (n) =>
+          !record(n) ||
+          !fields(n, [
+            'id',
+            'stashId',
+            'markdown',
+            'createdAt',
+            'updatedAt',
+            'deletedAt',
+          ]),
+      )
+    )
+      return invalid('Invalid legacy note fields.');
+    s.notes = (s.notes as unknown[]).map((n) => ({
+      ...(n as Record<string, unknown>),
+      done: false,
     }));
   }
   if (!Array.isArray(s.stashes) || s.stashes.length > 10000)
@@ -109,11 +130,13 @@ export function validateBackup(text: string): BackupV2 | AppError {
       !fields(n, [
         'id',
         'stashId',
+        'done',
         'markdown',
         'createdAt',
         'updatedAt',
         'deletedAt',
       ]) ||
+      typeof n.done !== 'boolean' ||
       !uuid(n.id) ||
       notes.has(n.id.toLowerCase()) ||
       stashes.has(n.id.toLowerCase()) ||
@@ -163,12 +186,17 @@ export function validateBackup(text: string): BackupV2 | AppError {
       notes.get(s.undoDeleteId.toLowerCase())?.deletedAt === null)
   )
     return invalid('Invalid Undo delete target.');
-  return { ...b, version: 2 } as unknown as BackupV2;
+  const normalized = { ...b, version: 3 } as unknown as BackupV3;
+  if (bytes(JSON.stringify(normalized)) > MAX_ENVELOPE)
+    return invalid(
+      'Converted backup exceeds the 10 MiB capacity. The original backup is retained; recover using a compatible app or a verified smaller copy.',
+    );
+  return normalized;
 }
 export function encodeBackup(workspace: WorkspaceSnapshot): string {
   return JSON.stringify({
     format: 'stashpad-alpha',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     workspace,
   });

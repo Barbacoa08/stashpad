@@ -7,6 +7,7 @@ const notes = [
     createdAt: 0,
     updatedAt: 2,
     stashId: null,
+    done: false,
     deletedAt: null,
   },
   {
@@ -15,6 +16,7 @@ const notes = [
     createdAt: 0,
     updatedAt: 2,
     stashId: null,
+    done: false,
     deletedAt: null,
   },
   {
@@ -23,6 +25,7 @@ const notes = [
     createdAt: 0,
     updatedAt: 3,
     stashId: null,
+    done: false,
     deletedAt: 3,
   },
 ];
@@ -43,6 +46,7 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       createdAt: 1,
       updatedAt: 100,
       stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -51,6 +55,7 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       createdAt: 2,
       updatedAt: 2,
       stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -59,6 +64,7 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       createdAt: 1,
       updatedAt: 1,
       stashId: null,
+      done: false,
       deletedAt: null,
     },
   ];

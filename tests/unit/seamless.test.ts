@@ -119,6 +119,7 @@ it('failed latest-source delete leaves the original note alive, retains the revi
   expect(repo.snapshot.notes[0]).toMatchObject({
     id,
     markdown: ' \r\n\n',
+    done: false,
     deletedAt: null,
   });
 });

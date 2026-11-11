@@ -9,6 +9,7 @@ fn snapshot() -> WorkspaceSnapshot {
             markdown: "α **source**  \n```js\nlet a='*';\n```\n".into(),
             created_at: 1,
             updated_at: 2,
+            done: false,
             deleted_at: None,
         }],
         drafts: vec![Draft {
@@ -48,7 +49,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
     ] {
         let mut v = valid.clone();
         match case {
-            "future" => v["version"] = 3.into(),
+            "future" => v["version"] = 4.into(),
             "duplicate" => {
                 let n = v["workspace"]["notes"][0].clone();
                 v["workspace"]["notes"].as_array_mut().unwrap().push(n)
@@ -104,6 +105,7 @@ fn separate_store_roundtrip_and_safety_backup() {
         .save(None, "deleted source", "compose", 1, None)
         .unwrap();
     let id = created.notes[0].id.clone();
+    first.set_done(&id, true).unwrap();
     first.checkpoint("compose", "new draft", 8).unwrap();
     let before = first.delete(&id).unwrap();
     let encoded = backup::encode(&before).unwrap();
@@ -168,6 +170,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
                 markdown: "saved uppercase".into(),
                 created_at: 1,
                 updated_at: 2,
+                done: false,
                 deleted_at: None,
             },
             Note {
@@ -176,6 +179,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
                 markdown: "deleted uppercase".into(),
                 created_at: 1,
                 updated_at: 2,
+                done: false,
                 deleted_at: Some(3),
             },
         ],
@@ -289,7 +293,7 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             "empty" => v["workspace"]["stashes"][0]["name"] = "  ".into(),
             "extra" => v["workspace"]["stashes"][0]["unknown"] = true.into(),
             "orphanUndo" => v["workspace"]["undoDeleteId"] = b.into(),
-            "future" => v["version"] = 3.into(),
+            "future" => v["version"] = 4.into(),
             _ => {}
         }
         assert_eq!(
@@ -322,6 +326,7 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             markdown: "x".into(),
             created_at: 0,
             updated_at: 0,
+            done: false,
             deleted_at: None,
         });
         s.drafts.push(Draft {

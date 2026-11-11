@@ -100,6 +100,15 @@ async fn note_save(
     .await
 }
 #[tauri::command]
+async fn note_set_done(
+    state: State<'_, NativeState>,
+    id: String,
+    done: bool,
+) -> Result<WorkspaceSnapshot> {
+    fail_operation("completion")?;
+    mutate(state, move |s| s.set_done(&id, done)).await
+}
+#[tauri::command]
 async fn stash_create(
     state: State<'_, NativeState>,
     name: String,
@@ -277,6 +286,7 @@ pub fn run() {
             external_open_url,
             clipboard_write_text,
             note_save,
+            note_set_done,
             stash_create,
             stash_rename,
             note_delete,

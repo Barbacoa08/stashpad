@@ -25,6 +25,7 @@ function acceptedDeepWorkspace(): WorkspaceSnapshot {
       markdown: 'match',
       createdAt: 0,
       updatedAt: 0,
+      done: false,
       deletedAt: null,
     });
   return s;
@@ -33,7 +34,7 @@ it('bounds one deep displayed location instead of emitting its complete ancestry
   const s = acceptedDeepWorkspace();
   const text = encodeBackup(s);
   expect(new TextEncoder().encode(text).length).toBeLessThan(4 * 1024 * 1024);
-  expect(validateBackup(text)).toHaveProperty('version', 2);
+  expect(validateBackup(text)).toHaveProperty('version', 3);
   expect(
     Array.from(hierarchy.locationLabel(s.stashes, s.notes[0].stashId)).length,
   ).toBeLessThanOrEqual(96);

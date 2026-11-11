@@ -26,6 +26,7 @@ const workspace = (): WorkspaceSnapshot => ({
       markdown: 'nested',
       createdAt: 2,
       updatedAt: 2,
+      done: false,
       deletedAt: null,
     },
   ],
@@ -36,7 +37,7 @@ const workspace = (): WorkspaceSnapshot => ({
 it('roundtrips nested ownership and resolves a flat hierarchy and exact compose keys', () => {
   const s = workspace();
   const checked = validateBackup(encodeBackup(s));
-  expect(checked).toHaveProperty('version', 2);
+  expect(checked).toHaveProperty('version', 3);
   expect(checked).toHaveProperty('workspace', s);
   expect(stashPath(s.stashes, b).map((x) => x.name)).toEqual([
     'Parent',
@@ -71,7 +72,7 @@ it.each([
   if (kind === 'compose') v.workspace.drafts[0].key = composeKey(n);
   if (kind === 'crossType') v.workspace.notes[0].id = a.toLowerCase();
   if (kind === 'name') v.workspace.stashes[0].name = '😀'.repeat(201);
-  if (kind === 'future') v.version = 3;
+  if (kind === 'future') v.version = 4;
   expect(validateBackup(JSON.stringify(v))).toHaveProperty(
     'code',
     'invalid_backup',
@@ -113,7 +114,7 @@ it('validates a 10000 deep chain without recursion or quadratic ancestor scans',
       updatedAt: i,
     });
   }
-  expect(validateBackup(encodeBackup(s))).toHaveProperty('version', 2);
+  expect(validateBackup(encodeBackup(s))).toHaveProperty('version', 3);
   expect(stashPath(s.stashes, s.stashes.at(-1)!.id)).toHaveLength(10000);
 });
 it('counts direct active entries once for stash cards, including deletion timestamp zero', async () => {
@@ -123,6 +124,7 @@ it('counts direct active entries once for stash cards, including deletion timest
   s.notes.push({
     ...s.notes[0],
     id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    done: false,
     deletedAt: 0,
   });
   expect(policy.entryCounts(s).get(b)).toBe(1);
@@ -147,6 +149,7 @@ it('accepts 200 Unicode code points and all 20001 legal draft contexts', () => {
       markdown: 'x',
       createdAt: 0,
       updatedAt: 0,
+      done: false,
       deletedAt: null,
     });
     s.drafts.push(

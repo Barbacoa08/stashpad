@@ -19,6 +19,7 @@ const snapshot = (): WorkspaceSnapshot => ({
       createdAt: 1,
       updatedAt: 2,
       stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -27,6 +28,7 @@ const snapshot = (): WorkspaceSnapshot => ({
       createdAt: 0,
       updatedAt: 3,
       stashId: null,
+      done: false,
       deletedAt: 3,
     },
   ],
@@ -56,7 +58,7 @@ describe('strict whole-envelope backup validation', () => {
     'undoActive',
   ])('rejects %s without normalizing', (kind) => {
     const b = valid();
-    if (kind === 'future') b.version = 3;
+    if (kind === 'future') b.version = 4;
     if (kind === 'duplicate') b.workspace.notes.push(b.workspace.notes[0]);
     if (kind === 'draftDuplicate')
       b.workspace.drafts.push(b.workspace.drafts[0]);
@@ -88,7 +90,7 @@ it('validates public reusable fixtures', () => {
         'utf8',
       ),
     ),
-  ).toHaveProperty('version', 2);
+  ).toHaveProperty('version', 3);
   expect(
     validateBackup(
       readFileSync(
@@ -110,6 +112,7 @@ const upperWorkspace = (): WorkspaceSnapshot => ({
       createdAt: 1,
       updatedAt: 2,
       stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -118,6 +121,7 @@ const upperWorkspace = (): WorkspaceSnapshot => ({
       createdAt: 1,
       updatedAt: 2,
       stashId: null,
+      done: false,
       deletedAt: 3,
     },
   ],

@@ -86,12 +86,27 @@ export class MemoryRepository implements Repository {
         markdown,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        done: false,
         deletedAt: null,
         stashId,
       });
     s.drafts = s.drafts.filter(
       (d) => d.key !== draftKey || d.revision > draftRevision,
     );
+    return this.commit(s);
+  }
+  async setNoteDone(id: string, done: boolean) {
+    this.check('completion');
+    const s = structuredClone(this.snapshot);
+    const n = s.notes.find((n) => n.id === id && n.deletedAt === null);
+    if (!n)
+      throw new Error(
+        'This active note is unavailable. Completion was not changed.',
+      );
+    if (n.done !== done) {
+      n.done = done;
+      n.updatedAt = Math.max(Date.now(), n.updatedAt + 1);
+    }
     return this.commit(s);
   }
   async createStash(name: string, parentId: string | null) {

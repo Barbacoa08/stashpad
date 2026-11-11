@@ -26,6 +26,7 @@ for (const [name, source] of [
           createdAt: 0,
           updatedAt: 0,
           stashId: null,
+          done: false,
           deletedAt: null,
         },
       ];

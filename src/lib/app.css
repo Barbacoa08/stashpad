@@ -206,7 +206,7 @@ kbd {
 .card-actions {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.15rem;
 }
 .card-actions button {
   display: grid;
@@ -814,6 +814,10 @@ kbd {
   display: flex;
   flex-direction: column;
 }
+.details-rail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .workspace-feedback {
   margin-top: auto;
   padding: 1rem 0 0;
@@ -906,4 +910,11 @@ kbd {
   visibility: hidden;
   pointer-events: none;
   display: flow-root;
+}
+
+/* Completion changes saved presentation only; raw Markdown stays legible. */
+.note-card.done .markdown-view {
+  opacity: 0.7;
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
 }

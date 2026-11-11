@@ -24,7 +24,14 @@ for (const mode of ['capture', 'inline'] as const) {
       await page.keyboard.press('e');
     }
     const editor = mode === 'inline' ? inline(page) : capture(page);
-    if (mode === 'capture') await editor.fill('```js\nconst x = 1;\n```');
+    const saveButton = page.getByRole('button', {
+      name: 'Save note',
+      exact: true,
+    });
+    if (mode === 'capture') {
+      await expect(saveButton).toHaveAttribute('title', 'Save note (Enter)');
+      await editor.fill('```js\nconst x = 1;\n```');
+    }
     await editor.press('Meta+Home');
     await editor.press('ArrowDown');
     await editor.press('End');
@@ -33,6 +40,8 @@ for (const mode of ['capture', 'inline'] as const) {
         ? page.getByLabel('Inline editing keys')
         : page.locator('.composer .hint');
     await expect(hint).toContainText('Enter adds a code line');
+    if (mode === 'capture')
+      await expect(saveButton).toHaveAttribute('title', 'Save note');
     for (const key of ['Enter', 'Shift+Enter', 'Meta+Enter']) {
       await editor.press(key);
       await expect(editor).toBeFocused();
@@ -54,6 +63,8 @@ for (const mode of ['capture', 'inline'] as const) {
     await expect(hint).toContainText(
       mode === 'inline' ? 'Enter finishes editing' : 'Enter saves',
     );
+    if (mode === 'capture')
+      await expect(saveButton).toHaveAttribute('title', 'Save note (Enter)');
     await editor.press('Enter');
     if (mode === 'inline') {
       await expect(inline(page)).toHaveCount(0);
@@ -295,7 +306,7 @@ test('expansion uses exact note identity across filters and clears on deletion, 
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 2,
+      version: 3,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });

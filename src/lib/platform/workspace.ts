@@ -21,6 +21,7 @@ export interface Repository {
     draftRevision: number,
     stashId: string | null,
   ): Promise<WorkspaceSnapshot>;
+  setNoteDone(id: string, done: boolean): Promise<WorkspaceSnapshot>;
   createStash(
     name: string,
     parentId: string | null,
@@ -42,6 +43,7 @@ export const nativeRepository: Repository = {
     invoke('draft_checkpoint', { key, markdown, revision }),
   saveNote: (id, markdown, draftKey, draftRevision, stashId) =>
     invoke('note_save', { id, markdown, draftKey, draftRevision, stashId }),
+  setNoteDone: (id, done) => invoke('note_set_done', { id, done }),
   createStash: (name, parentId) => invoke('stash_create', { name, parentId }),
   renameStash: (id, name) => invoke('stash_rename', { id, name }),
   discardDraft: (key) => invoke('draft_discard', { key }),

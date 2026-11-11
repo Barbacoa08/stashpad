@@ -185,3 +185,95 @@ test('current and hovered stash rows retain one surface for both controls', asyn
   await expect(currentTitle).toBeFocused();
   await expect(currentTitle).toHaveCSS('outline-style', 'solid');
 });
+
+async function failedCapture(
+  page: import('@playwright/test').Page,
+  width: number,
+) {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto('/?fixture');
+  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  await capture.fill('Responsive recovery source');
+  await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
+  await capture.press('Enter');
+  return capture;
+}
+test('responsive narrowing hands a focused retry to visible Details without changing source or error', async ({
+  page,
+}) => {
+  const capture = await failedCapture(page, 1440);
+  const retry = page.getByRole('button', { name: 'Retry save', exact: true });
+  await retry.focus();
+  await expect(retry).toBeFocused();
+  const error = await page.getByRole('alert').textContent();
+  await page.setViewportSize({ width: 800, height: 600 });
+  const details = page.getByRole('button', { name: /Details/ });
+  await expect(details).toBeFocused();
+  await expect(details).toBeVisible();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+  await page.screenshot({
+    path: '.projects/2026-11-11-sidebar-code-done/final-fix-focus-narrow.png',
+  });
+  await expect(capture).toHaveText('Responsive recovery source');
+  expect(
+    await page.getByRole('alert', { includeHidden: true }).textContent(),
+  ).toBe(error);
+  expect(
+    await page.evaluate(
+      () => (window as any).__test.repo.snapshot.notes.length,
+    ),
+  ).toBe(0);
+});
+test('responsive widening hands a focused Details disclosure to the visible panel', async ({
+  page,
+}) => {
+  const capture = await failedCapture(page, 800);
+  const details = page.getByRole('button', { name: /Details/ });
+  await details.focus();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const panel = page.getByRole('complementary', { name: 'Note details' });
+  await expect(panel).toBeVisible();
+  await expect(panel).toBeFocused();
+  await expect(panel).toHaveCSS('outline-style', 'solid');
+  await page.screenshot({
+    path: '.projects/2026-11-11-sidebar-code-done/final-fix-focus-wide.png',
+  });
+  await expect(capture).toHaveText('Responsive recovery source');
+  await expect(page.getByRole('alert')).toContainText('failure');
+});
+test('responsive changes retain visible open-panel focus and explicit close returns it to Details', async ({
+  page,
+}) => {
+  await failedCapture(page, 800);
+  const details = page.getByRole('button', { name: /Details/ });
+  await details.click();
+  const retry = page.getByRole('button', { name: 'Retry save', exact: true });
+  await retry.focus();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(retry).toBeFocused();
+  await page.setViewportSize({ width: 800, height: 600 });
+  await expect(retry).toBeFocused();
+  await expect(retry).toBeVisible();
+  await details.dispatchEvent('click');
+  await expect(details).toBeFocused();
+  await expect(details).toHaveAttribute('aria-expanded', 'false');
+});
+test('responsive changes never steal newer unrelated Search or capture focus', async ({
+  page,
+}) => {
+  const capture = await failedCapture(page, 1440);
+  const retry = page.getByRole('button', { name: 'Retry save', exact: true });
+  const search = page.getByRole('searchbox');
+  await retry.focus();
+  await search.focus();
+  await page.setViewportSize({ width: 800, height: 600 });
+  await expect(search).toBeFocused();
+  await capture.focus();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(capture).toBeFocused();
+  await page.setViewportSize({ width: 800, height: 600 });
+  await search.focus();
+  await page.waitForTimeout(30);
+  await expect(search).toBeFocused();
+  await expect(capture).toHaveText('Responsive recovery source');
+});

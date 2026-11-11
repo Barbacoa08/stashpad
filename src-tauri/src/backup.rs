@@ -163,9 +163,9 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
 }
 pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     validate_snapshot(s)?;
-    let b = BackupV2 {
+    let b = BackupV3 {
         format: "stashpad-alpha".into(),
-        version: 2,
+        version: 3,
         exported_at: iso_now(),
         workspace: s.clone(),
     };
@@ -178,12 +178,12 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub fn validate(bytes: &[u8]) -> Result<BackupV2> {
+pub fn validate(bytes: &[u8]) -> Result<BackupV3> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    let b: BackupV2 = match value.get("version").and_then(|v| v.as_i64()) {
+    let b: BackupV3 = match value.get("version").and_then(|v| v.as_i64()) {
         Some(1) => {
             let legacy: BackupV1 = serde_json::from_value(value).map_err(|_| invalid())?;
             if legacy.version != 1 || legacy.workspace.drafts.len() > 10001 {
@@ -191,13 +191,18 @@ pub fn validate(bytes: &[u8]) -> Result<BackupV2> {
             }
             legacy.into()
         }
-        Some(2) => serde_json::from_value(value).map_err(|_| invalid())?,
+        Some(2) => {
+            let legacy: BackupV2 = serde_json::from_value(value).map_err(|_| invalid())?;
+            legacy.into()
+        }
+        Some(3) => serde_json::from_value(value).map_err(|_| invalid())?,
         _ => return Err(invalid()),
     };
     if b.format != "stashpad-alpha" || !timestamp(&b.exported_at) {
         return Err(invalid());
     }
     validate_snapshot(&b.workspace)?;
+    encode(&b.workspace).map_err(|_| error("invalid_backup", "Converted backup exceeds the 10 MiB capacity. The original backup is retained; recover using a compatible app or a verified smaller copy."))?;
     Ok(b)
 }
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {

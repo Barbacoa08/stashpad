@@ -38,6 +38,7 @@ for (const constrained of [false, true])
           markdown: `match note ${i + 1}`,
           createdAt: 50 + i,
           updatedAt: 50 + i,
+          done: false,
           deletedAt: null,
         });
       t.repo.snapshot = s;

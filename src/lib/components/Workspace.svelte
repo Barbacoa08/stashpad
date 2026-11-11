@@ -67,6 +67,8 @@
   let stream = $state<HTMLElement>();
   let closeFailed = $state(false);
   let detailsOpen = $state(false);
+  let detailsToggle = $state<HTMLButtonElement>();
+  let detailsRail = $state<HTMLElement>();
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
   let stashDialog = $state<{ id: string; name: string } | null>(null);
@@ -200,6 +202,51 @@
   onMount(() => {
     const unsubscribe = controller.subscribe((next) => (viewState = next));
     void controller.start().then(() => onready?.(controller));
+    // CSS can drop activeElement to body before the breakpoint event arrives.
+    // Remember only the current focus, and let any newer real target take precedence.
+    const detailsMedia = window.matchMedia('(max-width: 1050px)');
+    let narrow = detailsMedia.matches;
+    let focused: HTMLElement | null = null;
+    function rememberFocus(event: FocusEvent) {
+      if (
+        event.target instanceof HTMLElement &&
+        (event.target !== document.body || detailsMedia.matches === narrow)
+      )
+        focused = event.target;
+    }
+    function forgetFocus(event: FocusEvent) {
+      if (event.target !== focused) return;
+      if (event.relatedTarget instanceof HTMLElement)
+        focused = event.relatedTarget;
+      else if (
+        detailsMedia.matches === narrow &&
+        focused?.getClientRects().length
+      )
+        focused = null;
+    }
+    function respondToDetailsWidth() {
+      const active = document.activeElement;
+      const target =
+        active instanceof HTMLElement &&
+        active !== document.body &&
+        active !== document.documentElement
+          ? active
+          : focused;
+      if (target?.isConnected) {
+        if (
+          detailsMedia.matches &&
+          !detailsOpen &&
+          detailsRail?.contains(target)
+        )
+          detailsToggle?.focus();
+        else if (!detailsMedia.matches && target === detailsToggle)
+          detailsRail?.focus();
+      }
+      narrow = detailsMedia.matches;
+    }
+    document.addEventListener('focusin', rememberFocus);
+    document.addEventListener('focusout', forgetFocus);
+    detailsMedia.addEventListener('change', respondToDetailsWidth);
     let detach = () => {};
     if (isTauri())
       detach = attachCloseGuard(
@@ -210,6 +257,9 @@
     return () => {
       disposed = true;
       for (const cleanup of focusRequestCleanups) cleanup();
+      document.removeEventListener('focusin', rememberFocus);
+      document.removeEventListener('focusout', forgetFocus);
+      detailsMedia.removeEventListener('change', respondToDetailsWidth);
       detach();
       unsubscribe();
       controller.dispose();
@@ -440,6 +490,9 @@
     } else if (key === 'e' && selectedNote) {
       event.preventDefault();
       void edit(selected);
+    } else if (key === 'x' && selectedNote && !event.repeat) {
+      event.preventDefault();
+      void controller.setNoteDone(selectedNote.id, !selectedNote.done);
     } else if (key === 'c' && selectedNote) {
       event.preventDefault();
       void copy(selected);
@@ -487,6 +540,11 @@
       stream?.focus();
     }
   }
+  function toggleDetails() {
+    if (detailsOpen && detailsRail?.contains(document.activeElement))
+      detailsToggle?.focus();
+    detailsOpen = !detailsOpen;
+  }
   async function retryClose() {
     if (await controller.flush()) {
       closeFailed = false;
@@ -502,9 +560,10 @@
     <span class="local-label">Local workspace</span>
     {#if viewState.loaded}<button
         class="details-toggle"
+        bind:this={detailsToggle}
         aria-expanded={detailsOpen}
         aria-controls="workspace-details"
-        onclick={() => (detailsOpen = !detailsOpen)}
+        onclick={toggleDetails}
         >Details{#if viewState.error}
           <span role="status">· error</span>{/if}</button
       >{/if}
@@ -600,6 +659,7 @@
                 class:selected={selected === note.id}
                 class="note-card"
                 class:editing={viewState.activeKey === note.id}
+                class:done={note.done}
                 data-note-id={note.id}
                 data-entry-id={note.id}
                 onclick={(event) => cardClick(event, note.id)}
@@ -620,6 +680,7 @@
                   aria-label="Select note"
                   title="Select note"
                 ></button>
+                {#if note.done}<span class="sr-only">Done</span>{/if}
                 <div class="note-meta">
                   <time datetime={updated.datetime}>{updated.label}</time>
                   {#if selected === note.id && viewState.activeKey !== note.id}<div
@@ -635,6 +696,21 @@
                             ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
                           >
                         </button>{/if}
+                      <button
+                        disabled={blocked}
+                        onclick={() =>
+                          controller.setNoteDone(note.id, !note.done)}
+                        aria-label="Mark done"
+                        title={note.done
+                          ? 'Mark not done (X)'
+                          : 'Mark done (X)'}
+                        aria-pressed={note.done}
+                        ><svg viewBox="0 0 16 16" aria-hidden="true"
+                          ><path d="M3 3h10v10H3z" />{#if note.done}<path
+                              d="m5 8 2 2 4-4"
+                            />{/if}</svg
+                        ></button
+                      >
                       <button
                         disabled={blocked}
                         onclick={() => copy(note.id)}
@@ -705,7 +781,8 @@
               onclick={() => submit(captureKey)}
               disabled={blocked}
               aria-label="Save note"
-              title="Save note (Enter)">➤</button
+              title={captureFenced ? 'Save note' : 'Save note (Enter)'}
+              >➤</button
             >
           </div>
           <MarkdownEditor
@@ -756,6 +833,8 @@
       <aside
         id="workspace-details"
         class="details-rail"
+        bind:this={detailsRail}
+        tabindex="-1"
         class:open={detailsOpen}
         aria-label="Note details"
       >
@@ -801,6 +880,7 @@
               ><kbd>E</kbd><span aria-hidden="true">/</span><kbd>C</kbd></span
             >
           </div>
+          <div><span>Mark done / not done</span><kbd>X</kbd></div>
           <div>
             <span aria-hidden="true">Delete selected</span><span class="sr-only"
               >Delete selected: Command Backspace</span
@@ -831,7 +911,12 @@
           </p>
           <p role="status" aria-live="polite">{viewState.status}</p>
           <p role="alert">{viewState.error}</p>
-          {#if viewState.error}<button
+          {#if viewState.completionRetry}<button
+              disabled={blocked}
+              onclick={() => controller.retryCompletion()}
+              >Retry completion</button
+            >
+          {:else if viewState.error}<button
               disabled={blocked}
               onclick={() => controller.flush()}>Retry checkpoint</button
             ><button
