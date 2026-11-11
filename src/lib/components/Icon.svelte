@@ -3,7 +3,14 @@
     name,
   }: {
     name:
-      'home' | 'search' | 'chevron' | 'download' | 'upload' | 'undo' | 'info';
+      | 'home'
+      | 'search'
+      | 'chevron'
+      | 'download'
+      | 'upload'
+      | 'undo'
+      | 'info'
+      | 'trash';
   } = $props();
 </script>
 
@@ -17,6 +24,9 @@
   {:else if name === 'chevron'}<path d="m6 3 5 5-5 5" />
   {:else if name === 'download'}<path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3" />
   {:else if name === 'upload'}<path d="M8 11V3M5 6l3-3 3 3M3 11v3h10v-3" />
+  {:else if name === 'trash'}<path
+      d="M2 4h12M6 4V2h4v2M4 4l.7 10h6.6L12 4M6.5 6.5v5M9.5 6.5v5"
+    />
   {:else if name === 'undo'}<path
       d="M6 3.5 2.5 6.5 6 9.5M3 6.5h6a3.5 3.5 0 0 1 0 7"
     />

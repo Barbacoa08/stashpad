@@ -6,18 +6,21 @@
   let {
     presentation,
     currentId,
+    live = true,
     disabled,
     onopen,
   }: {
     presentation: HierarchyPresentation;
     currentId: string | null;
+    live?: boolean;
     disabled: boolean;
     onopen: (id: string | null) => void;
   } = $props();
   let expanded = $state(new Set<string>());
   $effect(() => {
     const next = new Set(untrack(() => expanded));
-    for (const stash of presentation.path(currentId)) next.add(stash.id);
+    for (const stash of presentation.path(live ? currentId : null))
+      next.add(stash.id);
     expanded = next;
   });
   let rows = $derived(presentation.rows(expanded));
@@ -25,8 +28,8 @@
 
 <nav aria-label="Stashes" class="stash-navigation">
   <button
-    class:current={currentId === null}
-    aria-current={currentId === null ? 'page' : undefined}
+    class:current={live && currentId === null}
+    aria-current={live && currentId === null ? 'page' : undefined}
     onclick={() => onopen(null)}
     {disabled}><Icon name="home" /> Home</button
   >

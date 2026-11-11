@@ -165,6 +165,7 @@ export interface HierarchyPresentation {
 /** Index once; cache only bounded labels, never every ancestor prefix/path string. */
 export function createHierarchyPresentation(
   stashes: Item[],
+  rootLabel = 'Home',
 ): HierarchyPresentation {
   const index = hierarchyIndex(stashes),
     children = stashChildren(stashes),
@@ -182,7 +183,7 @@ export function createHierarchyPresentation(
       depths.set(pending[i].id, ++depth);
   }
   const labels = new Map<string | null, LocationLabel>([
-    [null, { text: 'Home', abbreviated: false, depth: 0 }],
+    [null, { text: rootLabel, abbreviated: false, depth: 0 }],
   ]);
   function lookup(id: string): Item {
     const stash = index.get(id);
@@ -216,7 +217,7 @@ export function createHierarchyPresentation(
         return points.slice(0, 31).join('') + '…';
       });
       const label = {
-        text: ['Home', ...(depth > 2 ? ['…'] : []), ...names].join(' / '),
+        text: [rootLabel, ...(depth > 2 ? ['…'] : []), ...names].join(' / '),
         abbreviated,
         depth,
       };

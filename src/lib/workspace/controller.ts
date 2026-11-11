@@ -240,6 +240,7 @@ export class WorkspaceController {
   private navigate(key: string, at: Location, clearQuery = false) {
     const queryRevision = this.queryRevision,
       intent = ++this.viewIntent;
+    const retry = () => this.navigate(key, at, clearQuery);
     return this.run(async () => {
       try {
         if (
@@ -252,7 +253,13 @@ export class WorkspaceController {
           )
         )
           throw new Error('This stash is unavailable.');
-        if (!(await this.checkpoint())) return false;
+        if (!(await this.checkpoint())) {
+          if (clearQuery) {
+            this.retryIntent = retry;
+            this.patch({ mutationRetry: true });
+          }
+          return false;
+        }
         if (intent !== this.viewIntent) return false;
         this.patch({
           stashId: at.itemId,
@@ -289,6 +296,10 @@ export class WorkspaceController {
       itemId: id,
     };
     return this.navigate(composeKey(at), at, true);
+  }
+  openLocation(at: Location) {
+    const captured = { ...at };
+    return this.navigate(composeKey(captured), captured, true);
   }
   selectNote(id: string) {
     const item = this.state.snapshot.items.find((x) => x.id === id);
@@ -396,8 +407,15 @@ export class WorkspaceController {
       }
     });
   }
-  retryMutation() {
-    return this.retryIntent ? this.retryIntent() : Promise.resolve(false);
+  async retryMutation() {
+    const intent = this.retryIntent;
+    if (!intent) return false;
+    const ok = await intent();
+    if (ok && this.retryIntent === intent) {
+      this.retryIntent = null;
+      this.patch({ mutationRetry: false });
+    }
+    return ok;
   }
   feedback(status: string, error = '') {
     this.patch({ status, error });
@@ -442,7 +460,28 @@ export class WorkspaceController {
     this.saving = this.run(async () => {
       this.patch({ operation: 'save', error: '', status: 'Saving…' });
       try {
-        const s = await this.repo.captureItem(request);
+        // A committed child can travel with its owner across scopes before a
+        // lost reply is retried. Reconcile only that existing exact child;
+        // an absent creation must retain its original destination contract.
+        const existing = this.state.snapshot.items.find(
+          (x) => x.id === request.id,
+        );
+        const replay =
+          existing &&
+          request.location.itemId !== null &&
+          existing.parentId === request.location.itemId
+            ? {
+                ...request,
+                location: {
+                  ...request.location,
+                  scope: effectiveScope(
+                    this.state.snapshot.items,
+                    existing.parentId!,
+                  ),
+                },
+              }
+            : request;
+        const s = await this.repo.captureItem(replay);
         this.captureIntents.delete(key);
         this.snapshot(s);
         if (this.state.buffers[key]?.revision === request.draft.revision) {
@@ -594,7 +633,10 @@ export class WorkspaceController {
         }
         this.retryIntent = null;
         this.patch({
-          status: 'Deleted. Undo delete is available.',
+          status:
+            target.deletedAt !== null
+              ? 'This item is already in Trash. Restore is available.'
+              : 'Deleted. Undo delete is available.',
           error: '',
           mutationRetry: false,
         });
@@ -645,15 +687,7 @@ export class WorkspaceController {
           return false;
         }
         this.snapshot(await fn());
-        const current = this.state.location;
-        if (current.itemId !== null) {
-          const scope = effectiveScope(
-            this.state.snapshot.items,
-            current.itemId,
-          );
-          if (scope !== current.scope)
-            this.patch({ location: { ...current, scope } });
-        }
+        this.reconcileScope();
         this.retryIntent = null;
         this.patch({ mutationRetry: false, error: '', status });
         return true;
@@ -667,11 +701,29 @@ export class WorkspaceController {
       }
     });
   }
+  private reconcileScope() {
+    const current = this.state.location;
+    const at =
+      current.itemId === null
+        ? current
+        : {
+            ...current,
+            scope: effectiveScope(this.state.snapshot.items, current.itemId),
+          };
+    if (at.scope !== current.scope) this.patch({ location: at });
+    if (
+      !composeOwner(this.state.activeKey) &&
+      effectiveScope(this.state.snapshot.items, this.state.activeKey) !==
+        at.scope
+    )
+      this.context(composeKey(at));
+  }
   undoRemove() {
     return this.run(async () => {
       if (!(await this.checkpoint())) return false;
       try {
         this.snapshot(await this.repo.undoDelete());
+        this.reconcileScope();
         this.patch({ status: 'Delete undone', error: '' });
         return true;
       } catch (e) {

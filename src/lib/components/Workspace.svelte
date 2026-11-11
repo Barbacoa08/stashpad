@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
+  import type { Location } from '../domain/notes';
   import type { EditorState } from '@codemirror/state';
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -14,6 +15,7 @@
     createHierarchyPresentation,
     effectiveScope,
     scopeIndex,
+    itemLabel,
   } from '../domain/hierarchy';
   import { LocationSelection } from '../workspace/selection';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
@@ -77,12 +79,28 @@
       ),
     ),
   );
+  let locationHierarchy = $derived(
+    createHierarchyPresentation(
+      viewState.snapshot.items.filter(
+        (x) =>
+          x.kind === 'stash' && scopes.get(x.id) === viewState.location.scope,
+      ),
+      viewState.location.scope === 'trash' ? 'Trash' : 'Home',
+    ),
+  );
+  let deletionRoot = $derived.by(() => {
+    let item = selectedNote ?? currentStash;
+    const index = new Map(viewState.snapshot.items.map((x) => [x.id, x]));
+    while (item && item.deletedAt === null && item.parentId !== null)
+      item = index.get(item.parentId);
+    return item?.deletedAt !== null ? item : undefined;
+  });
   let currentStash = $derived(
     viewState.stashId === null
       ? undefined
-      : hierarchy.index.get(viewState.stashId),
+      : viewState.snapshot.items.find((x) => x.id === viewState.stashId),
   );
-  let destination = $derived(hierarchy.label(viewState.stashId).text);
+  let destination = $derived(locationHierarchy.label(viewState.stashId).text);
   const editorStates = new Map<string, EditorState>();
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
@@ -123,7 +141,11 @@
       ?.querySelector(`[data-entry-id="${selected}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }
-  async function openStash(id: string | null, preferred?: string) {
+  async function openStash(
+    id: string | null,
+    preferred?: string,
+    scope: Location['scope'] = 'live',
+  ) {
     if (blocked) return;
     const request = ++interaction,
       focus = observeSubmissionFocus();
@@ -131,13 +153,16 @@
     try {
       if (
         await (id === null
-          ? controller.openStash(null)
+          ? controller.openLocation({ scope, itemId: null })
           : controller.enterItem(id))
       ) {
         if (request !== interaction) return;
         selected = selection.open(
           controller.state.location,
-          directEntries(controller.state.snapshot, id).map((e) => e.id),
+          directEntries(
+            controller.state.snapshot,
+            controller.state.location,
+          ).map((e) => e.id),
           preferred,
         );
         await tick();
@@ -405,6 +430,12 @@
       return;
     void edit(id);
   }
+  function currentEntries() {
+    const state = controller.state;
+    return state.query.trim()
+      ? filterNotes(state.snapshot.items, state.query, state.location.scope)
+      : directEntries(state.snapshot, state.location);
+  }
   async function remove() {
     if (!selectedNote || blocked) return;
     const id = selected,
@@ -413,13 +444,7 @@
       focus = observeSubmissionFocus();
     try {
       if (!(await controller.remove(id)) || request !== interaction) return;
-      const entries = controller.state.query.trim()
-        ? filterNotes(
-            controller.state.snapshot.items,
-            controller.state.query,
-            controller.state.location.scope,
-          )
-        : directEntries(controller.state.snapshot, controller.state.location);
+      const entries = currentEntries();
       selected =
         entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
       selection.remember(controller.state.location, selected);
@@ -454,20 +479,14 @@
   async function retryAction() {
     if (blocked) return;
     const ordinal = shownEntries.findIndex((x) => x.id === selected),
-      before = controller.state.stashId,
+      before = JSON.stringify(controller.state.location),
       request = ++interaction,
       focus = observeSubmissionFocus();
     try {
       if (!(await controller.retryMutation()) || request !== interaction)
         return;
-      const entries = controller.state.query.trim()
-        ? filterNotes(
-            controller.state.snapshot.items,
-            controller.state.query,
-            controller.state.location.scope,
-          )
-        : directEntries(controller.state.snapshot, controller.state.location);
-      if (before !== controller.state.stashId)
+      const entries = currentEntries();
+      if (before !== JSON.stringify(controller.state.location))
         selected = selection.open(
           controller.state.location,
           entries.map((x) => x.id),
@@ -485,25 +504,50 @@
       focus.stop();
     }
   }
+  async function restoreSelected() {
+    if (!selectedNote || blocked) return;
+    const id = selectedNote.id,
+      ordinal = shownEntries.findIndex((x) => x.id === id),
+      request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (!(await controller.restoreItem(id)) || request !== interaction)
+        return;
+      const entries = currentEntries();
+      if (!entries.some((x) => x.id === selected))
+        selected =
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+      selection.remember(controller.state.location, selected);
+      await tick();
+      if (focus.mayRestore()) {
+        if (controller.state.activeKey === selected && selected) focusInline();
+        else if (selected) stream?.focus();
+        else composer?.focus();
+      }
+      scrollSelection();
+    } finally {
+      focus.stop();
+    }
+  }
   async function undoDelete() {
     if (blocked) return;
     const id = controller.state.snapshot.undoDeleteId,
+      ordinal = shownEntries.findIndex((x) => x.id === selected),
       request = ++interaction,
       focus = observeSubmissionFocus();
     try {
       if (!(await controller.undoRemove()) || request !== interaction) return;
-      const entries = controller.state.query.trim()
-        ? filterNotes(
-            controller.state.snapshot.items,
-            controller.state.query,
-            controller.state.location.scope,
-          )
-        : directEntries(controller.state.snapshot, controller.state.location);
-      if (id && entries.some((x) => x.id === id)) {
-        selected = id;
-        await tick();
-        scrollSelection();
-        if (focus.mayRestore()) stream?.focus();
+      const entries = currentEntries();
+      if (id && entries.some((x) => x.id === id)) selected = id;
+      else if (!entries.some((x) => x.id === selected))
+        selected =
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+      selection.remember(controller.state.location, selected);
+      await tick();
+      scrollSelection();
+      if (focus.mayRestore()) {
+        if (selected) stream?.focus();
+        else composer?.focus();
       }
     } finally {
       focus.stop();
@@ -604,7 +648,11 @@
       void openStash(selectedNote.id);
     } else if (key === 'arrowleft' && viewState.stashId !== null) {
       event.preventDefault();
-      void openStash(currentStash?.parentId ?? null, viewState.stashId);
+      void openStash(
+        currentStash?.parentId ?? null,
+        viewState.stashId,
+        viewState.location.scope,
+      );
     } else if (key === 'arrowup' || key === 'arrowdown') {
       event.preventDefault();
       const index = shownEntries.findIndex((n) => n.id === selected);
@@ -712,6 +760,7 @@
           <StashSidebar
             presentation={hierarchy}
             currentId={viewState.stashId}
+            live={viewState.location.scope === 'live'}
             disabled={blocked}
             onopen={(id) => void openStash(id)}
           />
@@ -721,6 +770,13 @@
             >{/if}
         </div>
         <div class="backup-actions">
+          <button
+            onclick={() => void openStash(null, undefined, 'trash')}
+            aria-current={viewState.location.scope === 'trash'
+              ? 'page'
+              : undefined}
+            disabled={blocked}><Icon name="trash" /> Trash</button
+          >
           <button onclick={() => controller.export()} disabled={blocked}
             ><Icon name="download" /> Export backup</button
           ><button
@@ -764,7 +820,7 @@
               outsideSearch={viewState.activeKey === entry.id &&
                 !visibleNotes.some((x) => x.id === entry.id)}
               location={viewState.query.trim()
-                ? hierarchy.label(entry.parentId).text
+                ? locationHierarchy.label(entry.parentId).text
                 : ''}
               onselect={(event) => cardClick(event, entry.id)}
               ondoubleclick={(event) => cardDoubleClick(event, entry.id)}
@@ -875,6 +931,36 @@
           <p>
             Created <time datetime={created.datetime}>{created.label}</time>
           </p>{/if}
+        {#if viewState.location.scope === 'trash'}
+          <section aria-label="Trash details">
+            <h2>Trash</h2>
+            <p>
+              Items are retained for at least 90 days. Automatic permanent
+              cleanup is not enabled yet.
+            </p>
+            {#if deletionRoot}{@const deleted = timestampPresentation(
+                deletionRoot.deletedAt!,
+                'full',
+              )}
+              <p>
+                {selectedNote && selectedNote.id !== deletionRoot.id
+                  ? `Inherited from ${itemLabel(deletionRoot)} · Deleted`
+                  : 'Deleted'}
+                <time datetime={deleted.datetime}>{deleted.label}</time>
+              </p>
+            {/if}
+            {#if selectedNote && scopes.get(selectedNote.id) === 'trash'}
+              <button onclick={() => void restoreSelected()} disabled={blocked}
+                >Restore item</button
+              >
+              <p>
+                {selectedNote.deletedAt === null
+                  ? 'Restore this item and its children to Home.'
+                  : 'Restore to its remembered live parent, or Home if unavailable.'}
+              </p>
+            {/if}
+          </section>
+        {/if}
         <div class="shortcut-list" aria-label="Keyboard shortcuts">
           <div>
             <span>New stash</span><span class="shortcut-keys"
