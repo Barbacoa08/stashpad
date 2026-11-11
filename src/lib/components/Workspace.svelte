@@ -650,7 +650,7 @@
       focus.stop();
     }
   }
-  function openPalette() {
+  function openPalette(invoker?: HTMLElement) {
     if (
       blocked ||
       !selectedNote ||
@@ -660,9 +660,10 @@
     palette = {
       id: selectedNote.id,
       returnTo:
-        document.activeElement instanceof HTMLElement
+        invoker ??
+        (document.activeElement instanceof HTMLElement
           ? document.activeElement
-          : null,
+          : null),
     };
   }
   function closePalette(returnFocus: boolean) {
@@ -1211,7 +1212,10 @@
           <p>
             Created <time datetime={created.datetime}>{created.label}</time>
           </p>
-          <button onclick={openPalette} disabled={blocked}>Assign color</button>
+          <button
+            onclick={(event) => openPalette(event.currentTarget)}
+            disabled={blocked}>Assign color</button
+          >
           <p>Color: {selectedNote.color ?? 'None'}</p>
           {#if viewState.query.trim()}<p>
               Open the containing stash to reorder search results.

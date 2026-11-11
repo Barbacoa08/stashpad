@@ -34,8 +34,43 @@
       [' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(
         event.key,
       )
-    )
+    ) {
       event.preventDefault();
+      return;
+    }
+    if (
+      !event.isComposing &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      event.target instanceof HTMLInputElement &&
+      event.target.type === 'radio'
+    ) {
+      if (event.key === 'Tab') {
+        // Focus and the acknowledged checked radio can differ during a write.
+        event.preventDefault();
+        panel.querySelector<HTMLButtonElement>('button')?.focus();
+        return;
+      }
+      const radios = Array.from(
+        panel.querySelectorAll<HTMLInputElement>('input'),
+      );
+      const index = radios.indexOf(event.target);
+      const next =
+        index === radios.length - 1 &&
+        ['ArrowRight', 'ArrowDown'].includes(event.key)
+          ? radios[0]
+          : index === 0 && ['ArrowLeft', 'ArrowUp'].includes(event.key)
+            ? radios.at(-1)
+            : undefined;
+      // WebKit stops at group boundaries; retain native navigation everywhere else.
+      if (next) {
+        event.preventDefault();
+        next.focus();
+        next.click();
+      }
+    }
     if (event.key === 'Escape' && !event.isComposing) {
       event.preventDefault();
       event.stopPropagation();
@@ -72,6 +107,7 @@
             name="item-color"
             value={choice ?? 'reset'}
             checked={color === choice}
+            tabindex="0"
             onclick={(event) => {
               if (disabled) event.preventDefault();
             }}
@@ -89,5 +125,5 @@
       {/each}
     </div>
   </fieldset>
-  <button onclick={() => onclose(true)}>Done</button>
+  <button tabindex="0" onclick={() => onclose(true)}>Done</button>
 </div>
