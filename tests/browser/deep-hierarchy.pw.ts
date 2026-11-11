@@ -41,10 +41,18 @@ for (const constrained of [false, true])
           done: false,
           deletedAt: null,
         });
-      t.repo.snapshot = s;
+      t.seedLegacy(s);
       await t.controller.start();
       await t.controller.openStash(owner.id);
-      return { owner, ancestor: s.stashes[16], child: s.stashes[39] };
+      const label = (x: any) => ({
+        ...x,
+        name: Array.from(x.name).slice(0, 31).join('') + '…',
+      });
+      return {
+        owner: label(owner),
+        ancestor: label(s.stashes[16]),
+        child: label(s.stashes[39]),
+      };
     });
     const stream = page.getByRole('region', { name: 'Note stream' }),
       capture = page.getByRole('textbox', { name: 'Capture Markdown' });
@@ -135,7 +143,7 @@ for (const constrained of [false, true])
       await page.evaluate(
         () => (window as any).__test.controller.state.stashId,
       ),
-    ).toBe(fixture.owner.id);
+    ).toBe(fixture.ancestor.id);
     await expect(cards.first().locator('.stash-icon')).toHaveCount(0);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
@@ -160,7 +168,7 @@ test('deep sidebar retains usable label and disclosure width at 800x600 and 150%
         createdAt: i,
         updatedAt: i,
       });
-    t.repo.snapshot = s;
+    t.seedLegacy(s);
     await t.controller.start();
     await t.controller.openStash(s.stashes[14].id);
   });

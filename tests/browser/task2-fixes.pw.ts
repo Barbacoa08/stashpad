@@ -49,7 +49,10 @@ for (const mode of ['capture', 'inline'] as const) {
     else await expect(inline(page)).toHaveCount(0);
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe(mode === 'inline' ? expected : 'capture');
     if (mode === 'inline') await expect(capture(page)).toHaveText('ab');
@@ -67,7 +70,10 @@ for (const mode of ['capture', 'inline'] as const) {
     await expect
       .poll(() =>
         page.evaluate(
-          () => (window as any).__test.repo.snapshot.notes[0]?.markdown,
+          () =>
+            (window as any).__test.repo.snapshot.items.filter(
+              (x: any) => x.kind === 'note',
+            )[0]?.markdown,
         ),
       )
       .toBe(mode === 'inline' ? 'capture edit' : 'capture');

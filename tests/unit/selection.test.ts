@@ -12,3 +12,18 @@ it('remembers exact IDs per location, prefers exited stash, rejects deleted entr
   selection.clear();
   expect(selection.open(null, ['first', 'Parent'])).toBe('first');
 });
+it('keeps Home and Trash-root memory distinct while container identity survives scope changes', () => {
+  const s = new LocationSelection();
+  s.remember({ scope: 'live', itemId: null }, 'home');
+  s.remember({ scope: 'trash', itemId: null }, 'trash');
+  expect(s.open({ scope: 'live', itemId: null }, ['home', 'trash'])).toBe(
+    'home',
+  );
+  expect(s.open({ scope: 'trash', itemId: null }, ['home', 'trash'])).toBe(
+    'trash',
+  );
+  s.remember({ scope: 'live', itemId: 'owner' }, 'child');
+  expect(s.open({ scope: 'trash', itemId: 'owner' }, ['other', 'child'])).toBe(
+    'child',
+  );
+});

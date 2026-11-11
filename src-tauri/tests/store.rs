@@ -1,3 +1,5 @@
+mod common;
+use common::*;
 use stashpad_alpha_kit::{model::*, store::Store};
 fn store() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
@@ -9,11 +11,11 @@ fn exact_source_create_edit_reopen() {
     let (dir, mut db) = store();
     let source = "α **bold**  \n- one\n  - two\n```js\nconst x='*';\n```\n";
     let s = db.save(None, source, "compose", 1, None).unwrap();
-    let id = s.notes[0].id.clone();
+    let id = s.items[0].id.clone();
     db.save(Some(&id), "edited \n", &id, 2, None).unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
-    assert_eq!(db.load().unwrap().notes[0].markdown, "edited \n");
+    assert_eq!(db.load().unwrap().items[0].markdown, "edited \n");
 }
 #[test]
 fn latest_revision_and_save_preserves_newer_draft() {
@@ -27,12 +29,12 @@ fn latest_revision_and_save_preserves_newer_draft() {
 fn delete_undo_after_reopen() {
     let (dir, mut db) = store();
     let s = db.save(None, "a", "compose", 1, None).unwrap();
-    let id = &s.notes[0].id;
+    let id = &s.items[0].id;
     db.delete(id).unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
     assert!(db.load().unwrap().undo_delete_id.is_some());
-    assert_eq!(db.undo().unwrap().notes[0].deleted_at, None);
+    assert_eq!(db.undo().unwrap().items[0].deleted_at, None);
 }
 #[test]
 fn atomic_failure_rolls_back() {
@@ -79,28 +81,30 @@ fn transaction_failure_keeps_previous_rows() {
 fn monotonic_timestamp_under_backward_clock() {
     let (_dir, mut db) = store();
     let mut s = db.save(None, "a", "compose", 1, None).unwrap();
-    s.notes[0].updated_at += 1_000_000;
-    let old = s.notes[0].updated_at;
+    s.items[0].updated_at += 1_000_000;
+    let old = s.items[0].updated_at;
     db.replace(&s).unwrap();
     let s = db
-        .save(Some(&s.notes[0].id), "b", &s.notes[0].id, 2, None)
+        .save(Some(&s.items[0].id), "b", &s.items[0].id, 2, None)
         .unwrap();
-    assert_eq!(s.notes[0].updated_at, old + 1);
+    assert_eq!(s.items[0].updated_at, old + 1);
 }
 #[test]
 fn full_note_draft_count_boundary_roundtrips() {
     let (_dir, mut db) = store();
     let mut s = WorkspaceSnapshot::default();
-    for i in 0..10000 {
+    for i in 0..20000 {
         let id = uuid::Uuid::from_u128(i + 1).to_string();
-        s.notes.push(Note {
-            stash_id: None,
+        s.items.push(Item {
+            parent_id: None,
             id: id.clone(),
             markdown: "x".into(),
             created_at: 0,
             updated_at: 0,
             done: false,
             deleted_at: None,
+            position: i as i64,
+            ..item()
         });
         s.drafts.push(Draft {
             key: id,
@@ -127,14 +131,16 @@ fn compact_envelope_exact_limit_includes_drafts_and_metadata() {
     let (_dir, mut db) = store();
     let mut s = WorkspaceSnapshot::default();
     for i in 0..9 {
-        s.notes.push(Note {
-            stash_id: None,
+        s.items.push(Item {
+            parent_id: None,
             id: uuid::Uuid::from_u128(i + 1).to_string(),
             markdown: "x".repeat(MAX_SOURCE),
             created_at: 0,
             updated_at: 0,
             done: false,
             deleted_at: None,
+            position: i as i64,
+            ..item()
         });
     }
     s.drafts.push(Draft {
@@ -162,14 +168,14 @@ fn compact_envelope_exact_limit_includes_drafts_and_metadata() {
 fn cancel_edit_discards_only_its_draft_and_survives_reopen() {
     let (dir, mut db) = store();
     let s = db.save(None, "saved", "compose", 1, None).unwrap();
-    let id = s.notes[0].id.clone();
+    let id = s.items[0].id.clone();
     db.checkpoint("compose", "capture", 2).unwrap();
     db.checkpoint(&id, "unfinished", 3).unwrap();
     db.discard_draft(&id).unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
     let s = db.load().unwrap();
-    assert_eq!(s.notes[0].markdown, "saved");
+    assert_eq!(s.items[0].markdown, "saved");
     assert_eq!(s.drafts.len(), 1);
     assert_eq!(s.drafts[0].key, "compose");
     assert_eq!(s.drafts[0].markdown, "capture");
@@ -231,15 +237,13 @@ fn actual_v1_file_migrates_additively_and_failed_migration_rolls_back() {
         } else {
             let mut s = Store::open(&path).unwrap();
             let v = serde_json::to_value(s.load().unwrap()).unwrap();
-            assert_eq!(v["stashes"], serde_json::json!([]));
-            assert_eq!(v["notes"][0]["stashId"], serde_json::Value::Null);
-            assert!(v["notes"].as_array().unwrap().iter().any(|n| n["id"] == id
+            assert!(v["items"].as_array().unwrap().iter().any(|n| n["id"] == id
                 && n["markdown"] == "exact\r\n**source**"
                 && n["deletedAt"] == 0));
             assert_eq!(v["undoDeleteId"], id);
             let snapshot = s.load().unwrap();
-            assert!(snapshot.notes.iter().any(|n| n.id == active
-                && n.stash_id.is_none()
+            assert!(snapshot.items.iter().any(|n| n.id == active
+                && n.parent_id.is_none()
                 && n.markdown == "active exact\r\n"
                 && n.created_at == 1
                 && n.updated_at == 2));
@@ -261,10 +265,16 @@ fn actual_v1_file_migrates_additively_and_failed_migration_rolls_back() {
 fn nested_storage_scoped_drafts_and_edit_ownership_survive_reopen() {
     let (dir, mut db) = store();
     let s = db.create_stash(" Parent ", None).unwrap();
-    let parent = s.stashes[0].id.clone();
+    let parent = s
+        .items
+        .iter()
+        .find(|x| x.kind == Kind::Stash)
+        .unwrap()
+        .id
+        .clone();
     let s = db.create_stash("Child", Some(&parent)).unwrap();
     let child = s
-        .stashes
+        .items
         .iter()
         .find(|s| s.parent_id.is_some())
         .unwrap()
@@ -284,33 +294,49 @@ fn nested_storage_scoped_drafts_and_edit_ownership_survive_reopen() {
             Some(&child),
         )
         .unwrap();
-    let id = s.notes[0].id.clone();
-    assert_eq!(s.notes[0].stash_id.as_deref(), Some(child.as_str()));
+    let index = s.items.iter().position(|x| x.kind == Kind::Note).unwrap();
+    let id = s.items[index].id.clone();
+    assert_eq!(s.items[index].parent_id.as_deref(), Some(child.as_str()));
     let s = db
         .save(Some(&id), "edited\r\n", &id, 2, Some(&parent))
         .unwrap();
-    assert_eq!(s.notes[0].stash_id.as_deref(), Some(child.as_str()));
+    assert_eq!(
+        s.items
+            .iter()
+            .find(|x| x.kind == Kind::Note)
+            .unwrap()
+            .parent_id
+            .as_deref(),
+        Some(child.as_str())
+    );
     assert!(db.create_stash("bad", Some("missing")).is_err());
     assert_eq!(db.load().unwrap(), s);
     db.rename_stash(&parent, "Renamed").unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
     let s = db.load().unwrap();
-    assert_eq!(s.notes[0].markdown, "edited\r\n");
+    assert_eq!(
+        s.items
+            .iter()
+            .find(|x| x.kind == Kind::Note)
+            .unwrap()
+            .markdown,
+        "edited\r\n"
+    );
     assert_eq!(s.drafts.len(), 2);
     assert_eq!(
-        s.stashes.iter().find(|s| s.id == parent).unwrap().name,
+        s.items.iter().find(|s| s.id == parent).unwrap().markdown,
         "Renamed"
     );
 }
 #[test]
-fn stash_names_use_the_same_unicode_trim_and_code_point_bounds_as_javascript() {
+fn stash_source_is_full_markdown_without_legacy_name_limits() {
     let (_dir, mut db) = store();
-    let s = db.create_stash("\u{feff}Name\u{feff}", None).unwrap();
-    assert_eq!(s.stashes[0].name, "Name");
-    assert!(db.create_stash(&"😀".repeat(200), None).is_ok());
-    assert!(db.create_stash(&"😀".repeat(201), None).is_err());
-    assert!(db.create_stash("\u{85}", None).is_ok());
+    let source = "\u{feff}Name\u{feff}";
+    let s = db.create_stash(source, None).unwrap();
+    assert_eq!(s.items[0].markdown, source);
+    assert!(db.create_stash(&"😀".repeat(201), None).is_ok());
+    assert!(db.create_stash("", None).is_ok());
 }
 
 #[test]
@@ -320,7 +346,7 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     drop(db);
     let path = dir.path().join("notes.sqlite3");
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("PRAGMA user_version=4;").unwrap();
+    c.execute_batch("PRAGMA user_version=5;").unwrap();
     drop(c);
     let before = std::fs::read(&path).unwrap();
     assert!(Store::open(&path).is_err());
@@ -331,7 +357,13 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
 fn empty_existing_note_preserves_identity_owner_and_exact_whitespace() {
     let (dir, mut db) = store();
     let s = db.create_stash("Owner", None).unwrap();
-    let owner = s.stashes[0].id.clone();
+    let owner = s
+        .items
+        .iter()
+        .find(|x| x.kind == Kind::Stash)
+        .unwrap()
+        .id
+        .clone();
     let s = db
         .save(
             None,
@@ -341,16 +373,55 @@ fn empty_existing_note_preserves_identity_owner_and_exact_whitespace() {
             Some(&owner),
         )
         .unwrap();
-    let id = s.notes[0].id.clone();
+    let id = s
+        .items
+        .iter()
+        .find(|x| x.kind == Kind::Note)
+        .unwrap()
+        .id
+        .clone();
     for source in ["", " \r\n\n\t"] {
         let s = db.save(Some(&id), source, &id, 2, Some(&owner)).unwrap();
-        assert_eq!(s.notes[0].id, id);
-        assert_eq!(s.notes[0].stash_id.as_deref(), Some(owner.as_str()));
-        assert_eq!(s.notes[0].markdown, source);
-        assert!(s.notes[0].deleted_at.is_none());
+        assert_eq!(
+            s.items.iter().find(|x| x.kind == Kind::Note).unwrap().id,
+            id
+        );
+        assert_eq!(
+            s.items
+                .iter()
+                .find(|x| x.kind == Kind::Note)
+                .unwrap()
+                .parent_id
+                .as_deref(),
+            Some(owner.as_str())
+        );
+        assert_eq!(
+            s.items
+                .iter()
+                .find(|x| x.kind == Kind::Note)
+                .unwrap()
+                .markdown,
+            source
+        );
+        assert!(s
+            .items
+            .iter()
+            .find(|x| x.kind == Kind::Note)
+            .unwrap()
+            .deleted_at
+            .is_none());
     }
     assert!(db.save(None, "", "compose", 1, None).is_err());
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
-    assert_eq!(db.load().unwrap().notes[0].markdown, " \r\n\n\t");
+    assert_eq!(
+        db.load()
+            .unwrap()
+            .items
+            .iter()
+            .find(|x| x.id == id)
+            .unwrap()
+            .markdown,
+        " \r\n\n\t"
+    );
 }

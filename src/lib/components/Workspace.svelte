@@ -4,16 +4,16 @@
   import { isTauri } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
-  import NoteBody from './NoteBody.svelte';
+  import ItemCard from './ItemCard.svelte';
   import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
-  import StashCard from './StashCard.svelte';
-  import StashDialog from './StashDialog.svelte';
   import {
     composeKey,
     composeOwner,
     directEntries,
     createHierarchyPresentation,
+    effectiveScope,
+    scopeIndex,
   } from '../domain/hierarchy';
   import { LocationSelection } from '../workspace/selection';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
@@ -36,11 +36,7 @@
   let editHeights = $state<Record<string, number>>({});
   let expandedNotes = $state<Record<string, boolean>>({});
   $effect(() => {
-    const live = new Set(
-      viewState.snapshot.notes
-        .filter((n) => n.deletedAt === null)
-        .map((n) => n.id),
-    );
+    const live = new Set(viewState.snapshot.items.map((n) => n.id));
     const stale = Object.keys(expandedNotes).filter((id) => !live.has(id));
     if (stale.length)
       expandedNotes = Object.fromEntries(
@@ -50,7 +46,7 @@
   let interaction = 0;
   let creating = false;
   let composer = $state<MarkdownEditor>();
-  let noteBodies = $state<Record<string, NoteBody | undefined>>({});
+  let noteBodies = $state<Record<string, ItemCard | undefined>>({});
   let captureFenced = $state(false);
   let inlineFenced = $state(false);
   let selectedEditingContext = $state<{ id: string; fenced: boolean } | null>(
@@ -72,11 +68,14 @@
   let detailsRail = $state<HTMLElement>();
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
-  let stashDialog = $state<{ id: string; name: string } | null>(null);
-  let dialogFocus: HTMLElement | null = null;
-  let captureKey = $derived(composeKey(viewState.stashId));
+  let captureKey = $derived(composeKey(viewState.location));
+  let scopes = $derived(scopeIndex(viewState.snapshot.items));
   let hierarchy = $derived(
-    createHierarchyPresentation(viewState.snapshot.stashes),
+    createHierarchyPresentation(
+      viewState.snapshot.items.filter(
+        (x) => x.kind === 'stash' && scopes.get(x.id) === 'live',
+      ),
+    ),
   );
   let currentStash = $derived(
     viewState.stashId === null
@@ -88,14 +87,14 @@
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
   let visibleNotes = $derived(
-    filterNotes(viewState.snapshot.notes, viewState.query).filter(
-      (n) => viewState.query.trim() || n.stashId === viewState.stashId,
-    ),
+    filterNotes(
+      viewState.snapshot.items,
+      viewState.query,
+      viewState.location.scope,
+    ).filter((n) => viewState.query.trim() || n.parentId === viewState.stashId),
   );
   let activeNote = $derived(
-    viewState.snapshot.notes.find(
-      (n) => n.id === viewState.activeKey && n.deletedAt === null,
-    ),
+    viewState.snapshot.items.find((n) => n.id === viewState.activeKey),
   );
   let shownNotes = $derived(
     activeNote && !visibleNotes.some((n) => n.id === activeNote!.id)
@@ -103,14 +102,13 @@
       : visibleNotes,
   );
   let shownEntries = $derived.by(() => {
-    if (viewState.query.trim())
-      return shownNotes.map((note) => ({ ...note, kind: 'note' as const }));
-    const entries = directEntries(viewState.snapshot, viewState.stashId);
+    if (viewState.query.trim()) return shownNotes;
+    const entries = directEntries(viewState.snapshot, viewState.location);
     return activeNote && !entries.some((x) => x.id === activeNote.id)
-      ? [{ ...activeNote, kind: 'note' as const }, ...entries]
+      ? [activeNote, ...entries]
       : entries;
   });
-  let modal = $derived(!!viewState.preview || closeFailed || !!stashDialog);
+  let modal = $derived(!!viewState.preview || closeFailed);
   let blocked = $derived(
     (viewState.operation !== null && viewState.operation !== 'save') || modal,
   );
@@ -118,12 +116,7 @@
     modal || (viewState.operation !== null && viewState.operation !== 'save'),
   );
   let selectedNote = $derived(
-    viewState.snapshot.notes.find(
-      (n) => n.id === selected && n.deletedAt === null,
-    ),
-  );
-  let selectedStash = $derived(
-    viewState.snapshot.stashes.find((s) => s.id === selected),
+    viewState.snapshot.items.find((n) => n.id === selected),
   );
   function scrollSelection() {
     stream
@@ -134,18 +127,25 @@
     if (blocked) return;
     const request = ++interaction,
       focus = observeSubmissionFocus();
-    selection.remember(viewState.stashId, selected);
+    selection.remember(viewState.location, selected);
     try {
-      if (await controller.openStash(id)) {
+      if (
+        await (id === null
+          ? controller.openStash(null)
+          : controller.enterItem(id))
+      ) {
         if (request !== interaction) return;
         selected = selection.open(
-          id,
+          controller.state.location,
           directEntries(controller.state.snapshot, id).map((e) => e.id),
           preferred,
         );
         await tick();
         scrollSelection();
-        if (focus.mayRestore()) stream?.focus();
+        if (focus.mayRestore()) {
+          if (selected) stream?.focus();
+          else composer?.focus();
+        }
       }
     } finally {
       focus.stop();
@@ -156,9 +156,13 @@
     creating = true;
     const request = ++interaction,
       focus = observeSubmissionFocus();
-    selection.remember(viewState.stashId, selected);
+    selection.remember(viewState.location, selected);
     try {
-      if (await controller.createStash('Untitled')) {
+      if (
+        await controller.createStash(
+          shownEntries.some((x) => x.id === selected) ? selected : undefined,
+        )
+      ) {
         if (request !== interaction) return;
         selected = '';
         await tick();
@@ -167,34 +171,6 @@
     } finally {
       creating = false;
       focus.stop();
-    }
-  }
-  function nameStash(id: string) {
-    if (blocked) return;
-    dialogFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    stashDialog = {
-      id,
-      name: viewState.snapshot.stashes.find((s) => s.id === id)?.name ?? '',
-    };
-  }
-  async function closeStashDialog() {
-    stashDialog = null;
-    await tick();
-    if (dialogFocus?.closest('.composer')) composer?.focus();
-    else if (dialogFocus?.closest('.note-card .markdown-editor')) focusInline();
-    else if (dialogFocus?.isConnected) dialogFocus.focus();
-    else stream?.focus();
-  }
-  async function saveStash(name: string) {
-    if (!stashDialog) return;
-    if (await controller.renameStash(stashDialog.id, name)) {
-      stashDialog = null;
-      await tick();
-      if (dialogFocus?.isConnected) dialogFocus.focus();
-      else stream?.focus();
     }
   }
   function focusChoice(node: HTMLButtonElement) {
@@ -340,7 +316,7 @@
     if (blocked) return;
     const focus = observeSubmissionFocus();
     try {
-      const known = new Set(viewState.snapshot.notes.map((n) => n.id));
+      const known = new Set(viewState.snapshot.items.map((n) => n.id));
       const ok = await controller.save(key);
       if (!ok || disposed) return;
       if (composeOwner(key)) {
@@ -350,7 +326,7 @@
             [key]: (composerEpochs[key] ?? 0) + 1,
           };
         selected =
-          controller.state.snapshot.notes.find((n) => !known.has(n.id))?.id ??
+          controller.state.snapshot.items.find((n) => !known.has(n.id))?.id ??
           selected;
       }
       await tick();
@@ -358,7 +334,7 @@
         stream
           ?.querySelector(`[data-note-id="${selected}"]`)
           ?.scrollIntoView({ block: 'nearest' });
-        if (focus.mayRestore() && composeKey(controller.state.stashId) === key)
+        if (focus.mayRestore() && composeKey(controller.state.location) === key)
           composer?.focus();
       } else if (focus.mayRestore()) {
         if (controller.state.activeKey === key) focusInline();
@@ -386,7 +362,7 @@
       await copyMarkdown(
         id === viewState.activeKey
           ? controller.sourceFor(id)
-          : (viewState.snapshot.notes.find((n) => n.id === id)?.markdown ?? ''),
+          : (viewState.snapshot.items.find((n) => n.id === id)?.markdown ?? ''),
       );
       controller.feedback('Markdown copied');
     } catch {
@@ -416,7 +392,7 @@
       return;
     ++interaction;
     selected = id;
-    selection.remember(viewState.stashId, id);
+    selection.remember(viewState.location, id);
     if (activeNote && activeNote.id !== id) leaveEdit(activeNote.id);
     stream?.focus();
   }
@@ -431,32 +407,118 @@
   }
   async function remove() {
     if (!selectedNote || blocked) return;
+    const id = selected,
+      ordinal = shownEntries.findIndex((x) => x.id === id),
+      request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (!(await controller.remove(id)) || request !== interaction) return;
+      const entries = controller.state.query.trim()
+        ? filterNotes(
+            controller.state.snapshot.items,
+            controller.state.query,
+            controller.state.location.scope,
+          )
+        : directEntries(controller.state.snapshot, controller.state.location);
+      selected =
+        entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+      selection.remember(controller.state.location, selected);
+      await tick();
+      if (focus.mayRestore()) {
+        if (selected) stream?.focus();
+        else composer?.focus();
+      }
+      scrollSelection();
+    } finally {
+      focus.stop();
+    }
+  }
+  async function clearStreamSelection(event: MouseEvent) {
     if (
-      viewState.activeKey !== selected &&
-      !(await controller.selectNote(selected))
+      event.target !== event.currentTarget ||
+      blocked ||
+      window.getSelection()?.toString()
     )
       return;
-    if (!(await controller.remove())) return;
-    selected = selection.open(
-      viewState.stashId,
-      directEntries(controller.state.snapshot, viewState.stashId).map(
-        (e) => e.id,
-      ),
-    );
-    await tick();
-    stream?.focus();
-    scrollSelection();
+    const request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (!(await controller.finishEdit()) || request !== interaction) return;
+      selected = '';
+      await tick();
+      if (focus.mayRestore()) stream?.focus();
+    } finally {
+      focus.stop();
+    }
+  }
+  async function retryAction() {
+    if (blocked) return;
+    const ordinal = shownEntries.findIndex((x) => x.id === selected),
+      before = controller.state.stashId,
+      request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (!(await controller.retryMutation()) || request !== interaction)
+        return;
+      const entries = controller.state.query.trim()
+        ? filterNotes(
+            controller.state.snapshot.items,
+            controller.state.query,
+            controller.state.location.scope,
+          )
+        : directEntries(controller.state.snapshot, controller.state.location);
+      if (before !== controller.state.stashId)
+        selected = selection.open(
+          controller.state.location,
+          entries.map((x) => x.id),
+        );
+      else if (!entries.some((x) => x.id === selected))
+        selected =
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+      await tick();
+      if (focus.mayRestore()) {
+        if (selected) stream?.focus();
+        else composer?.focus();
+      }
+      scrollSelection();
+    } finally {
+      focus.stop();
+    }
+  }
+  async function undoDelete() {
+    if (blocked) return;
+    const id = controller.state.snapshot.undoDeleteId,
+      request = ++interaction,
+      focus = observeSubmissionFocus();
+    try {
+      if (!(await controller.undoRemove()) || request !== interaction) return;
+      const entries = controller.state.query.trim()
+        ? filterNotes(
+            controller.state.snapshot.items,
+            controller.state.query,
+            controller.state.location.scope,
+          )
+        : directEntries(controller.state.snapshot, controller.state.location);
+      if (id && entries.some((x) => x.id === id)) {
+        selected = id;
+        await tick();
+        scrollSelection();
+        if (focus.mayRestore()) stream?.focus();
+      }
+    } finally {
+      focus.stop();
+    }
   }
   function focusInline(options?: { end?: boolean }) {
     noteBodies[controller.state.activeKey]?.focus(options);
   }
   function capturePrevious() {
     if (blocked) return false;
-    const note = visibleNotes.at(-1);
+    const note = shownEntries.filter((x) => x.kind === 'note').at(-1);
     if (!note) return false;
     ++interaction;
     selected = note.id;
-    selection.remember(viewState.stashId, selected);
+    selection.remember(viewState.location, selected);
     stream?.focus();
     scrollSelection();
     return true;
@@ -537,9 +599,9 @@
     } else if (key === 'c' && selectedNote) {
       event.preventDefault();
       void copy(selected);
-    } else if ((key === 'enter' || key === 'arrowright') && selectedStash) {
+    } else if ((key === 'enter' || key === 'arrowright') && selectedNote) {
       event.preventDefault();
-      void openStash(selectedStash.id);
+      void openStash(selectedNote.id);
     } else if (key === 'arrowleft' && viewState.stashId !== null) {
       event.preventDefault();
       void openStash(currentStash?.parentId ?? null, viewState.stashId);
@@ -559,7 +621,7 @@
       if (next) {
         ++interaction;
         selected = next.id;
-        selection.remember(viewState.stashId, selected);
+        selection.remember(viewState.location, selected);
         stream
           ?.querySelector(`[data-entry-id="${next.id}"]`)
           ?.scrollIntoView({ block: 'nearest' });
@@ -665,7 +727,7 @@
             onclick={() => controller.previewRestore()}
             disabled={blocked}><Icon name="upload" /> Restore backup</button
           ><button
-            onclick={() => controller.undoRemove()}
+            onclick={() => void undoDelete()}
             disabled={!viewState.snapshot.undoDeleteId || blocked}
             ><Icon name="undo" /> Undo delete</button
           >
@@ -679,142 +741,58 @@
           >
         </div>
         <!-- The focusable region is the keyboard navigation surface; card selection has named controls. -->
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
         <section
           class="note-stream"
           aria-label="Note stream"
           tabindex="0"
           bind:this={stream}
+          onclick={(event) => void clearStreamSelection(event)}
         >
           {#each shownEntries as entry (entry.id)}
-            {#if entry.kind === 'stash'}
-              <StashCard
-                stash={entry}
-                selected={selected === entry.id}
-                disabled={blocked}
-                onselect={(event) => cardClick(event, entry.id)}
-                onopen={() => void openStash(entry.id)}
-                onrename={() => nameStash(entry.id)}
-              />
-            {:else}
-              {@const note = entry}
-              {@const updated = timestampPresentation(note.updatedAt)}
-              <!-- Selection and actions are separate from rendered content and links. -->
-              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-              <article
-                aria-label="Saved note"
-                class:selected={selected === note.id}
-                class="note-card"
-                class:editing={viewState.activeKey === note.id}
-                class:done={note.done}
-                data-note-id={note.id}
-                data-entry-id={note.id}
-                onclick={(event) => cardClick(event, note.id)}
-                ondblclick={(event) => cardDoubleClick(event, note.id)}
-              >
-                <button
-                  class="note-select"
-                  aria-pressed={selected === note.id}
-                  disabled={blocked}
-                  onclick={() => {
-                    ++interaction;
-                    selected = note.id;
-                    selection.remember(viewState.stashId, selected);
-                    if (activeNote && activeNote.id !== note.id)
-                      leaveEdit(activeNote.id);
-                    stream?.focus();
-                  }}
-                  aria-label="Select note"
-                  title="Select note"
-                ></button>
-                {#if note.done}<span class="sr-only">Done</span>{/if}
-                <div class="note-meta">
-                  <time datetime={updated.datetime}>{updated.label}</time>
-                  {#if selected === note.id && viewState.activeKey !== note.id}<div
-                      class="card-actions"
-                    >
-                      {#if viewState.activeKey !== note.id}<button
-                          disabled={blocked}
-                          onclick={() => edit(note.id)}
-                          aria-label="Edit note"
-                          title="Edit note"
-                        >
-                          <svg viewBox="0 0 16 16" aria-hidden="true"
-                            ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
-                          >
-                        </button>{/if}
-                      <button
-                        disabled={blocked}
-                        onclick={() =>
-                          controller.setNoteDone(note.id, !note.done)}
-                        aria-label="Mark done"
-                        title={note.done
-                          ? 'Mark not done (X)'
-                          : 'Mark done (X)'}
-                        aria-pressed={note.done}
-                        ><svg viewBox="0 0 16 16" aria-hidden="true"
-                          ><path d="M3 3h10v10H3z" />{#if note.done}<path
-                              d="m5 8 2 2 4-4"
-                            />{/if}</svg
-                        ></button
-                      >
-                      <button
-                        disabled={blocked}
-                        onclick={() => copy(note.id)}
-                        aria-label="Copy Markdown"
-                        title="Copy Markdown"
-                      >
-                        <svg viewBox="0 0 16 16" aria-hidden="true"
-                          ><path d="M6 5h7v9H6zM3 11H2V2h7v1" /></svg
-                        >
-                      </button>
-                      <button
-                        disabled={blocked}
-                        onclick={remove}
-                        aria-label="Delete note"
-                        title="Delete note"
-                      >
-                        <svg viewBox="0 0 16 16" aria-hidden="true"
-                          ><path
-                            d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10M7 6v6M9 6v6"
-                          /></svg
-                        >
-                      </button>
-                    </div>{/if}
-                </div>
-                {#if viewState.query.trim()}<p class="note-location">
-                    {hierarchy.label(note.stashId).text}
-                  </p>{/if}
-                {#if viewState.activeKey === note.id && !visibleNotes.some((n) => n.id === note.id)}<p
-                    class="editing-outside"
-                  >
-                    Editing outside search results
-                  </p>{/if}
-                <NoteBody
-                  bind:this={noteBodies[note.id]}
-                  expanded={expandedNotes[note.id] ?? false}
-                  onexpand={(expanded) =>
-                    (expandedNotes = { ...expandedNotes, [note.id]: expanded })}
-                  id={note.id}
-                  markdown={note.markdown}
-                  source={viewState.buffers[note.id]?.source ?? note.markdown}
-                  editing={viewState.activeKey === note.id}
-                  baseline={editHeights[note.id]}
-                  states={editorStates}
-                  readOnly={editorReadOnly}
-                  onchange={(source) => controller.editContext(note.id, source)}
-                  onsubmit={() => submit(note.id)}
-                  oncancel={finishEdit}
-                  onblur={() => leaveEdit(note.id)}
-                  onfocus={() => controller.retainEdit(note.id)}
-                  oncontext={(fenced) => {
-                    inlineFenced = fenced;
-                    selectedEditingContext = { id: note.id, fenced };
-                  }}
-                  onopen={open}
-                />
-              </article>
-            {/if}
+            <ItemCard
+              bind:this={noteBodies[entry.id]}
+              item={entry}
+              selected={selected === entry.id}
+              editing={viewState.activeKey === entry.id}
+              source={viewState.buffers[entry.id]?.source ?? entry.markdown}
+              baseline={editHeights[entry.id]}
+              states={editorStates}
+              readOnly={editorReadOnly}
+              disabled={blocked}
+              expanded={expandedNotes[entry.id] ?? false}
+              outsideSearch={viewState.activeKey === entry.id &&
+                !visibleNotes.some((x) => x.id === entry.id)}
+              location={viewState.query.trim()
+                ? hierarchy.label(entry.parentId).text
+                : ''}
+              onselect={(event) => cardClick(event, entry.id)}
+              ondoubleclick={(event) => cardDoubleClick(event, entry.id)}
+              onselectbutton={() => {
+                ++interaction;
+                selected = entry.id;
+                selection.remember(viewState.location, selected);
+                if (activeNote && activeNote.id !== entry.id)
+                  leaveEdit(activeNote.id);
+                stream?.focus();
+              }}
+              onedit={() => void edit(entry.id)}
+              ondelete={() => void remove()}
+              oncopy={() => void copy(entry.id)}
+              ondone={() => void controller.setNoteDone(entry.id, !entry.done)}
+              onsource={(source) => controller.editContext(entry.id, source)}
+              onsubmit={() => void submit(entry.id)}
+              onfinish={() => void finishEdit()}
+              onblur={() => leaveEdit(entry.id)}
+              onfocus={() => controller.retainEdit(entry.id)}
+              oncontext={(fenced) => {
+                inlineFenced = fenced;
+                selectedEditingContext = { id: entry.id, fenced };
+              }}
+              onopen={(url) => void open(url)}
+              onexpand={(expanded) =>
+                (expandedNotes = { ...expandedNotes, [entry.id]: expanded })}
+            />
           {/each}
           {#if !shownEntries.length}<p class="empty-stream">
               {viewState.query
@@ -974,6 +952,10 @@
               onclick={() => controller.retryCompletion()}
               >Retry completion</button
             >
+          {:else if viewState.mutationRetry}<button
+              disabled={blocked}
+              onclick={() => void retryAction()}>Retry action</button
+            >
           {:else if viewState.error}<button
               disabled={blocked}
               onclick={() => controller.flush()}>Retry checkpoint</button
@@ -984,14 +966,6 @@
         </section>
       </aside>
     </div>
-    {#if stashDialog}<StashDialog
-        title="Rename stash"
-        initial={stashDialog.name}
-        busy={viewState.operation !== null}
-        error={viewState.error}
-        onsubmit={saveStash}
-        oncancel={() => void closeStashDialog()}
-      />{/if}
     {#if viewState.preview}<section
         class="confirmation"
         aria-label="Replace workspace?"

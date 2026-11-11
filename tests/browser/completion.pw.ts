@@ -36,7 +36,7 @@ test('X toggles once, preserves saved Markdown, stays searchable, and leaves edi
   await page.getByRole('button', { name: 'Mark done', exact: true }).click();
   await expect(card(page)).not.toHaveClass(/done/);
 });
-test('X leaves typing, IME, DOM ranges, modifiers, and stashes alone', async ({
+test('X leaves typing, IME, DOM ranges, and modifiers alone, and toggles selected containers', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -67,11 +67,10 @@ test('X leaves typing, IME, DOM ranges, modifiers, and stashes alone', async ({
   await page.getByRole('searchbox').press('Escape');
   await page.keyboard.press('Meta+n');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await page
-    .getByRole('article', { name: 'Stash Untitled', exact: true })
-    .click({ position: { x: 12, y: 12 } });
+  const stash = page.locator('.note-card[data-kind="stash"]');
+  await stash.click({ position: { x: 12, y: 12 } });
   await page.keyboard.press('x');
-  await expect(card(page)).not.toHaveClass(/done/);
+  await expect(stash).toHaveClass(/done/);
 });
 test('completion failure has its own narrow retry, preserving capture and latest source through delete/Undo/export/restore', async ({
   page,
@@ -124,7 +123,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await page.evaluate(() => {
     const t = (window as any).__test;
     const b = JSON.parse(t.repo.exported);
-    if (b.version !== 3 || b.workspace.notes[0].done !== true)
+    if (b.version !== 4 || b.workspace.items[0].done !== true)
       throw Error('completion absent');
     t.repo.restoreText = t.repo.exported;
   });
@@ -169,7 +168,10 @@ test('source-flush failure retains visible source and completion-specific retry 
   await expect(editor).toHaveText('Latest **source**');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].markdown,
     ),
   ).toBe('Latest **source**');
 });
@@ -182,7 +184,7 @@ test('completion acknowledgment retains newer search focus, query, and capture c
     const t = (window as any).__test;
     t.delay();
     t.controller.editContext(
-      t.repo.snapshot.notes[0].id,
+      t.repo.snapshot.items.filter((x: any) => x.kind === 'note')[0].id,
       'Latest pending source',
     );
   });
@@ -195,7 +197,10 @@ test('completion acknowledgment retains newer search focus, query, and capture c
   await expect(page.getByRole('searchbox')).toHaveValue('Latest');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].markdown,
     ),
   ).toBe('Latest pending source');
 });
@@ -220,14 +225,14 @@ for (const scale of [100, 150])
     const after = await first.boundingBox();
     expect(after?.height).toBe(before?.height);
     await page.screenshot({
-      path: `.projects/2026-11-11-sidebar-code-done/task3-completed-${scale}.png`,
+      path: `test-results/captures/completion/task3-completed-${scale}.png`,
     });
     await first.getByRole('button', { name: 'Edit note', exact: true }).click();
     await expect(
       page.getByRole('textbox', { name: 'Edit Markdown' }),
     ).toContainText('Markdown stays **bold**');
     await page.screenshot({
-      path: `.projects/2026-11-11-sidebar-code-done/task3-editing-${scale}.png`,
+      path: `test-results/captures/completion/task3-editing-${scale}.png`,
     });
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

@@ -15,15 +15,13 @@ async function nativeMock(
       if (command === 'workspace_load') return repo.loadWorkspace();
       if (command === 'draft_checkpoint')
         return repo.checkpointDraft(args.key, args.markdown, args.revision);
-      if (command === 'note_save') {
+      if (command === 'item_capture') {
         saves++;
-        return repo.saveNote(
-          args.id,
-          args.markdown,
-          args.draftKey,
-          args.draftRevision,
-          args.stashId,
-        );
+        return repo.captureItem(args.request);
+      }
+      if (command === 'item_save_source') {
+        saves++;
+        return repo.saveItemSource(args.id, args.markdown, args.draft);
       }
       throw new Error('Unexpected synthetic command');
     },
@@ -39,7 +37,7 @@ async function nativeMock(
       (window as any).__TAURI_INTERNALS__ = {
         invoke: async (command: string, args: unknown) => {
           const result = await (window as any).__syntheticIPC(command, args);
-          if (command === 'note_save' && fault === 'render') {
+          if (command === 'item_capture' && fault === 'render') {
             Date.prototype.toLocaleString = () => {
               throw new TypeError('PRIVATE_SYNTHETIC_NOTE_CONTENT');
             };
@@ -76,7 +74,11 @@ test('ordinary shortcut submission retains the workspace and a usable second cap
     2,
   );
   await expect(capture(page)).toBeFocused();
-  expect(repo.snapshot.notes.map((note) => note.markdown)).toEqual([
+  expect(
+    repo.snapshot.items
+      .filter((x: any) => x.kind === 'note')
+      .map((note) => note.markdown),
+  ).toEqual([
     'First synthetic plain capture',
     'Second synthetic plain capture',
   ]);
@@ -96,7 +98,9 @@ test('ordinary repository save rejection keeps input in the workspace without fa
   await expect(page.getByRole('button', { name: 'Reload view' })).toHaveCount(
     0,
   );
-  expect(repo.snapshot.notes).toHaveLength(0);
+  expect(
+    repo.snapshot.items.filter((x: any) => x.kind === 'note'),
+  ).toHaveLength(0);
   expect(saveCalls()).toBe(1);
 });
 
@@ -130,7 +134,9 @@ for (const deniedStorage of [false, true])
     expect(safeDetails).not.toContain('PRIVATE_');
     expect(JSON.parse(safeDetails).locations.length).toBeGreaterThan(0);
     expect(await page.locator('body').innerText()).not.toContain('PRIVATE_');
-    expect(repo.snapshot.notes).toHaveLength(1);
+    expect(
+      repo.snapshot.items.filter((x: any) => x.kind === 'note'),
+    ).toHaveLength(1);
     expect(saveCalls()).toBe(1);
     await page.waitForTimeout(350);
     expect(saveCalls()).toBe(1);
@@ -139,6 +145,8 @@ for (const deniedStorage of [false, true])
     await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
       1,
     );
-    expect(repo.snapshot.notes[0].markdown).toBe('Saved synthetic capture');
+    expect(
+      repo.snapshot.items.filter((x: any) => x.kind === 'note')[0].markdown,
+    ).toBe('Saved synthetic capture');
     expect(saveCalls()).toBe(1);
   });

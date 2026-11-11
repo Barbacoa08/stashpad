@@ -1,5 +1,6 @@
 pub mod backup;
 mod external;
+pub mod legacy_backup;
 pub mod model;
 pub mod store;
 use model::*;
@@ -79,28 +80,36 @@ async fn draft_checkpoint(
     mutate(state, move |s| s.checkpoint(&key, &markdown, revision)).await
 }
 #[tauri::command]
-async fn note_save(
+async fn item_save_source(
     state: State<'_, NativeState>,
-    id: Option<String>,
+    id: String,
     markdown: String,
-    draft_key: String,
-    draft_revision: i64,
-    stash_id: Option<String>,
+    draft: DraftAck,
 ) -> Result<WorkspaceSnapshot> {
     fail_operation("save")?;
-    mutate(state, move |s| {
-        s.save(
-            id.as_deref(),
-            &markdown,
-            &draft_key,
-            draft_revision,
-            stash_id.as_deref(),
-        )
-    })
-    .await
+    mutate(state, move |s| s.save_source(&id, &markdown, &draft)).await
 }
 #[tauri::command]
-async fn note_set_done(
+async fn item_capture(
+    state: State<'_, NativeState>,
+    request: CaptureItem,
+) -> Result<WorkspaceSnapshot> {
+    fail_operation("save")?;
+    mutate(state, move |s| s.capture(&request)).await
+}
+#[tauri::command]
+async fn item_create_child_stash(
+    state: State<'_, NativeState>,
+    request: CreateChildStash,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.create_child_stash(&request)).await
+}
+#[tauri::command]
+async fn item_promote(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.promote(&id)).await
+}
+#[tauri::command]
+async fn item_set_done(
     state: State<'_, NativeState>,
     id: String,
     done: bool,
@@ -109,20 +118,19 @@ async fn note_set_done(
     mutate(state, move |s| s.set_done(&id, done)).await
 }
 #[tauri::command]
-async fn stash_create(
-    state: State<'_, NativeState>,
-    name: String,
-    parent_id: Option<String>,
-) -> Result<WorkspaceSnapshot> {
-    mutate(state, move |s| s.create_stash(&name, parent_id.as_deref())).await
-}
-#[tauri::command]
-async fn stash_rename(
+async fn item_set_color(
     state: State<'_, NativeState>,
     id: String,
-    name: String,
+    color: Option<ColorToken>,
 ) -> Result<WorkspaceSnapshot> {
-    mutate(state, move |s| s.rename_stash(&id, &name)).await
+    mutate(state, move |s| s.set_color(&id, color)).await
+}
+#[tauri::command]
+async fn item_reorder(
+    state: State<'_, NativeState>,
+    request: ReorderItem,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.reorder(&request)).await
 }
 #[tauri::command]
 async fn draft_discard(state: State<'_, NativeState>, key: String) -> Result<WorkspaceSnapshot> {
@@ -140,12 +148,16 @@ fn clipboard_write_text(app: tauri::AppHandle, text: String) -> Result<()> {
     app.clipboard().write_text(text).map_err(storage_error)
 }
 #[tauri::command]
-async fn note_delete(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
+async fn item_delete(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
     mutate(state, move |s| s.delete(&id)).await
 }
 #[tauri::command]
-async fn note_undo_delete(state: State<'_, NativeState>) -> Result<WorkspaceSnapshot> {
+async fn item_undo_delete(state: State<'_, NativeState>) -> Result<WorkspaceSnapshot> {
     mutate(state, |s| s.undo()).await
+}
+#[tauri::command]
+async fn item_restore(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.restore(&id)).await
 }
 #[derive(serde::Serialize)]
 struct Preview {
@@ -203,9 +215,9 @@ async fn backup_preview_restore(
         let token = uuid::Uuid::new_v4().to_string();
         let result = Preview {
             token: token.clone(),
-            notes: b.workspace.notes.len(),
+            notes: b.workspace.items.iter().filter(|x|x.kind==Kind::Note).count(),
             drafts: b.workspace.drafts.len(),
-            stashes: b.workspace.stashes.len(),
+            stashes: b.workspace.items.iter().filter(|x|x.kind==Kind::Stash).count(),
             warning: "Replace all local notes, stashes, and drafts. A safety backup will be written first."
                 .into(),
         };
@@ -285,12 +297,16 @@ pub fn run() {
             draft_discard,
             external_open_url,
             clipboard_write_text,
-            note_save,
-            note_set_done,
-            stash_create,
-            stash_rename,
-            note_delete,
-            note_undo_delete,
+            item_save_source,
+            item_capture,
+            item_create_child_stash,
+            item_promote,
+            item_set_done,
+            item_set_color,
+            item_reorder,
+            item_delete,
+            item_restore,
+            item_undo_delete,
             backup_export,
             backup_preview_restore,
             backup_confirm_restore

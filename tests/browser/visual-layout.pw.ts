@@ -21,7 +21,9 @@ test('stream scrolls independently and constrained text remains reachable', asyn
     code: [...document.querySelectorAll('.code-block')].every(
       (el) =>
         el.getBoundingClientRect().right <=
-        el.closest('.note-card')!.getBoundingClientRect().right + 1,
+        el.closest('.note-card[data-kind="note"]')!.getBoundingClientRect()
+          .right +
+          1,
     ),
   }));
   expect(bounds).toEqual({ page: true, stream: true, code: true });

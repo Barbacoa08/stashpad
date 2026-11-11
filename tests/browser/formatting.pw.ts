@@ -54,7 +54,10 @@ for (const mode of ['capture', 'inline'] as const) {
       await editor.press('Escape');
       expect(
         await page.evaluate(
-          () => (window as any).__test.repo.snapshot.notes[0].markdown,
+          () =>
+            (window as any).__test.repo.snapshot.items.filter(
+              (x: any) => x.kind === 'note',
+            )[0].markdown,
         ),
       ).toBe('`code`');
     } else {
@@ -78,7 +81,10 @@ test('E always places caret at source end while cached Undo and autosave caret s
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe('first\nxlast!');
@@ -106,11 +112,15 @@ test('Command slash searches and Command 1 goes Home from an editor without losi
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe('saved latest');
   await search(page).press('Escape');
+  await stream(page).dispatchEvent('click');
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
   await capture(page).fill('stash draft');
@@ -125,7 +135,10 @@ test('Command slash searches and Command 1 goes Home from an editor without losi
   await expect(capture(page)).toHaveText('stash draft');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes.length,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        ).length,
     ),
   ).toBe(1);
 });

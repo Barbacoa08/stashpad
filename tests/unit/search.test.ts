@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { item } from '../fixtures/items';
 import { filterNotes } from '../../src/lib/domain/search';
 const notes = [
   {
@@ -6,7 +7,7 @@ const notes = [
     markdown: '**Alpha**',
     createdAt: 0,
     updatedAt: 2,
-    stashId: null,
+    parentId: null,
     done: false,
     deletedAt: null,
   },
@@ -15,7 +16,7 @@ const notes = [
     markdown: 'ALPHA beta',
     createdAt: 0,
     updatedAt: 2,
-    stashId: null,
+    parentId: null,
     done: false,
     deletedAt: null,
   },
@@ -24,11 +25,11 @@ const notes = [
     markdown: 'alpha',
     createdAt: 0,
     updatedAt: 3,
-    stashId: null,
+    parentId: null,
     done: false,
     deletedAt: 3,
   },
-];
+].map((x) => item(x));
 describe('saved-source search', () => {
   it('trims, ignores case, excludes deleted, and sorts ties', () =>
     expect(filterNotes(notes, ' ALpHa ').map((n) => n.id)).toEqual(['a', 'b']));
@@ -45,7 +46,7 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       markdown: 'one',
       createdAt: 1,
       updatedAt: 100,
-      stashId: null,
+      parentId: null,
       done: false,
       deletedAt: null,
     },
@@ -54,7 +55,7 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       markdown: 'two',
       createdAt: 2,
       updatedAt: 2,
-      stashId: null,
+      parentId: null,
       done: false,
       deletedAt: null,
     },
@@ -63,10 +64,10 @@ it('keeps capture order after edits, appends newer captures, and breaks creation
       markdown: 'tie',
       createdAt: 1,
       updatedAt: 1,
-      stashId: null,
+      parentId: null,
       done: false,
       deletedAt: null,
     },
-  ];
+  ].map((x) => item(x));
   expect(filterNotes(source, '').map((n) => n.id)).toEqual(['a', 'b', 'c']);
 });

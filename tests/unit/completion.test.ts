@@ -8,7 +8,7 @@ async function setup() {
   await c.start();
   c.editSource('saved');
   await c.save();
-  const id = repo.snapshot.notes[0].id;
+  const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
   await c.selectNote(id);
   return { repo, c, id };
 }
@@ -26,17 +26,22 @@ it('serializes exact desired completion after the latest visible source and pres
     release();
     await completion;
     await nav;
-    expect(repo.snapshot.notes[0]).toMatchObject({
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0],
+    ).toMatchObject({
       id,
       markdown: 'latest\r\n**source**',
       done: true,
-      stashId: null,
+      parentId: null,
     });
     expect(c.state.activeKey).toBe('compose');
     expect(c.state.query).toBe('latest');
-    const time = repo.snapshot.notes[0].updatedAt;
+    const time = repo.snapshot.items.filter((x) => x.kind === 'note')[0]
+      .updatedAt;
     await c.setNoteDone(id, true);
-    expect(repo.snapshot.notes[0].updatedAt).toBe(time);
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].updatedAt,
+    ).toBe(time);
   } finally {
     c.dispose();
   }
@@ -50,14 +55,20 @@ it.each(['save', 'completion'])(
       repo.fail = failure;
       expect(await c.setNoteDone(id, true)).toBe(false);
       expect(c.state.completionRetry).toEqual({ id, done: true });
-      expect(repo.snapshot.notes[0].done).toBe(false);
+      expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].done).toBe(
+        false,
+      );
       expect(c.state.source).toBe('retained');
       repo.fail = null;
       await c.newNote();
       c.editSource('capture pending');
       expect(await c.retryCompletion()).toBe(true);
-      expect(repo.snapshot.notes).toHaveLength(1);
-      expect(repo.snapshot.notes[0]).toMatchObject({
+      expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(
+        1,
+      );
+      expect(
+        repo.snapshot.items.filter((x) => x.kind === 'note')[0],
+      ).toMatchObject({
         id,
         done: true,
         markdown: 'retained',
@@ -67,7 +78,9 @@ it.each(['save', 'completion'])(
       await c.selectNote(id);
       await c.remove();
       await c.undoRemove();
-      expect(repo.snapshot.notes[0].done).toBe(true);
+      expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].done).toBe(
+        true,
+      );
     } finally {
       c.dispose();
     }
@@ -81,11 +94,16 @@ it('newer completion intent supersedes a failed older retry without reviving a d
     repo.fail = null;
     await c.setNoteDone(id, false);
     expect(c.state.completionRetry).toBeNull();
-    expect(repo.snapshot.notes[0].done).toBe(false);
+    expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].done).toBe(
+      false,
+    );
     await c.remove();
     const before = structuredClone(repo.snapshot);
-    expect(await c.setNoteDone(id, true)).toBe(false);
-    expect(repo.snapshot).toEqual(before);
+    expect(await c.setNoteDone(id, true)).toBe(true);
+    expect(repo.snapshot.items.find((x) => x.id === id)).toMatchObject({
+      done: true,
+      deletedAt: before.items.find((x) => x.id === id)!.deletedAt,
+    });
   } finally {
     c.dispose();
   }
@@ -95,11 +113,11 @@ it('completion preserves exact target ownership after a queued navigation', asyn
   const c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash('Owner');
+    await c.createStash();
     const owner = c.state.stashId;
     c.editSource('owned');
     await c.save();
-    const id = repo.snapshot.notes[0].id;
+    const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
     await c.selectNote(id);
     c.editSource('latest owned');
     const navigation = c.openStash(null);
@@ -108,9 +126,11 @@ it('completion preserves exact target ownership after a queued navigation', asyn
     await completion;
     expect(c.state.stashId).toBeNull();
     expect(c.state.activeKey).toBe('compose');
-    expect(repo.snapshot.notes[0]).toMatchObject({
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0],
+    ).toMatchObject({
       id,
-      stashId: owner,
+      parentId: owner,
       markdown: 'latest owned',
       done: true,
     });

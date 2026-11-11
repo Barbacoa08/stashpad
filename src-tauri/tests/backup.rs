@@ -1,16 +1,18 @@
+mod common;
+use common::*;
 use stashpad_alpha_kit::{backup, model::*, store::Store};
 fn snapshot() -> WorkspaceSnapshot {
     let id = "11111111-1111-4111-8111-111111111111".to_string();
     WorkspaceSnapshot {
-        stashes: vec![],
-        notes: vec![Note {
-            stash_id: None,
+        items: vec![Item {
+            parent_id: None,
             id: id.clone(),
             markdown: "α **source**  \n```js\nlet a='*';\n```\n".into(),
             created_at: 1,
             updated_at: 2,
             done: false,
             deleted_at: None,
+            ..item()
         }],
         drafts: vec![Draft {
             key: id,
@@ -49,10 +51,10 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
     ] {
         let mut v = valid.clone();
         match case {
-            "future" => v["version"] = 4.into(),
+            "future" => v["version"] = 5.into(),
             "duplicate" => {
-                let n = v["workspace"]["notes"][0].clone();
-                v["workspace"]["notes"].as_array_mut().unwrap().push(n)
+                let n = v["workspace"]["items"][0].clone();
+                v["workspace"]["items"].as_array_mut().unwrap().push(n)
             }
             "dangling" => {
                 v["workspace"]["drafts"][0]["key"] = "33333333-3333-4333-8333-333333333333".into()
@@ -64,15 +66,15 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
                     .remove("undoDeleteId");
             }
             "missingDeleted" => {
-                v["workspace"]["notes"][0]
+                v["workspace"]["items"][0]
                     .as_object_mut()
                     .unwrap()
                     .remove("deletedAt");
             }
-            "type" => v["workspace"]["notes"][0]["createdAt"] = "1".into(),
+            "type" => v["workspace"]["items"][0]["createdAt"] = "1".into(),
             "time" => v["exportedAt"] = "2026-02-30T00:00:00.000Z".into(),
             "extra" => v["machinePath"] = "/private".into(),
-            "negative" => v["workspace"]["notes"][0]["createdAt"] = (-1).into(),
+            "negative" => v["workspace"]["items"][0]["createdAt"] = (-1).into(),
             "draftDuplicate" => {
                 let d = v["workspace"]["drafts"][0].clone();
                 v["workspace"]["drafts"].as_array_mut().unwrap().push(d)
@@ -90,7 +92,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
 #[test]
 fn oversized_source_and_unicode_timestamp_are_safe() {
     let mut s = snapshot();
-    s.notes[0].markdown = "x".repeat(MAX_SOURCE + 1);
+    s.items[0].markdown = "x".repeat(MAX_SOURCE + 1);
     assert!(backup::encode(&s).is_err());
     let mut v: serde_json::Value =
         serde_json::from_slice(&backup::encode(&snapshot()).unwrap()).unwrap();
@@ -104,7 +106,7 @@ fn separate_store_roundtrip_and_safety_backup() {
     let created = first
         .save(None, "deleted source", "compose", 1, None)
         .unwrap();
-    let id = created.notes[0].id.clone();
+    let id = created.items[0].id.clone();
     first.set_done(&id, true).unwrap();
     first.checkpoint("compose", "new draft", 8).unwrap();
     let before = first.delete(&id).unwrap();
@@ -119,7 +121,7 @@ fn separate_store_roundtrip_and_safety_backup() {
     assert!(backup::validate(&std::fs::read(safety).unwrap())
         .unwrap()
         .workspace
-        .notes
+        .items
         .is_empty());
 }
 #[test]
@@ -162,25 +164,26 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
     let active = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".to_string();
     let deleted = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB".to_string();
     let s = WorkspaceSnapshot {
-        stashes: vec![],
-        notes: vec![
-            Note {
-                stash_id: None,
+        items: vec![
+            Item {
+                parent_id: None,
                 id: active.clone(),
                 markdown: "saved uppercase".into(),
                 created_at: 1,
                 updated_at: 2,
                 done: false,
                 deleted_at: None,
+                ..item()
             },
-            Note {
-                stash_id: None,
+            Item {
+                parent_id: None,
                 id: deleted.clone(),
                 markdown: "deleted uppercase".into(),
                 created_at: 1,
                 updated_at: 2,
                 done: false,
                 deleted_at: Some(3),
+                ..item()
             },
         ],
         drafts: vec![Draft {
@@ -205,12 +208,12 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
             "draft" => malformed.drafts[0].key = active.to_lowercase(),
             "undo" => malformed.undo_delete_id = Some(deleted.to_lowercase()),
             _ => {
-                let mut duplicate = malformed.notes[0].clone();
+                let mut duplicate = malformed.items[0].clone();
                 duplicate.id = active.to_lowercase();
-                malformed.notes.push(duplicate)
+                malformed.items.push(duplicate)
             }
         }
-        let v = serde_json::json!({"format":"stashpad-alpha","version":1,"exportedAt":"2026-11-10T00:00:00.000Z","workspace":malformed});
+        let v = serde_json::json!({"format":"stashpad-alpha","version":4,"exportedAt":"2026-11-10T00:00:00.000Z","workspace":malformed});
         assert!(
             backup::validate(&serde_json::to_vec(&v).unwrap()).is_err(),
             "accepted {kind}"
@@ -243,7 +246,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
     );
     let undone = db.undo().unwrap();
     assert!(undone
-        .notes
+        .items
         .iter()
         .find(|n| n.id == deleted)
         .unwrap()
@@ -293,7 +296,7 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             "empty" => v["workspace"]["stashes"][0]["name"] = "  ".into(),
             "extra" => v["workspace"]["stashes"][0]["unknown"] = true.into(),
             "orphanUndo" => v["workspace"]["undoDeleteId"] = b.into(),
-            "future" => v["version"] = 4.into(),
+            "future" => v["version"] = 5.into(),
             _ => {}
         }
         assert_eq!(
@@ -305,13 +308,18 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
     let mut s = WorkspaceSnapshot::default();
     for i in 0..10000 {
         let id = uuid::Uuid::from_u128(i + 1).to_string();
-        let parent_id = s.stashes.last().map(|stash| stash.id.clone());
-        s.stashes.push(Stash {
+        let parent_id = s
+            .items
+            .iter()
+            .rev()
+            .find(|x| x.kind == Kind::Stash)
+            .map(|x| x.id.clone());
+        s.items.push(Item {
             id: id.clone(),
-            name: "😀".repeat(200),
             parent_id,
-            created_at: 0,
-            updated_at: 0,
+            kind: Kind::Stash,
+            markdown: "x".into(),
+            ..item()
         });
         s.drafts.push(Draft {
             key: compose_key(Some(&id)),
@@ -320,14 +328,12 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             updated_at: 0,
         });
         let note_id = uuid::Uuid::from_u128(i + 10001).to_string();
-        s.notes.push(Note {
+        s.items.push(Item {
             id: note_id.clone(),
-            stash_id: Some(id),
+            parent_id: Some(id),
+            position: if i == 9999 { 0 } else { 1 },
             markdown: "x".into(),
-            created_at: 0,
-            updated_at: 0,
-            done: false,
-            deleted_at: None,
+            ..item()
         });
         s.drafts.push(Draft {
             key: note_id,
@@ -335,10 +341,6 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             revision: 0,
             updated_at: 0,
         });
-    }
-    // Keep the complete envelope within capacity while checking maximum legal contexts.
-    for stash in &mut s.stashes {
-        stash.name = "x".into();
     }
     s.drafts.push(Draft {
         key: "compose".into(),
@@ -352,6 +354,6 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             .workspace,
         s
     );
-    s.stashes.push(s.stashes[0].clone());
+    s.items.push(s.items[0].clone());
     assert!(backup::encode(&s).is_err());
 }

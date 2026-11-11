@@ -62,7 +62,12 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).locator('strong')).toHaveText('boundary source');
   expect(
-    await page.evaluate(() => (window as any).__test.repo.snapshot.notes[0]),
+    await page.evaluate(
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0],
+    ),
   ).toMatchObject({
     createdAt: Number.MAX_SAFE_INTEGER,
     updatedAt: Number.MAX_SAFE_INTEGER,
@@ -107,7 +112,7 @@ for (const constrained of [false, true])
     }
     const suffix = constrained ? 'small-150' : 'wide';
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-normal.png`,
+      path: `test-results/captures/final-fixes/visual-residual-${suffix}-normal.png`,
     });
     for (const index of [0, 1]) {
       await cards(page)
@@ -172,7 +177,7 @@ for (const constrained of [false, true])
       expect(bounds).toEqual({ contained: true, separate: true });
     }
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-selected.png`,
+      path: `test-results/captures/final-fixes/visual-residual-${suffix}-selected.png`,
     });
     const selected = cards(page).nth(1);
     await selected
@@ -190,7 +195,7 @@ for (const constrained of [false, true])
       selected.getByRole('button', { name: 'Save edit' }),
     ).toHaveCount(0);
     await page.screenshot({
-      path: `.projects/2026-11-11-seamless-flow/inline-action-${suffix}.png`,
+      path: `test-results/captures/final-fixes/inline-action-${suffix}.png`,
     });
     await inline(page).press('Enter');
     await selected

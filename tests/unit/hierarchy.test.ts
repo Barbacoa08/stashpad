@@ -1,15 +1,26 @@
+import {
+  convertLegacy,
+  validateBackup as validateCurrent,
+  encodeBackup as encodeCurrent,
+} from '../../src/lib/domain/backup';
 import { it, expect } from 'vitest';
-import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
+import {
+  validateBackup,
+  encodeBackup,
+} from '../../src/lib/domain/legacy-backup';
 import {
   composeKey,
   stashPath,
   directEntries,
   sidebarRows,
 } from '../../src/lib/domain/hierarchy';
-import {
-  emptyWorkspace,
-  type WorkspaceSnapshot,
-} from '../../src/lib/domain/notes';
+import { type V3Workspace as WorkspaceSnapshot } from '../../src/lib/domain/notes';
+const emptyWorkspace = (): WorkspaceSnapshot => ({
+  stashes: [],
+  notes: [],
+  drafts: [],
+  undoDeleteId: null,
+});
 const a = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
   b = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   n = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -36,16 +47,21 @@ const workspace = (): WorkspaceSnapshot => ({
 });
 it('roundtrips nested ownership and resolves a flat hierarchy and exact compose keys', () => {
   const s = workspace();
-  const checked = validateBackup(encodeBackup(s));
-  expect(checked).toHaveProperty('version', 3);
-  expect(checked).toHaveProperty('workspace', s);
-  expect(stashPath(s.stashes, b).map((x) => x.name)).toEqual([
-    'Parent',
-    'Child',
-  ]);
-  expect(directEntries(s, a).map((x) => x.id)).toEqual([b]);
+  const checked = validateCurrent(encodeCurrent(convertLegacy(s)));
+  expect(checked).toHaveProperty('version', 4);
+  expect(checked).toHaveProperty('workspace', convertLegacy(s));
   expect(
-    sidebarRows(s.stashes, new Set([a])).map((x) => [x.stash.id, x.depth]),
+    stashPath(
+      convertLegacy(s).items.filter((x) => x.kind === 'stash'),
+      b,
+    ).map((x) => x.markdown),
+  ).toEqual(['Parent', 'Child']);
+  expect(directEntries(convertLegacy(s), a).map((x) => x.id)).toEqual([b]);
+  expect(
+    sidebarRows(
+      convertLegacy(s).items.filter((x) => x.kind === 'stash'),
+      new Set([a]),
+    ).map((x) => [x.stash.id, x.depth]),
   ).toEqual([
     [a, 0],
     [b, 1],
@@ -114,8 +130,16 @@ it('validates a 10000 deep chain without recursion or quadratic ancestor scans',
       updatedAt: i,
     });
   }
-  expect(validateBackup(encodeBackup(s))).toHaveProperty('version', 3);
-  expect(stashPath(s.stashes, s.stashes.at(-1)!.id)).toHaveLength(10000);
+  expect(validateCurrent(encodeCurrent(convertLegacy(s)))).toHaveProperty(
+    'version',
+    4,
+  );
+  expect(
+    stashPath(
+      convertLegacy(s).items.filter((x) => x.kind === 'stash'),
+      s.stashes.at(-1)!.id,
+    ),
+  ).toHaveLength(10000);
 });
 it('counts direct active entries once for stash cards, including deletion timestamp zero', async () => {
   const policy = await import('../../src/lib/domain/hierarchy');
@@ -127,8 +151,8 @@ it('counts direct active entries once for stash cards, including deletion timest
     done: false,
     deletedAt: 0,
   });
-  expect(policy.entryCounts(s).get(b)).toBe(1);
-  expect(policy.entryCounts(s).get(a)).toBe(1);
+  expect(policy.entryCounts(convertLegacy(s)).get(b)).toBe(1);
+  expect(policy.entryCounts(convertLegacy(s)).get(a)).toBe(1);
 });
 
 it('accepts 200 Unicode code points and all 20001 legal draft contexts', () => {
@@ -158,7 +182,7 @@ it('accepts 200 Unicode code points and all 20001 legal draft contexts', () => {
     );
   }
   s.drafts.push({ key: 'compose', markdown: '', revision: 0, updatedAt: 0 });
-  expect(validateBackup(encodeBackup(s))).toHaveProperty(
+  expect(validateCurrent(encodeCurrent(convertLegacy(s)))).toHaveProperty(
     'workspace.drafts.length',
     20001,
   );

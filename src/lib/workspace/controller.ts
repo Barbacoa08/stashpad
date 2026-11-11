@@ -1,13 +1,32 @@
-import { emptyWorkspace, type WorkspaceSnapshot } from '../domain/notes';
-import { composeKey, composeOwner, stashName } from '../domain/hierarchy';
+import {
+  emptyWorkspace,
+  type WorkspaceSnapshot,
+  type Location,
+  type ColorToken,
+} from '../domain/notes';
+import {
+  composeKey,
+  composeOwner,
+  effectiveScope,
+  itemLocation,
+} from '../domain/hierarchy';
 import { filterNotes } from '../domain/search';
-import type { Repository, RestorePreview } from '../platform/workspace';
+import type {
+  Repository,
+  RestorePreview,
+  CaptureItem,
+  CreateChildStash,
+  ReorderItem,
+} from '../platform/workspace';
 /** Save acknowledgments allow editing; other in-flight mutations lock editors. */
 export type WorkspaceOperation =
   | 'save'
   | 'completion'
   | 'create-stash'
-  | 'rename-stash'
+  | 'promote'
+  | 'restore-item'
+  | 'color'
+  | 'reorder'
   | 'delete'
   | 'export'
   | 'preview-restore'
@@ -15,6 +34,8 @@ export type WorkspaceOperation =
 export interface ViewState {
   snapshot: WorkspaceSnapshot;
   stashId: string | null;
+  location: Location;
+  mutationRetry: boolean;
   activeKey: string;
   buffers: Record<string, { source: string; revision: number }>;
   source: string;
@@ -31,6 +52,8 @@ export class WorkspaceController {
   state: ViewState = {
     snapshot: emptyWorkspace(),
     stashId: null,
+    location: { scope: 'live', itemId: null },
+    mutationRetry: false,
     activeKey: 'compose',
     buffers: { compose: { source: '', revision: 0 } },
     source: '',
@@ -53,6 +76,10 @@ export class WorkspaceController {
   private queryRevision = 0;
   private editIntentRevision = 0;
   private completionIntent = 0;
+  private viewIntent = 0;
+  private captureIntents = new Map<string, CaptureItem>();
+  private creationIntent: CreateChildStash | null = null;
+  private retryIntent: (() => Promise<boolean>) | null = null;
   constructor(private repo: Repository) {}
   subscribe(fn: (s: ViewState) => void) {
     this.listeners.add(fn);
@@ -82,7 +109,11 @@ export class WorkspaceController {
     this.patch({ snapshot: s });
   }
   get visibleNotes() {
-    return filterNotes(this.state.snapshot.notes, this.state.query);
+    return filterNotes(
+      this.state.snapshot.items,
+      this.state.query,
+      this.state.location.scope,
+    );
   }
   async start() {
     return this.run(async () => {
@@ -91,7 +122,10 @@ export class WorkspaceController {
         if (this.disposed) return false;
         this.snapshot(s);
         this.resetBuffers(s);
-        this.patch({ stashId: null });
+        this.patch({
+          stashId: null,
+          location: { scope: 'live', itemId: null },
+        });
         this.context(composeKey(null));
         this.patch({ loaded: true, status: 'Ready', error: '' });
         return true;
@@ -114,7 +148,7 @@ export class WorkspaceController {
   }
   private context(key: string) {
     const buffer = this.state.buffers[key];
-    const note = this.state.snapshot.notes.find((n) => n.id === key);
+    const note = this.state.snapshot.items.find((n) => n.id === key);
     const source = buffer?.source ?? note?.markdown ?? '';
     const revision = buffer?.revision ?? 0;
     if (note && source !== note.markdown) this.dirty.add(key);
@@ -128,7 +162,7 @@ export class WorkspaceController {
   sourceFor(key: string) {
     return (
       this.state.buffers[key]?.source ??
-      this.state.snapshot.notes.find((n) => n.id === key)?.markdown ??
+      this.state.snapshot.items.find((n) => n.id === key)?.markdown ??
       ''
     );
   }
@@ -160,16 +194,14 @@ export class WorkspaceController {
         if (composeOwner(key)) {
           this.snapshot(await this.repo.checkpointDraft(key, source, revision));
         } else {
-          const note = this.state.snapshot.notes.find(
-            (n) => n.id === key && n.deletedAt === null,
-          );
+          const note = this.state.snapshot.items.find((n) => n.id === key);
           if (!note)
             throw new Error(
               'This note is unavailable. Your source is retained.',
             );
           this.patch({ status: 'Saving…' });
           this.snapshot(
-            await this.repo.saveNote(key, source, key, revision, note.stashId),
+            await this.repo.saveItemSource(key, source, { key, revision }),
           );
         }
         if (this.state.buffers[key]?.revision === revision) {
@@ -205,92 +237,167 @@ export class WorkspaceController {
   flush() {
     return this.run(() => this.checkpoint());
   }
-  private navigate(key: string, stashId: string | null, clearQuery = false) {
-    const queryRevision = this.queryRevision;
+  private navigate(key: string, at: Location, clearQuery = false) {
+    const queryRevision = this.queryRevision,
+      intent = ++this.viewIntent;
     return this.run(async () => {
-      if (
-        stashId !== null &&
-        !this.state.snapshot.stashes.some((s) => s.id === stashId)
-      ) {
-        this.error(new Error('This stash is unavailable.'));
+      try {
+        if (
+          at.itemId !== null &&
+          !this.state.snapshot.items.some(
+            (x) =>
+              x.id === at.itemId &&
+              x.kind === 'stash' &&
+              effectiveScope(this.state.snapshot.items, x.id) === at.scope,
+          )
+        )
+          throw new Error('This stash is unavailable.');
+        if (!(await this.checkpoint())) return false;
+        if (intent !== this.viewIntent) return false;
+        this.patch({
+          stashId: at.itemId,
+          location: at,
+          ...(clearQuery && queryRevision === this.queryRevision
+            ? { query: '' }
+            : {}),
+        });
+        this.context(key);
+        this.patch({ error: '', status: 'Ready' });
+        return true;
+      } catch (e) {
+        this.error(e);
         return false;
       }
-      if (!(await this.checkpoint())) return false;
-      this.patch({
-        stashId,
-        ...(clearQuery && queryRevision === this.queryRevision
-          ? { query: '' }
-          : {}),
-      });
-      this.context(key);
-      this.patch({ error: '', status: 'Ready' });
-      return true;
     });
   }
   newNote() {
-    return this.navigate(composeKey(this.state.stashId), this.state.stashId);
+    return this.navigate(composeKey(this.state.location), {
+      ...this.state.location,
+    });
   }
   openStash(id: string | null) {
-    return this.navigate(composeKey(id), id, true);
-  }
-  selectNote(id: string) {
-    const note = this.state.snapshot.notes.find(
-      (n) => n.id === id && n.deletedAt === null,
-    );
-    if (!note) {
-      this.error(new Error('This note is unavailable.'));
+    if (
+      id !== null &&
+      !this.state.snapshot.items.some((x) => x.id === id && x.kind === 'stash')
+    ) {
+      this.error(new Error('This stash is unavailable.'));
       return Promise.resolve(false);
     }
-    return this.navigate(id, note.stashId);
+    const at: Location = {
+      scope:
+        id === null ? 'live' : effectiveScope(this.state.snapshot.items, id),
+      itemId: id,
+    };
+    return this.navigate(composeKey(at), at, true);
   }
-  createStash(name: string) {
+  selectNote(id: string) {
+    const item = this.state.snapshot.items.find((x) => x.id === id);
+    if (!item) {
+      this.error(new Error('This item is unavailable.'));
+      return Promise.resolve(false);
+    }
+    const at = this.state.query.trim()
+      ? { ...this.state.location }
+      : itemLocation(this.state.snapshot.items, id);
+    return this.navigate(id, at);
+  }
+  createStash(selectedId?: string, retry?: CreateChildStash) {
     if (this.creating) return this.creating;
-    const parentId = this.state.stashId;
-    const queryRevision = this.queryRevision;
+    const selected = selectedId
+      ? this.state.snapshot.items.find((x) => x.id === selectedId)
+      : undefined;
+    const parent: Location = selected
+      ? {
+          scope: effectiveScope(this.state.snapshot.items, selected.id),
+          itemId: selected.id,
+        }
+      : { ...this.state.location };
+    const request: CreateChildStash =
+      retry ??
+      (this.creationIntent &&
+      this.creationIntent.parent.scope === parent.scope &&
+      this.creationIntent.parent.itemId === parent.itemId
+        ? this.creationIntent
+        : { id: crypto.randomUUID(), parent });
+    this.creationIntent = request;
+    const view = this.viewIntent,
+      query = this.queryRevision;
     this.creating = this.run(async () => {
       this.patch({ operation: 'create-stash', error: '' });
       try {
-        const normalized = stashName(name);
-        if (!(await this.checkpoint())) return false;
-        const known = new Set(this.state.snapshot.stashes.map((s) => s.id));
-        const snapshot = await this.repo.createStash(normalized, parentId);
-        const created = snapshot.stashes.find((s) => !known.has(s.id));
-        if (!created)
-          throw new Error('The new stash is unavailable. Retry loading.');
+        if (!(await this.checkpoint())) {
+          this.retryIntent = () => this.createStash(undefined, request);
+          this.patch({ mutationRetry: true });
+          return false;
+        }
+        const snapshot = await this.repo.createChildStash(request);
         this.snapshot(snapshot);
+        this.creationIntent = null;
+        this.retryIntent = null;
         this.patch({
-          stashId: created.id,
-          ...(queryRevision === this.queryRevision ? { query: '' } : {}),
+          mutationRetry: false,
           status: 'Stash created',
           error: '',
         });
-        this.context(composeKey(created.id));
+        if (view === this.viewIntent) {
+          const at = { scope: request.parent.scope, itemId: request.id };
+          this.patch({
+            stashId: request.id,
+            location: at,
+            ...(query === this.queryRevision ? { query: '' } : {}),
+          });
+          this.context(composeKey(at));
+        }
         return true;
       } catch (e) {
         this.error(e);
+        this.retryIntent = () => this.createStash(undefined, request);
+        this.patch({ mutationRetry: true });
         return false;
       } finally {
         this.patch({ operation: null });
       }
-    }).finally(() => {
-      this.creating = null;
-    });
+    }).finally(() => (this.creating = null));
     return this.creating;
   }
-  renameStash(id: string, name: string) {
+  enterItem(id: string) {
+    const intent = ++this.viewIntent,
+      query = this.queryRevision;
     return this.run(async () => {
-      this.patch({ operation: 'rename-stash', error: '' });
+      this.patch({ operation: 'promote' });
       try {
-        this.snapshot(await this.repo.renameStash(id, stashName(name)));
-        this.patch({ status: 'Stash renamed', error: '' });
+        if (!(await this.checkpoint())) {
+          this.retryIntent = () => this.enterItem(id);
+          this.patch({ mutationRetry: true });
+          return false;
+        }
+        this.snapshot(await this.repo.promoteItem(id));
+        if (intent !== this.viewIntent) return false;
+        const at: Location = {
+          scope: effectiveScope(this.state.snapshot.items, id),
+          itemId: id,
+        };
+        this.patch({
+          stashId: id,
+          location: at,
+          ...(query === this.queryRevision ? { query: '' } : {}),
+        });
+        this.context(composeKey(at));
+        this.retryIntent = null;
+        this.patch({ error: '', status: 'Ready', mutationRetry: false });
         return true;
       } catch (e) {
         this.error(e);
+        this.retryIntent = () => this.enterItem(id);
+        this.patch({ mutationRetry: true });
         return false;
       } finally {
         this.patch({ operation: null });
       }
     });
+  }
+  retryMutation() {
+    return this.retryIntent ? this.retryIntent() : Promise.resolve(false);
   }
   feedback(status: string, error = '') {
     this.patch({ status, error });
@@ -303,42 +410,70 @@ export class WorkspaceController {
     const compose = composeOwner(key);
     if (!compose) return this.finishEdit(key);
     if (this.saving) return this.saving;
+    const pending = this.captureIntents.get(key);
     const buffer = this.state.buffers[key];
-    if (!this.state.loaded || !buffer?.source.trim()) {
+    if (!this.state.loaded || (!pending && !buffer?.source.trim())) {
       this.patch({
         error:
           'Enter non-whitespace text before saving. Your draft is retained.',
       });
       return Promise.resolve(false);
     }
-    const captured = { ...buffer };
-    const stashId = compose.stashId;
+    // Reconcile the immutable creation request before accepting another capture
+    // from this composer, even when newer typing has changed or emptied its buffer.
+    const request: CaptureItem = pending ?? {
+      id: crypto.randomUUID(),
+      location:
+        key === 'compose:trash'
+          ? { scope: 'trash', itemId: null }
+          : compose.stashId === null
+            ? { scope: 'live', itemId: null }
+            : {
+                scope: effectiveScope(
+                  this.state.snapshot.items,
+                  compose.stashId,
+                ),
+                itemId: compose.stashId,
+              },
+      markdown: buffer.source,
+      draft: { key, revision: buffer.revision },
+    };
+    this.captureIntents.set(key, request);
     this.saving = this.run(async () => {
       this.patch({ operation: 'save', error: '', status: 'Saving…' });
       try {
-        const s = await this.repo.saveNote(
-          null,
-          captured.source,
-          key,
-          captured.revision,
-          stashId,
-        );
+        const s = await this.repo.captureItem(request);
+        this.captureIntents.delete(key);
         this.snapshot(s);
-        if (this.state.buffers[key]?.revision === captured.revision) {
+        if (this.state.buffers[key]?.revision === request.draft.revision) {
           this.dirty.delete(key);
           const buffers = { ...this.state.buffers };
           // Advance the revision even when clearing to distinguish subsequent captures.
           buffers[key] = {
             source: '',
-            revision: captured.revision + 1,
+            revision: request.draft.revision + 1,
           };
           this.patch({ buffers });
           if (this.state.activeKey === key)
-            this.context(composeKey(this.state.stashId));
+            this.context(composeKey(this.state.location));
           this.patch({ status: 'Saved', error: '' });
         } else this.patch({ status: 'Unsaved' });
         return true;
       } catch (e) {
+        // A successful authoritative read can prove this creation never committed.
+        // Otherwise keep its immutable request: generic failure codes alone do not
+        // distinguish a rejected write from a committed write with a lost reply.
+        try {
+          const current = await this.repo.loadWorkspace();
+          if (
+            !current.items.some(
+              (item) => item.id.toLowerCase() === request.id.toLowerCase(),
+            )
+          )
+            this.captureIntents.delete(key);
+        } catch {
+          // Unavailable reconciliation leaves the original request retryable.
+        }
         this.error(e);
         return false;
       } finally {
@@ -366,7 +501,7 @@ export class WorkspaceController {
         !composeOwner(key) &&
         (reason === 'explicit' || intentRevision === this.editIntentRevision)
       )
-        this.context(composeKey(this.state.stashId));
+        this.context(composeKey(this.state.location));
       return true;
     });
   }
@@ -384,7 +519,7 @@ export class WorkspaceController {
             });
           return false;
         }
-        this.snapshot(await this.repo.setNoteDone(intent.id, intent.done));
+        this.snapshot(await this.repo.setItemDone(intent.id, intent.done));
         if (revision === this.completionIntent)
           this.patch({
             completionRetry: null,
@@ -411,24 +546,121 @@ export class WorkspaceController {
       ? this.setNoteDone(intent.id, intent.done)
       : Promise.resolve(false);
   }
-  remove() {
-    const key = this.state.activeKey;
-    if (composeOwner(key)) return Promise.resolve(false);
+  remove(id = this.state.activeKey) {
+    if (composeOwner(id)) return Promise.resolve(false);
+    const view = this.viewIntent;
     return this.run(async () => {
-      if (!(await this.checkpoint())) return false;
       this.patch({ operation: 'delete' });
       try {
-        this.snapshot(await this.repo.deleteNote(key));
-        this.dirty.delete(key);
-        const buffers = { ...this.state.buffers };
-        delete buffers[key];
-        this.patch({ buffers });
-        if (this.state.activeKey === key)
-          this.context(composeKey(this.state.stashId));
-        this.patch({ status: 'Deleted. Undo delete is available.', error: '' });
+        if (!(await this.checkpoint())) {
+          this.retryIntent = () => this.remove(id);
+          this.patch({ mutationRetry: true });
+          return false;
+        }
+        const prior = this.state.snapshot;
+        const current = this.state.location;
+        const target = prior.items.find((x) => x.id === id);
+        if (!target) throw new Error('This item is unavailable.');
+        this.snapshot(await this.repo.deleteItem(id));
+        if (view === this.viewIntent) {
+          let at = current;
+          if (
+            current.itemId !== null &&
+            effectiveScope(this.state.snapshot.items, current.itemId) !==
+              current.scope
+          ) {
+            let parent = target.parentId;
+            while (
+              parent !== null &&
+              effectiveScope(this.state.snapshot.items, parent) !==
+                current.scope
+            )
+              parent =
+                this.state.snapshot.items.find((x) => x.id === parent)
+                  ?.parentId ?? null;
+            at = { scope: current.scope, itemId: parent };
+          }
+          this.patch({ stashId: at.itemId, location: at });
+          if (
+            this.state.activeKey === id ||
+            at !== current ||
+            (!composeOwner(this.state.activeKey) &&
+              effectiveScope(
+                this.state.snapshot.items,
+                this.state.activeKey,
+              ) !== at.scope)
+          )
+            this.context(composeKey(at));
+        }
+        this.retryIntent = null;
+        this.patch({
+          status: 'Deleted. Undo delete is available.',
+          error: '',
+          mutationRetry: false,
+        });
         return true;
       } catch (e) {
         this.error(e);
+        this.retryIntent = () => this.remove(id);
+        this.patch({ mutationRetry: true });
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    });
+  }
+  restoreItem(id: string) {
+    return this.itemMetadata(
+      'restore-item',
+      () => this.repo.restoreItem(id),
+      'Item restored',
+    );
+  }
+  setItemColor(id: string, color: ColorToken | null) {
+    return this.itemMetadata(
+      'color',
+      () => this.repo.setItemColor(id, color),
+      'Color updated',
+    );
+  }
+  reorderItem(request: ReorderItem) {
+    const captured = structuredClone(request);
+    return this.itemMetadata(
+      'reorder',
+      () => this.repo.reorderItem(captured),
+      'Order updated',
+    );
+  }
+  private itemMetadata(
+    operation: WorkspaceOperation,
+    fn: () => Promise<WorkspaceSnapshot>,
+    status: string,
+  ) {
+    return this.run(async () => {
+      this.patch({ operation });
+      try {
+        if (!(await this.checkpoint())) {
+          this.retryIntent = () => this.itemMetadata(operation, fn, status);
+          this.patch({ mutationRetry: true });
+          return false;
+        }
+        this.snapshot(await fn());
+        const current = this.state.location;
+        if (current.itemId !== null) {
+          const scope = effectiveScope(
+            this.state.snapshot.items,
+            current.itemId,
+          );
+          if (scope !== current.scope)
+            this.patch({ location: { ...current, scope } });
+        }
+        this.retryIntent = null;
+        this.patch({ mutationRetry: false, error: '', status });
+        return true;
+      } catch (e) {
+        this.error(e);
+        this.retryIntent = () => this.itemMetadata(operation, fn, status);
+        this.patch({ mutationRetry: true });
         return false;
       } finally {
         this.patch({ operation: null });
@@ -499,9 +731,17 @@ export class WorkspaceController {
           clearTimeout(this.timer);
           this.snapshot(s);
           this.resetBuffers(s);
-          this.patch({ stashId: null });
+          this.patch({
+            stashId: null,
+            location: { scope: 'live', itemId: null },
+          });
           this.context(composeKey(null));
           this.completionIntent++;
+          this.viewIntent++;
+          this.creationIntent = null;
+          this.captureIntents.clear();
+          this.retryIntent = null;
+          this.patch({ mutationRetry: false });
           this.patch({
             query: '',
             status: 'Workspace restored',

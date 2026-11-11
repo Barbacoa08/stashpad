@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type { HierarchyPresentation } from '../domain/hierarchy';
+  import { itemLabel, type HierarchyPresentation } from '../domain/hierarchy';
   import Icon from './Icon.svelte';
   import StashIcon from './StashIcon.svelte';
   let {
@@ -38,7 +38,7 @@
     >
       {#if row.hasChildren}<button
           class="stash-expand"
-          aria-label={`${expanded.has(row.stash.id) ? 'Collapse' : 'Expand'} stash ${row.stash.name}`}
+          aria-label={`${expanded.has(row.stash.id) ? 'Collapse' : 'Expand'} stash ${itemLabel(row.stash)}`}
           aria-expanded={expanded.has(row.stash.id)}
           {disabled}
           onclick={() => {
@@ -55,11 +55,11 @@
       <button
         class="stash-link"
         aria-current={currentId === row.stash.id ? 'page' : undefined}
-        aria-label={`Open stash ${row.stash.name}`}
-        title={row.stash.name}
+        aria-label={`Open stash ${itemLabel(row.stash)}`}
+        title={itemLabel(row.stash)}
         {disabled}
         onclick={() => onopen(row.stash.id)}
-        ><StashIcon /><span class="stash-name">{row.stash.name}</span
+        ><StashIcon /><span class="stash-name">{itemLabel(row.stash)}</span
         >{#if row.depth >= 3}<span class="stash-level"
             >Level {row.depth + 1}</span
           >{/if}</button

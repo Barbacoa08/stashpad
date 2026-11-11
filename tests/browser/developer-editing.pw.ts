@@ -9,8 +9,15 @@ async function seed(page: Page, sources: string[]) {
   await page.evaluate(async (sources) => {
     const t = (window as any).__test;
     for (const source of sources)
-      await t.repo.saveNote(null, source, 'compose', 1, null);
-    t.repo.snapshot.notes.forEach((n: any, i: number) => (n.createdAt = i));
+      await t.repo.captureItem({
+        id: crypto.randomUUID(),
+        location: { scope: 'live', itemId: null },
+        markdown: source,
+        draft: { key: 'compose', revision: 1 },
+      });
+    t.repo.snapshot.items
+      .filter((x: any) => x.kind === 'note')
+      .forEach((n: any, i: number) => (n.createdAt = i));
     await t.controller.start();
   }, sources);
 }
@@ -55,7 +62,7 @@ for (const mode of ['capture', 'inline'] as const) {
     await expect(editor).toHaveText('```jsconst x = 1;```');
     if (mode === 'inline')
       await page.screenshot({
-        path: '.projects/2026-11-11-sidebar-code-done/task-2-code-wide.png',
+        path: 'test-results/captures/developer-editing/task-2-code-wide.png',
       });
     await editor.press('Meta+End');
     await editor.press('Enter');
@@ -72,7 +79,10 @@ for (const mode of ['capture', 'inline'] as const) {
     } else await expect(capture(page)).toHaveText('');
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe('```js\nconst x = 1;\n```\n');
   });
@@ -83,8 +93,14 @@ test('capture Up at zero selects last visible note, skips child stash, and retai
   await seed(page, ['first', 'last']);
   await page.evaluate(async () => {
     const t = (window as any).__test;
-    await t.repo.createStash('Later stash', null);
-    t.repo.snapshot.stashes[0].createdAt = 100;
+    const id = crypto.randomUUID();
+    await t.repo.createChildStash({
+      id,
+      parent: { scope: 'live', itemId: null },
+    });
+    await t.repo.saveItemSource(id, 'Later stash', { key: id, revision: 0 });
+    t.repo.snapshot.items.filter((x: any) => x.kind === 'stash')[0].createdAt =
+      100;
     await t.controller.start();
   });
   await page.getByRole('article', { name: 'Saved note' }).first().click();
@@ -165,9 +181,9 @@ for (const large of [false, true])
     await expect
       .poll(() =>
         page.evaluate(() =>
-          (window as any).__test.repo.snapshot.notes[0].markdown.includes(
-            'new line',
-          ),
+          (window as any).__test.repo.snapshot.items
+            .filter((x: any) => x.kind === 'note')[0]
+            .markdown.includes('new line'),
         ),
       )
       .toBe(true);
@@ -187,7 +203,7 @@ for (const large of [false, true])
       .toBe(true);
 
     await page.screenshot({
-      path: `.projects/2026-11-11-sidebar-code-done/task-2-edit-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/developer-editing/task-2-edit-${large ? '150' : 'wide'}.png`,
     });
     await inline(page).press('Escape');
     const last = page.getByRole('article', { name: 'Saved note' }).last();
@@ -222,7 +238,7 @@ for (const large of [false, true])
       .getByRole('button', { name: 'Collapse note', exact: true })
       .scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: `.projects/2026-11-11-sidebar-code-done/task-2-expanded-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/developer-editing/task-2-expanded-${large ? '150' : 'wide'}.png`,
     });
     const expandedHeight = (await last.locator('.note-body').boundingBox())!
       .height;
@@ -284,7 +300,7 @@ test('unchanged edit baseline follows a constrained resize and late text scaling
   await expect(inline(page)).toHaveCount(0);
 });
 
-test('expansion uses exact note identity across filters and clears on deletion, Undo, and restore', async ({
+test('expansion uses exact note identity across filters and survives deletion/Undo and resets on backup replacement', async ({
   page,
 }) => {
   await seed(page, ['paragraph\n\n'.repeat(90), 'neighbor']);
@@ -299,14 +315,13 @@ test('expansion uses exact note identity across filters and clears on deletion, 
   await page.keyboard.press('Meta+Backspace');
   await page.getByRole('button', { name: 'Undo delete', exact: true }).click();
   await expect(
-    first.getByRole('button', { name: 'Expand note', exact: true }),
-  ).toHaveAttribute('aria-expanded', 'false');
-  await first.getByRole('button', { name: 'Expand note', exact: true }).click();
+    first.getByRole('button', { name: 'Collapse note', exact: true }),
+  ).toHaveAttribute('aria-expanded', 'true');
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 3,
+      version: 4,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });
@@ -365,7 +380,10 @@ for (const mode of ['capture', 'inline'] as const)
     await expect(editor).toBeFocused();
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes.length,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          ).length,
       ),
     ).toBe(mode === 'capture' ? 0 : 1);
     await editor.press('Meta+z');
@@ -413,12 +431,15 @@ for (const activation of ['click', 'keyboard'] as const)
     await expect(hint).toContainText('Enter adds a code line');
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe('```js\nconst value = "synthetic";!\n```');
     if (activation === 'click')
       await page.screenshot({
-        path: '.projects/2026-11-11-sidebar-code-done/task-2-code-hint-150.png',
+        path: 'test-results/captures/developer-editing/task-2-code-hint-150.png',
       });
     await details.click();
     await first

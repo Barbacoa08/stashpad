@@ -1,8 +1,18 @@
-import type { Note } from './notes';
-export function filterNotes(notes: Note[], query: string): Note[] {
+import type { Item } from './notes';
+import { scopeIndex } from './hierarchy';
+export function filterNotes(
+  items: Item[],
+  query: string,
+  scope: 'live' | 'trash' = 'live',
+): Item[] {
   const q = query.trim().toLowerCase();
-  return notes
-    .filter((n) => n.deletedAt === null && n.markdown.toLowerCase().includes(q))
+  const scopes = scopeIndex(items);
+  return items
+    .filter(
+      (x) =>
+        scopes.get(x.id) === scope &&
+        (!q || x.markdown.toLowerCase().includes(q)),
+    )
     .sort(
       (a, b) =>
         a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),

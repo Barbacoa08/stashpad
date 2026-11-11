@@ -22,7 +22,10 @@ test('Enter captures exact source, renders full Markdown, and keeps a cleared fo
   await expect(compose(page)).toBeFocused();
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].markdown,
     ),
   ).toBe(' **bold**  ');
   await replace(page, ' \n ');

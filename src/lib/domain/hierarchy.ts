@@ -1,19 +1,20 @@
-import type { Note, Stash, WorkspaceSnapshot } from './notes';
-export const composeKey = (stashId: string | null): string =>
-  stashId === null ? 'compose' : `compose:${stashId}`;
+import type { Item, Location, WorkspaceSnapshot } from './notes';
+export const composeKey = (location: Location | string | null): string => {
+  if (typeof location === 'object' && location !== null)
+    return location.itemId === null
+      ? location.scope === 'trash'
+        ? 'compose:trash'
+        : 'compose'
+      : `compose:${location.itemId}`;
+  return location === null ? 'compose' : `compose:${location}`;
+};
 export function composeOwner(key: string): { stashId: string | null } | null {
-  if (key === 'compose') return { stashId: null };
+  if (key === 'compose' || key === 'compose:trash') return { stashId: null };
   if (key.startsWith('compose:')) return { stashId: key.slice(8) };
   return null;
 }
-export function stashName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed || Array.from(trimmed).length > 200)
-    throw new Error('Use a stash name with 1 to 200 characters.');
-  return trimmed;
-}
 /** Exact IDs and an iterative, linear walk reject dangling parents and cycles. */
-export function hierarchyIndex(stashes: Stash[]): Map<string, Stash> {
+export function hierarchyIndex(stashes: Item[]): Map<string, Item> {
   const byId = new Map(stashes.map((s) => [s.id, s]));
   if (byId.size !== stashes.length) throw new Error('Duplicate stash.');
   const done = new Set<string>();
@@ -25,15 +26,20 @@ export function hierarchyIndex(stashes: Stash[]): Map<string, Stash> {
       const current = byId.get(id);
       if (!current) throw new Error('Missing parent stash.');
       pending.add(id);
+      if (
+        current.parentId !== null &&
+        byId.get(current.parentId)?.kind !== 'stash'
+      )
+        throw new Error('Invalid parent item.');
       id = current.parentId;
     }
     for (const key of pending) done.add(key);
   }
   return byId;
 }
-export function stashPath(stashes: Stash[], id: string | null): Stash[] {
+export function stashPath(stashes: Item[], id: string | null): Item[] {
   const byId = hierarchyIndex(stashes),
-    path: Stash[] = [];
+    path: Item[] = [];
   while (id !== null) {
     const stash = byId.get(id);
     if (!stash) throw new Error('Missing stash.');
@@ -43,34 +49,72 @@ export function stashPath(stashes: Stash[], id: string | null): Stash[] {
   return path.reverse();
 }
 /** Convenience for isolated calls; views reuse one presentation per stash snapshot. */
-export const locationLabel = (stashes: Stash[], id: string | null): string =>
+export const locationLabel = (stashes: Item[], id: string | null): string =>
   createHierarchyPresentation(stashes).label(id).text;
-export type StreamEntry =
-  ({ kind: 'stash' } & Stash) | ({ kind: 'note' } & Note);
+export type StreamEntry = Item;
+export function itemLabel(item: Item): string {
+  const line = item.markdown.split(/\r\n|\r|\n/, 1)[0].trim();
+  const points = Array.from(line || 'Untitled');
+  return points.length > 32
+    ? points.slice(0, 31).join('') + '…'
+    : points.join('');
+}
+export function scopeIndex(items: Item[]): Map<string, 'live' | 'trash'> {
+  const index = hierarchyIndex(items),
+    scopes = new Map<string, 'live' | 'trash'>();
+  for (const item of items) {
+    let x: Item | undefined = item;
+    const pending: Item[] = [];
+    while (x && !scopes.has(x.id)) {
+      pending.push(x);
+      if (x.deletedAt !== null) {
+        scopes.set(x.id, 'trash');
+        break;
+      }
+      x = x.parentId === null ? undefined : index.get(x.parentId);
+    }
+    const scope = x ? scopes.get(x.id)! : 'live';
+    for (const node of pending) scopes.set(node.id, scope);
+  }
+  return scopes;
+}
+export function effectiveScope(items: Item[], id: string): 'live' | 'trash' {
+  const scope = scopeIndex(items).get(id);
+  if (!scope) throw new Error('Missing item.');
+  return scope;
+}
+export function itemLocation(items: Item[], id: string): Location {
+  const item = items.find((x) => x.id === id);
+  if (!item) throw new Error('Missing item.');
+  return { scope: effectiveScope(items, id), itemId: item.parentId };
+}
 export function directEntries(
   s: WorkspaceSnapshot,
-  parentId: string | null,
-): StreamEntry[] {
-  hierarchyIndex(s.stashes);
-  return [
-    ...s.stashes
-      .filter((x) => x.parentId === parentId)
-      .map((x) => ({ ...x, kind: 'stash' as const })),
-    ...s.notes
-      .filter((x) => x.stashId === parentId && x.deletedAt === null)
-      .map((x) => ({ ...x, kind: 'note' as const })),
-  ].sort(
-    (a, b) =>
-      a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-  );
+  location: Location | string | null,
+): Item[] {
+  const at =
+    typeof location === 'object' && location !== null
+      ? location
+      : { scope: 'live', itemId: location };
+  return s.items
+    .filter(
+      (x) =>
+        x.parentId === at.itemId &&
+        (at.itemId !== null ||
+          (x.deletedAt !== null ? 'trash' : 'live') === at.scope),
+    )
+    .sort(
+      (a, b) =>
+        a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
 }
 export interface StashRow {
-  stash: Stash;
+  stash: Item;
   depth: number;
   hasChildren: boolean;
 }
-function stashChildren(stashes: Stash[]): Map<string | null, Stash[]> {
-  const children = new Map<string | null, Stash[]>();
+function stashChildren(stashes: Item[]): Map<string | null, Item[]> {
+  const children = new Map<string | null, Item[]>();
   for (const stash of stashes) {
     const list = children.get(stash.parentId) ?? [];
     list.push(stash);
@@ -79,12 +123,12 @@ function stashChildren(stashes: Stash[]): Map<string | null, Stash[]> {
   for (const list of children.values())
     list.sort(
       (a, b) =>
-        a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
   return children;
 }
 function visibleRows(
-  children: Map<string | null, Stash[]>,
+  children: Map<string | null, Item[]>,
   expanded: Set<string>,
 ): StashRow[] {
   const pending = (children.get(null) ?? [])
@@ -101,7 +145,7 @@ function visibleRows(
   return rows;
 }
 export function sidebarRows(
-  stashes: Stash[],
+  stashes: Item[],
   expanded: Set<string>,
 ): StashRow[] {
   hierarchyIndex(stashes);
@@ -113,21 +157,21 @@ export interface LocationLabel {
   depth: number;
 }
 export interface HierarchyPresentation {
-  readonly index: ReadonlyMap<string, Stash>;
-  path(id: string | null): Stash[];
+  readonly index: ReadonlyMap<string, Item>;
+  path(id: string | null): Item[];
   label(id: string | null): LocationLabel;
   rows(expanded: Set<string>): StashRow[];
 }
 /** Index once; cache only bounded labels, never every ancestor prefix/path string. */
 export function createHierarchyPresentation(
-  stashes: Stash[],
+  stashes: Item[],
 ): HierarchyPresentation {
   const index = hierarchyIndex(stashes),
     children = stashChildren(stashes),
     depths = new Map<string, number>();
   for (const stash of stashes) {
-    const pending: Stash[] = [];
-    let current: Stash | undefined = stash;
+    const pending: Item[] = [];
+    let current: Item | undefined = stash;
     while (current && !depths.has(current.id)) {
       pending.push(current);
       current =
@@ -140,7 +184,7 @@ export function createHierarchyPresentation(
   const labels = new Map<string | null, LocationLabel>([
     [null, { text: 'Home', abbreviated: false, depth: 0 }],
   ]);
-  function lookup(id: string): Stash {
+  function lookup(id: string): Item {
     const stash = index.get(id);
     if (!stash) throw new Error('Missing stash.');
     return stash;
@@ -148,7 +192,7 @@ export function createHierarchyPresentation(
   return {
     index,
     path(id) {
-      const result: Stash[] = [];
+      const result: Item[] = [];
       while (id !== null) {
         const stash = lookup(id);
         result.push(stash);
@@ -165,7 +209,7 @@ export function createHierarchyPresentation(
       const tail =
         stash.parentId === null ? [stash] : [lookup(stash.parentId), stash];
       const names = tail.map((item) => {
-        const name = item.name,
+        const name = itemLabel(item),
           points = Array.from(name);
         if (points.length <= 32) return name;
         abbreviated = true;
@@ -187,10 +231,9 @@ export function createHierarchyPresentation(
 /** One pass avoids rescanning the workspace for each visible stash card. */
 export function entryCounts(s: WorkspaceSnapshot): Map<string | null, number> {
   const counts = new Map<string | null, number>();
-  for (const stash of s.stashes)
-    counts.set(stash.parentId, (counts.get(stash.parentId) ?? 0) + 1);
-  for (const note of s.notes)
-    if (note.deletedAt === null)
-      counts.set(note.stashId, (counts.get(note.stashId) ?? 0) + 1);
+  const scopes = scopeIndex(s.items);
+  for (const item of s.items)
+    if (scopes.get(item.id) === 'live')
+      counts.set(item.parentId, (counts.get(item.parentId) ?? 0) + 1);
   return counts;
 }

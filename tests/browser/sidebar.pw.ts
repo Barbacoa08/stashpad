@@ -76,7 +76,7 @@ for (const constrained of [false, true])
         createdAt: i,
         updatedAt: i,
       }));
-      t.repo.snapshot = { stashes, notes: [], drafts: [], undoDeleteId: null };
+      t.seedLegacy({ stashes, notes: [], drafts: [], undoDeleteId: null });
       await t.controller.start();
       await t.controller.openStash(stashes[33].id);
     });
@@ -118,7 +118,7 @@ for (const constrained of [false, true])
       row.getByRole('button', { name: /Expand stash/ }),
     ).toHaveAttribute('aria-expanded', 'false');
     await page.screenshot({
-      path: `.projects/2026-11-11-sidebar-code-done/task-1-${constrained ? 'narrow-150' : 'wide'}.png`,
+      path: `test-results/captures/sidebar/task-1-${constrained ? 'narrow-150' : 'wide'}.png`,
     });
   });
 
@@ -143,7 +143,7 @@ test('current and hovered stash rows retain one surface for both controls', asyn
       createdAt: i,
       updatedAt: i,
     }));
-    t.repo.snapshot = { stashes, notes: [], drafts: [], undoDeleteId: null };
+    t.seedLegacy({ stashes, notes: [], drafts: [], undoDeleteId: null });
     await t.controller.start();
     await t.controller.openStash(stashes[0].id);
   });
@@ -165,7 +165,7 @@ test('current and hovered stash rows retain one surface for both controls', asyn
       await expect(title).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await expect(chevron).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       await page.screenshot({
-        path: `.projects/2026-11-11-sidebar-code-done/task-1-hover-${name.toLowerCase()}-${part}.png`,
+        path: `test-results/captures/sidebar/task-1-hover-${name.toLowerCase()}-${part}.png`,
       });
     }
     await row.hover({ position: { x: 1, y: 1 } });
@@ -212,7 +212,7 @@ test('responsive narrowing hands a focused retry to visible Details without chan
   await expect(details).toBeVisible();
   await expect(details).toHaveAttribute('aria-expanded', 'false');
   await page.screenshot({
-    path: '.projects/2026-11-11-sidebar-code-done/final-fix-focus-narrow.png',
+    path: 'test-results/captures/sidebar/final-fix-focus-narrow.png',
   });
   await expect(capture).toHaveText('Responsive recovery source');
   expect(
@@ -220,7 +220,10 @@ test('responsive narrowing hands a focused retry to visible Details without chan
   ).toBe(error);
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes.length,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        ).length,
     ),
   ).toBe(0);
 });
@@ -236,7 +239,7 @@ test('responsive widening hands a focused Details disclosure to the visible pane
   await expect(panel).toBeFocused();
   await expect(panel).toHaveCSS('outline-style', 'solid');
   await page.screenshot({
-    path: '.projects/2026-11-11-sidebar-code-done/final-fix-focus-wide.png',
+    path: 'test-results/captures/sidebar/final-fix-focus-wide.png',
   });
   await expect(capture).toHaveText('Responsive recovery source');
   await expect(page.getByRole('alert')).toContainText('failure');

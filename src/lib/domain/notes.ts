@@ -1,11 +1,11 @@
-export interface Stash {
+export interface LegacyStash {
   id: string;
   name: string;
   parentId: string | null;
   createdAt: number;
   updatedAt: number;
 }
-export interface Note {
+export interface V3Note {
   done: boolean;
   stashId: string | null;
   id: string;
@@ -20,9 +20,9 @@ export interface Draft {
   revision: number;
   updatedAt: number;
 }
-export interface WorkspaceSnapshot {
-  stashes: Stash[];
-  notes: Note[];
+export interface V3Workspace {
+  stashes: LegacyStash[];
+  notes: V3Note[];
   drafts: Draft[];
   undoDeleteId: string | null;
 }
@@ -43,7 +43,7 @@ export interface V2Note extends LegacyNote {
   stashId: string | null;
 }
 export interface V2Workspace {
-  stashes: Stash[];
+  stashes: LegacyStash[];
   notes: V2Note[];
   drafts: Draft[];
   undoDeleteId: string | null;
@@ -64,15 +64,55 @@ export interface BackupV3 {
   format: 'stashpad-alpha';
   version: 3;
   exportedAt: string;
-  workspace: WorkspaceSnapshot;
+  workspace: V3Workspace;
 }
 export interface AppError {
   code: string;
   message: string;
 }
+export const COLORS = [
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'teal',
+  'blue',
+  'purple',
+  'pink',
+  'gray',
+] as const;
+export type ColorToken = (typeof COLORS)[number];
+export interface Item {
+  id: string;
+  parentId: string | null;
+  kind: 'note' | 'stash';
+  markdown: string;
+  done: boolean;
+  color: ColorToken | null;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+  restoreParentId: string | null;
+  restoreIndex: number | null;
+}
+export interface Location {
+  scope: 'live' | 'trash';
+  itemId: string | null;
+}
+export interface WorkspaceSnapshot {
+  items: Item[];
+  drafts: Draft[];
+  undoDeleteId: string | null;
+}
+export interface BackupV4 {
+  format: 'stashpad-alpha';
+  version: 4;
+  exportedAt: string;
+  workspace: WorkspaceSnapshot;
+}
 export const emptyWorkspace = (): WorkspaceSnapshot => ({
-  stashes: [],
-  notes: [],
+  items: [],
   drafts: [],
   undoDeleteId: null,
 });

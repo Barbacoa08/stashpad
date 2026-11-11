@@ -16,7 +16,7 @@ for (const constrained of [false, true]) {
     await capture.waitFor();
     await page.evaluate(async () => {
       const t = (window as any).__test;
-      t.repo.snapshot = {
+      t.seedLegacy({
         stashes: [
           {
             id: '00000000-0000-4000-8000-000000000001',
@@ -39,7 +39,7 @@ for (const constrained of [false, true]) {
         ],
         drafts: [],
         undoDeleteId: null,
-      };
+      });
       await t.controller.start();
     });
     const composer = page.locator('.composer');
@@ -75,7 +75,7 @@ for (const constrained of [false, true]) {
     expect(Math.abs(stashBox.height - noteBox.height)).toBeLessThanOrEqual(1);
     const baselines = await Promise.all([
       stash
-        .locator('.stash-open')
+        .locator('.markdown-view p')
         .evaluate((el) => el.getBoundingClientRect().top),
       note
         .locator('.markdown-view p')
@@ -89,21 +89,19 @@ for (const constrained of [false, true]) {
     expect(await stash.boundingBox()).toEqual(stashBox);
     expect(await note.boundingBox()).toEqual(noteBox);
     expect(
-      await stash
-        .getByRole('button', { name: 'Rename stash' })
-        .evaluate((el) => {
-          const r = el.getBoundingClientRect(),
-            card = el.closest('article')!.getBoundingClientRect();
-          return (
-            r.top >= card.top + 2 &&
-            r.bottom <= card.bottom - 2 &&
-            r.left >= card.left + 2 &&
-            r.right <= card.right - 2
-          );
-        }),
+      await stash.getByRole('button', { name: 'Edit stash' }).evaluate((el) => {
+        const r = el.getBoundingClientRect(),
+          card = el.closest('article')!.getBoundingClientRect();
+        return (
+          r.top >= card.top + 2 &&
+          r.bottom <= card.bottom - 2 &&
+          r.left >= card.left + 2 &&
+          r.right <= card.right - 2
+        );
+      }),
     ).toBe(true);
-    await expect(stash.locator('svg')).toHaveCount(1);
-    await expect(stash.locator('p')).toHaveCount(0);
+    await expect(stash.locator('.stash-icon')).toHaveCount(1);
+    await expect(stash.locator('.markdown-view p')).toHaveText('<Plain stash>');
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
     ).toHaveCount(0);
@@ -113,7 +111,7 @@ for (const constrained of [false, true]) {
       'Details and shortcuts',
     );
     await page.screenshot({
-      path: `.projects/2026-11-11-seamless-flow/presentation-${constrained ? 'constrained' : 'wide'}.png`,
+      path: `test-results/captures/presentation-checkpoint/presentation-${constrained ? 'constrained' : 'wide'}.png`,
     });
   });
 }

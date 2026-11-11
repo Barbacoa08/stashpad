@@ -173,7 +173,7 @@ for (const constrained of [false, true]) {
       'none',
     );
     await page.screenshot({
-      path: `.projects/2026-11-11-alpha-issues/input-corrected-${constrained ? 'small-150' : 'wide'}.png`,
+      path: `test-results/captures/input-presentation/input-corrected-${constrained ? 'small-150' : 'wide'}.png`,
     });
     await capture(page).focus();
     await expect(capture(page)).toBeFocused();

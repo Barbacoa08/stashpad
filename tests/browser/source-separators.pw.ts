@@ -19,17 +19,22 @@ for (const [name, source] of [
     await expect(capture(page)).toBeVisible();
     await page.evaluate(async (markdown) => {
       const t = (window as any).__test;
-      t.repo.snapshot.notes = [
-        {
-          id: '00000000-0000-4000-8000-000000000001',
-          markdown,
-          createdAt: 0,
-          updatedAt: 0,
-          stashId: null,
-          done: false,
-          deletedAt: null,
-        },
-      ];
+      t.seedLegacy({
+        stashes: [],
+        notes: [
+          {
+            id: '00000000-0000-4000-8000-000000000001',
+            markdown,
+            createdAt: 0,
+            updatedAt: 0,
+            stashId: null,
+            done: false,
+            deletedAt: null,
+          },
+        ],
+        drafts: [],
+        undoDeleteId: null,
+      });
       await t.controller.start();
     }, source);
     await page
@@ -68,7 +73,10 @@ for (const [name, source] of [
     await editor(page).press('Enter');
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe(edited);
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
@@ -117,7 +125,10 @@ test('raw mixed clipboard payload keeps separators when available before normali
   await capture(page).press('Enter');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].markdown,
     ),
   ).toBe(source);
 });

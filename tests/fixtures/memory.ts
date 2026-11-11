@@ -6,7 +6,14 @@ import {
   emptyWorkspace,
   type WorkspaceSnapshot,
 } from '../../src/lib/domain/notes';
-import { composeKey, stashName } from '../../src/lib/domain/hierarchy';
+import * as items from '../../src/lib/domain/items';
+import type {
+  DraftAck,
+  CaptureItem,
+  CreateChildStash,
+  ReorderItem,
+} from '../../src/lib/platform/workspace';
+import type { ColorToken } from '../../src/lib/domain/notes';
 import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
 export class MemoryRepository implements Repository {
   snapshot = emptyWorkspace();
@@ -48,6 +55,11 @@ export class MemoryRepository implements Repository {
       };
     this.check('checkpoint');
     const s = structuredClone(this.snapshot);
+    const probe = structuredClone(s);
+    probe.drafts = probe.drafts.filter((d) => d.key !== key);
+    probe.drafts.push({ key, markdown, revision, updatedAt: Date.now() });
+    const valid = validateBackup(encodeBackup(probe));
+    if ('code' in valid) throw valid;
     const old = s.drafts.find((d) => d.key === key);
     if (!old || revision > old.revision) {
       s.drafts = s.drafts.filter((d) => d.key !== key);
@@ -55,105 +67,59 @@ export class MemoryRepository implements Repository {
     }
     return this.commit(s);
   }
-  async saveNote(
-    id: string | null,
-    markdown: string,
-    draftKey: string,
-    draftRevision: number,
-    stashId: string | null,
-  ) {
+  private mutate(fn: (s: WorkspaceSnapshot) => void) {
+    const s = structuredClone(this.snapshot);
+    fn(s);
+    return this.commit(s);
+  }
+  async saveItemSource(id: string, markdown: string, draft: DraftAck) {
     await this.delaySave;
     this.check('save');
-    if (id === null && !markdown.trim())
-      throw {
-        code: 'empty_note',
-        message: 'Enter non-whitespace text before saving.',
-      };
-    const s = structuredClone(this.snapshot);
-    if (
-      draftKey !== (id ?? composeKey(stashId)) ||
-      (stashId !== null && !s.stashes.some((x) => x.id === stashId))
-    )
-      throw new Error('Invalid capture destination.');
-    const n = s.notes.find((n) => n.id === id && n.deletedAt === null);
-    if (id !== null && !n) throw new Error('This note is unavailable.');
-    if (n) {
-      n.markdown = markdown;
-      n.updatedAt = Math.max(Date.now(), n.updatedAt + 1);
-    } else
-      s.notes.push({
-        id: crypto.randomUUID(),
-        markdown,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        done: false,
-        deletedAt: null,
-        stashId,
-      });
-    s.drafts = s.drafts.filter(
-      (d) => d.key !== draftKey || d.revision > draftRevision,
-    );
-    return this.commit(s);
+    return this.mutate((s) => items.saveItemSource(s, id, markdown, draft));
   }
-  async setNoteDone(id: string, done: boolean) {
-    this.check('completion');
-    const s = structuredClone(this.snapshot);
-    const n = s.notes.find((n) => n.id === id && n.deletedAt === null);
-    if (!n)
-      throw new Error(
-        'This active note is unavailable. Completion was not changed.',
-      );
-    if (n.done !== done) {
-      n.done = done;
-      n.updatedAt = Math.max(Date.now(), n.updatedAt + 1);
-    }
-    return this.commit(s);
+  async captureItem(request: CaptureItem) {
+    await this.delaySave;
+    this.check('save');
+    return this.mutate((s) => items.captureItem(s, request));
   }
-  async createStash(name: string, parentId: string | null) {
+  async createChildStash(request: CreateChildStash) {
     await this.delayCreate;
     this.check('create');
-    const s = structuredClone(this.snapshot),
-      time = Date.now();
-    s.stashes.push({
-      id: crypto.randomUUID(),
-      name: stashName(name),
-      parentId,
-      createdAt: time,
-      updatedAt: time,
-    });
-    return this.commit(s);
+    return this.mutate((s) => items.createChildStash(s, request));
   }
-  async renameStash(id: string, name: string) {
-    this.check('rename');
-    const s = structuredClone(this.snapshot);
-    const stash = s.stashes.find((x) => x.id === id);
-    if (!stash) throw new Error('This stash is unavailable.');
-    stash.name = stashName(name);
-    stash.updatedAt = Math.max(Date.now(), stash.updatedAt + 1);
-    return this.commit(s);
+  async promoteItem(id: string) {
+    this.check('promote');
+    return this.mutate((s) => items.promoteItem(s, id));
+  }
+  async setItemDone(id: string, done: boolean) {
+    this.check('completion');
+    return this.mutate((s) => items.setItemDone(s, id, done));
+  }
+  async setItemColor(id: string, color: ColorToken | null) {
+    this.check('color');
+    return this.mutate((s) => items.setItemColor(s, id, color));
+  }
+  async reorderItem(request: ReorderItem) {
+    this.check('reorder');
+    return this.mutate((s) => items.reorderItem(s, request));
   }
   async discardDraft(key: string) {
     this.check('discard');
-    const s = structuredClone(this.snapshot);
-    s.drafts = s.drafts.filter((d) => d.key !== key);
-    return this.commit(s);
+    return this.mutate(
+      (s) => (s.drafts = s.drafts.filter((d) => d.key !== key)),
+    );
   }
-  async deleteNote(id: string) {
+  async deleteItem(id: string) {
     this.check('delete');
-    const s = structuredClone(this.snapshot);
-    const n = s.notes.find((n) => n.id === id);
-    if (n) n.deletedAt = Date.now();
-    s.drafts = s.drafts.filter((d) => d.key !== id);
-    s.undoDeleteId = id;
-    return this.commit(s);
+    return this.mutate((s) => items.deleteItem(s, id));
+  }
+  async restoreItem(id: string) {
+    this.check('restore-item');
+    return this.mutate((s) => items.restoreItem(s, id));
   }
   async undoDelete() {
     this.check('undo');
-    const s = structuredClone(this.snapshot);
-    const n = s.notes.find((n) => n.id === s.undoDeleteId);
-    if (n) n.deletedAt = null;
-    s.undoDeleteId = null;
-    return this.commit(s);
+    return this.mutate((s) => items.undoDelete(s));
   }
   async exportBackup() {
     this.check('export');
@@ -169,9 +135,9 @@ export class MemoryRepository implements Repository {
     this.staged = b.workspace;
     return {
       token: 'synthetic-token',
-      notes: b.workspace.notes.length,
+      notes: b.workspace.items.filter((x) => x.kind === 'note').length,
       drafts: b.workspace.drafts.length,
-      stashes: b.workspace.stashes.length,
+      stashes: b.workspace.items.filter((x) => x.kind === 'stash').length,
       warning:
         'Replace the entire local workspace. A safety backup is required.',
     };

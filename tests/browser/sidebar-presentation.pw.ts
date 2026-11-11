@@ -135,11 +135,11 @@ for (const large of [false, true]) {
     }
     await sidebar.getByRole('searchbox').focus();
     await page.screenshot({
-      path: `.projects/2026-11-11-unified-items-trash/sidebar-focus-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/sidebar-presentation/sidebar-focus-${large ? '150' : 'wide'}.png`,
     });
     await row.hover();
     await page.screenshot({
-      path: `.projects/2026-11-11-unified-items-trash/sidebar-hover-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/sidebar-presentation/sidebar-hover-${large ? '150' : 'wide'}.png`,
     });
   });
 }
@@ -179,7 +179,7 @@ for (const large of [false, true]) {
     expect(Math.abs(centers.stack - centers.name)).toBeLessThanOrEqual(1);
     await row.hover();
     await page.screenshot({
-      path: `.projects/2026-11-11-unified-items-trash/sidebar-deep-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/sidebar-presentation/sidebar-deep-${large ? '150' : 'wide'}.png`,
     });
   });
 }

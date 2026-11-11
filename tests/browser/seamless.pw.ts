@@ -9,8 +9,15 @@ async function seed(p: Page, sources: string[]) {
   await p.evaluate(async (sources) => {
     const t = (window as any).__test;
     for (const source of sources)
-      await t.repo.saveNote(null, source, 'compose', 1, null);
-    t.repo.snapshot.notes.forEach((n: any, i: number) => (n.createdAt = i));
+      await t.repo.captureItem({
+        id: crypto.randomUUID(),
+        location: { scope: 'live', itemId: null },
+        markdown: source,
+        draft: { key: 'compose', revision: 1 },
+      });
+    t.repo.snapshot.items
+      .filter((x: any) => x.kind === 'note')
+      .forEach((n: any, i: number) => (n.createdAt = i));
     await t.controller.start();
   }, sources);
 }
@@ -18,7 +25,7 @@ test('autosave keeps editor caret and undo; Escape/Enter keep changes, same sele
   page,
 }) => {
   await seed(page, ['**original**']);
-  const card = page.locator('.note-card');
+  const card = page.locator('.note-card[data-kind="note"]');
   await card.click();
   await page.keyboard.press('e');
   await inline(page).press('End');
@@ -26,7 +33,10 @@ test('autosave keeps editor caret and undo; Escape/Enter keep changes, same sele
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe('**original**!');
@@ -60,7 +70,10 @@ test('autosave keeps editor caret and undo; Escape/Enter keep changes, same sele
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe('replacement');
@@ -69,7 +82,7 @@ test('click-away preserves actual new target after delayed save and failure reta
   page,
 }) => {
   await seed(page, ['first', 'second']);
-  const cards = page.locator('.note-card');
+  const cards = page.locator('.note-card[data-kind="note"]');
   await cards.first().click();
   await page.keyboard.press('e');
   await page.evaluate(() => (window as any).__test.delay());
@@ -93,7 +106,10 @@ test('click-away preserves actual new target after delayed save and failure reta
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe('retained failure');
@@ -135,14 +151,17 @@ test('instant Untitled creation uses open parent, deduplicates pending request, 
       page.evaluate(() => (window as any).__test.controller.state.stashId),
     )
     .toBe(leaf);
+  await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
   const created = await page.evaluate(() =>
-    (window as any).__test.repo.snapshot.stashes.at(-1),
+    (window as any).__test.repo.snapshot.items
+      .filter((x: any) => x.kind === 'stash')
+      .at(-1),
   );
-  expect(created.parentId).toBe(parent);
+  expect(created.parentId).toBe(child);
   await capture(page).fill('arrows stay editing');
   await capture(page).press('ArrowLeft');
   await expect(capture(page)).toHaveText('arrows stay editing');
@@ -165,7 +184,7 @@ for (const large of [false, true])
     ]);
     if (large)
       await page.addStyleTag({ content: ':root{font-size:24px!important}' });
-    const cards = page.locator('.note-card');
+    const cards = page.locator('.note-card[data-kind="note"]');
     for (let i = 0; i < 4; i++) {
       const card = cards.nth(i);
       await card.scrollIntoViewIfNeeded();
@@ -174,7 +193,9 @@ for (const large of [false, true])
         .click();
       const measure = () =>
         page.evaluate(() => ({
-          cards: [...document.querySelectorAll('.note-card')].map((n) => {
+          cards: [
+            ...document.querySelectorAll('.note-card[data-kind="note"]'),
+          ].map((n) => {
             const r = n.getBoundingClientRect();
             return { x: r.x, y: r.y, w: r.width, h: r.height };
           }),
@@ -214,7 +235,7 @@ for (const large of [false, true])
     await cards.first().click();
     await page.keyboard.press('e');
     await page.screenshot({
-      path: `.projects/2026-11-11-seamless-flow/task-2-edit-${large ? '150' : 'wide'}.png`,
+      path: `test-results/captures/seamless/task-2-edit-${large ? '150' : 'wide'}.png`,
     });
   });
 
@@ -222,7 +243,7 @@ test('pending instant creation is idempotent and honors a newer Search focus', a
   page,
 }) => {
   await seed(page, ['saved']);
-  await page.locator('.note-card').click();
+  await page.locator('.note-card[data-kind="note"]').click();
   await page.keyboard.press('e');
   await inline(page).fill('latest before creation');
   await page.evaluate(() => {
@@ -240,14 +261,22 @@ test('pending instant creation is idempotent and honors a newer Search focus', a
   await page.evaluate(() => (window as any).__test.releaseCreate());
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.repo.snapshot.stashes.length),
+      page.evaluate(
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'stash',
+          ).length,
+      ),
     )
-    .toBe(1);
+    .toBe(2);
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(page.getByRole('searchbox')).toHaveValue('new intent');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'stash' && x.markdown !== 'Untitled',
+        )[0].markdown,
     ),
   ).toBe('latest before creation');
 });
@@ -257,23 +286,41 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   await seed(page, []);
   await page.evaluate(async () => {
     const t = (window as any).__test;
-    const p = await t.repo.createStash('Parent', null),
-      parent = p.stashes[0].id;
-    const ch = await t.repo.createStash('Child', parent),
-      child = ch.stashes.at(-1).id;
-    await t.repo.saveNote(null, 'owned first', `compose:${parent}`, 1, parent);
-    await t.repo.saveNote(null, 'owned second', `compose:${parent}`, 2, parent);
-    t.repo.snapshot.stashes.forEach((s: any, i: number) => (s.createdAt = i));
-    t.repo.snapshot.notes.forEach((n: any, i: number) => (n.createdAt = i + 2));
+    const parent = crypto.randomUUID(),
+      child = crypto.randomUUID();
+    await t.repo.createChildStash({
+      id: parent,
+      parent: { scope: 'live', itemId: null },
+    });
+    await t.repo.saveItemSource(parent, 'Parent', { key: parent, revision: 0 });
+    await t.repo.createChildStash({
+      id: child,
+      parent: { scope: 'live', itemId: parent },
+    });
+    await t.repo.saveItemSource(child, 'Child', { key: child, revision: 0 });
+    for (const markdown of ['owned first', 'owned second'])
+      await t.repo.captureItem({
+        id: crypto.randomUUID(),
+        location: { scope: 'live', itemId: parent },
+        markdown,
+        draft: { key: `compose:${parent}`, revision: 1 },
+      });
+    t.repo.snapshot.items
+      .filter((x: any) => x.kind === 'stash')
+      .forEach((s: any, i: number) => (s.createdAt = i));
+    t.repo.snapshot.items
+      .filter((x: any) => x.kind === 'note')
+      .forEach((n: any, i: number) => (n.createdAt = i + 2));
     await t.controller.start();
   });
-  await page.locator('.stash-card').click();
+  await page.locator('.note-card[data-kind="stash"]').click();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
     /selected/,
   );
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.note-card')).toHaveCount(0);
+  await expect(page.locator('.note-card[data-kind="note"]')).toHaveCount(0);
+  await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
     /selected/,
@@ -281,18 +328,20 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   const removed = await page
-    .locator('.note-card.selected')
+    .locator('.note-card[data-kind="note"].selected')
     .getAttribute('data-entry-id');
   await page.keyboard.press('Meta+Backspace');
   await expect(page.locator(`[data-entry-id="${removed}"]`)).toHaveCount(0);
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('.note-card.selected')).toHaveCount(1);
+  await expect(
+    page.locator('.note-card[data-kind="note"].selected'),
+  ).toHaveCount(1);
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 3,
+      version: 4,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });
@@ -317,9 +366,11 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   const ownership = await page.evaluate(() => {
     const c = (window as any).__test.controller;
     return [
-      c.state.stashId,
-      c.state.snapshot.notes.find((n: any) => n.id === c.state.activeKey)
-        .stashId,
+      c.state.snapshot.items.find(
+        (x: any) => x.kind === 'stash' && x.markdown === 'Parent',
+      ).id,
+      c.state.snapshot.items.find((n: any) => n.id === c.state.activeKey)
+        .parentId,
     ];
   });
   expect(ownership[0]).toBe(ownership[1]);
@@ -330,7 +381,7 @@ for (const laterTyping of [false, true])
     page,
   }) => {
     await seed(page, ['original']);
-    const card = page.locator('.note-card');
+    const card = page.locator('.note-card[data-kind="note"]');
     await card
       .getByRole('button', { name: 'Select note', exact: true })
       .click();
@@ -354,14 +405,20 @@ for (const laterTyping of [false, true])
     await expect(inline(page)).toBeFocused();
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe('original');
     await page.evaluate(() => (window as any).__test.release());
     await expect
       .poll(() =>
         page.evaluate(
-          () => (window as any).__test.repo.snapshot.notes[0].markdown,
+          () =>
+            (window as any).__test.repo.snapshot.items.filter(
+              (x: any) => x.kind === 'note',
+            )[0].markdown,
         ),
       )
       .toBe(expected);
@@ -382,7 +439,10 @@ for (const laterTyping of [false, true])
     await expect(inline(page)).toHaveText(expected);
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes.length,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          ).length,
       ),
     ).toBe(1);
     // A subsequent real blur still finishes, and explicit keys retain their meaning.

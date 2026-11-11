@@ -216,7 +216,10 @@ test('background acknowledgment retains editor selection and autosaves replaceme
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe(draft);
@@ -231,7 +234,10 @@ test('background acknowledgment retains editor selection and autosaves replaceme
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe(expected);

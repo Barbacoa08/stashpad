@@ -1,12 +1,16 @@
+import { convertLegacy } from '../../src/lib/domain/backup';
 import { WorkspaceController } from '../../src/lib/workspace/controller';
 import { MemoryRepository } from '../fixtures/memory';
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
+import {
+  validateBackup,
+  encodeBackup,
+} from '../../src/lib/domain/legacy-backup';
 import {
   MAX_SOURCE,
   MAX_ENVELOPE,
-  type WorkspaceSnapshot,
+  type V3Workspace as WorkspaceSnapshot,
 } from '../../src/lib/domain/notes';
 const id = '11111111-1111-4111-8111-111111111111',
   deleted = '22222222-2222-4222-8222-222222222222';
@@ -157,12 +161,12 @@ it('restores and selects an uppercase exact-reference draft and preserves origin
     repo.restoreText = encodeBackup(upperWorkspace());
     expect(await c.previewRestore()).toBe(true);
     expect(await c.restore()).toBe(true);
-    expect(repo.snapshot).toEqual(upperWorkspace());
+    expect(repo.snapshot).toEqual(convertLegacy(upperWorkspace()));
     await c.selectNote(upperActive);
     expect(c.state.source).toBe('unfinished uppercase');
     await c.undoRemove();
     expect(
-      repo.snapshot.notes.find((n) => n.id === upperDeleted)?.deletedAt,
+      repo.snapshot.items.find((n) => n.id === upperDeleted)?.deletedAt,
     ).toBeNull();
   } finally {
     c.dispose();

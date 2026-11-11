@@ -6,10 +6,12 @@ async function create(page: Page, name: string) {
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
   await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
-  // Named fixtures use the existing Rename boundary after instant creation.
+  // Named fixtures edit the source-bearing container through the current boundary.
   await page.evaluate(async (name) => {
     const c = (window as any).__test.controller;
-    await c.renameStash(c.state.stashId, name);
+    const id = c.state.stashId;
+    c.editContext(id, name);
+    await c.flush();
   }, name);
 }
 test('Command N preserves editor draft, creates nested stashes, captures there, and global search identifies ownership', async ({
@@ -38,7 +40,8 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await stash.click();
   await page.keyboard.press('Enter');
   await expect(page.locator('.app-header h1')).toContainText('Projects');
-  await page.getByRole('article', { name: 'Stash Ideas' }).dblclick();
+  await page.getByRole('article', { name: 'Stash Ideas' }).click();
+  await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('Next nested capture');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
   await page.getByRole('searchbox').fill('Nested **source**');
@@ -52,13 +55,21 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await page.keyboard.press('Escape');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].stashId,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].parentId,
     ),
   ).toBe(
-    await page.evaluate(() => (window as any).__test.controller.state.stashId),
+    await page.evaluate(
+      () =>
+        (window as any).__test.repo.snapshot.items.find(
+          (x: any) => x.kind === 'stash' && x.markdown === 'Ideas',
+        ).id,
+    ),
   );
 });
-test('instant creation preserves drafts and Rename validates names with Escape focus', async ({
+test('instant creation preserves drafts and stash source edits have ordinary source, copy, and deletion actions', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -68,27 +79,22 @@ test('instant creation preserves drafts and Rename validates names with Escape f
   await expect(capture(page)).toHaveText('Retained');
   const stash = page.getByRole('article', { name: 'Stash Named' });
   await stash.click();
-  await expect(stash.getByRole('button', { name: 'Delete note' })).toHaveCount(
-    0,
-  );
+  await expect(
+    stash.getByRole('button', { name: 'Delete stash' }),
+  ).toBeVisible();
   await expect(
     stash.getByRole('button', { name: 'Copy Markdown' }),
-  ).toHaveCount(0);
-  await stash.getByRole('button', { name: 'Rename stash' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Rename stash' });
-  await dialog.getByRole('textbox', { name: 'Stash name' }).fill('  ');
-  await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
-  await expect(dialog.getByRole('alert')).toContainText('1 to 200');
-  await page.keyboard.press('Escape');
-  await expect(
-    stash.getByRole('button', { name: 'Rename stash' }),
-  ).toBeFocused();
-  await stash.getByRole('button', { name: 'Rename stash' }).click();
-  await dialog.getByRole('textbox', { name: 'Stash name' }).fill('Renamed');
-  await dialog.getByRole('textbox', { name: 'Stash name' }).press('Enter');
-  await expect(
-    page.getByRole('article', { name: 'Stash Renamed' }),
   ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rename stash' })).toHaveCount(
+    0,
+  );
+  await stash.dblclick();
+  const editor = page.getByRole('textbox', { name: 'Edit Markdown' });
+  await editor.fill('Renamed **source**');
+  await editor.press('Escape');
+  await expect(
+    page.getByRole('article', { name: 'Stash Renamed **source**' }),
+  ).toContainText('Renamed source');
 });
 test('per-location capture caret and undo survive navigation', async ({
   page,

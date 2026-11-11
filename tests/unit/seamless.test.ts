@@ -13,7 +13,7 @@ async function setup() {
   await c.start();
   c.editSource('saved');
   await c.save();
-  const id = repo.snapshot.notes[0].id;
+  const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
   await c.selectNote(id);
   return { repo, c, id };
 }
@@ -24,14 +24,18 @@ it('idle edits coalesce into saved source without leaving the active editor, and
   await vi.advanceTimersByTimeAsync(250);
   c.editSource('latest\r\n');
   await vi.advanceTimersByTimeAsync(299);
-  expect(repo.snapshot.notes[0].markdown).toBe('saved');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'saved',
+  );
   await vi.advanceTimersByTimeAsync(1);
-  expect(repo.snapshot.notes[0].markdown).toBe('latest\r\n');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'latest\r\n',
+  );
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('latest\r\n');
   c.editContext('compose', 'capture');
   await vi.advanceTimersByTimeAsync(300);
-  expect(repo.snapshot.notes).toHaveLength(1);
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(1);
   expect(repo.snapshot.drafts[0].markdown).toBe('capture');
 });
 it('flush drains newer inline revisions during a delayed acknowledgment without changing owner or active edit', async () => {
@@ -44,7 +48,9 @@ it('flush drains newer inline revisions during a delayed acknowledgment without 
   c.editSource('latest\r\n\n');
   release();
   expect(await pending).toBe(true);
-  expect(repo.snapshot.notes[0].markdown).toBe('latest\r\n\n');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'latest\r\n\n',
+  );
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('latest\r\n\n');
 });
@@ -55,55 +61,71 @@ it('failed inline flush keeps source and a recovery draft, prevents navigation, 
   expect(await c.newNote()).toBe(false);
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('');
-  expect(repo.snapshot.notes[0].markdown).toBe('saved');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'saved',
+  );
   expect(repo.snapshot.drafts.find((d) => d.key === id)?.markdown).toBe('');
   repo.fail = null;
   expect(await c.newNote()).toBe(true);
-  expect(repo.snapshot.notes[0]).toMatchObject({
-    id,
-    markdown: '',
-    stashId: null,
-  });
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0]).toMatchObject(
+    {
+      id,
+      markdown: '',
+      parentId: null,
+    },
+  );
 });
 it('Escape finish keeps changes and delete/Undo retains latest visible source', async () => {
   const { repo, c, id } = await setup();
   c.editSource('finished');
   expect(await c.finishEdit()).toBe(true);
-  expect(repo.snapshot.notes[0].markdown).toBe('finished');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'finished',
+  );
   await c.selectNote(id);
   c.editSource('latest before delete');
   expect(await c.remove()).toBe(true);
-  expect(repo.snapshot.notes[0].deletedAt).not.toBeNull();
+  expect(
+    repo.snapshot.items.filter((x) => x.kind === 'note')[0].deletedAt,
+  ).not.toBeNull();
   await c.undoRemove();
-  expect(repo.snapshot.notes[0].markdown).toBe('latest before delete');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'latest before delete',
+  );
 });
 it('export and restore preview flush note source rather than leaving only an edit draft', async () => {
   const { repo, c } = await setup();
   c.editSource('exported\r\n');
   expect(await c.export()).toBe(true);
-  expect(JSON.parse(repo.exported!).workspace.notes[0].markdown).toBe(
+  expect(JSON.parse(repo.exported!).workspace.items[0].markdown).toBe(
     'exported\r\n',
   );
   c.editSource('before preview');
   await c.previewRestore();
-  expect(repo.snapshot.notes[0].markdown).toBe('before preview');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'before preview',
+  );
 });
 it('one pending instant creation creates one Untitled stash in the open parent and preserves the latest inline source', async () => {
   const { repo, c, id } = await setup();
   c.editSource('before new stash');
   let release!: () => void;
   repo.delayCreate = new Promise<void>((r) => (release = r));
-  const first = c.createStash('Untitled'),
-    second = c.createStash('Untitled');
+  const first = c.createStash(),
+    second = c.createStash();
   await new Promise((r) => setTimeout(r, 0));
   release();
   expect(await first).toBe(true);
   expect(await second).toBe(true);
-  expect(repo.snapshot.stashes).toHaveLength(1);
-  expect(repo.snapshot.stashes[0].parentId).toBeNull();
-  expect(repo.snapshot.notes.find((n) => n.id === id)?.markdown).toBe(
-    'before new stash',
-  );
+  expect(repo.snapshot.items.filter((x) => x.kind === 'stash')).toHaveLength(1);
+  expect(
+    repo.snapshot.items.filter((x) => x.kind === 'stash')[0].parentId,
+  ).toBeNull();
+  expect(
+    repo.snapshot.items
+      .filter((x) => x.kind === 'note')
+      .find((n) => n.id === id)?.markdown,
+  ).toBe('before new stash');
 });
 
 it('failed latest-source delete leaves the original note alive, retains the revision, and retry/Undo restores it exactly', async () => {
@@ -111,17 +133,21 @@ it('failed latest-source delete leaves the original note alive, retains the revi
   c.editSource(' \r\n\n');
   repo.fail = 'save';
   expect(await c.remove()).toBe(false);
-  expect(repo.snapshot.notes[0].deletedAt).toBeNull();
+  expect(
+    repo.snapshot.items.filter((x) => x.kind === 'note')[0].deletedAt,
+  ).toBeNull();
   expect(c.state.source).toBe(' \r\n\n');
   repo.fail = null;
   expect(await c.remove()).toBe(true);
   await c.undoRemove();
-  expect(repo.snapshot.notes[0]).toMatchObject({
-    id,
-    markdown: ' \r\n\n',
-    done: false,
-    deletedAt: null,
-  });
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0]).toMatchObject(
+    {
+      id,
+      markdown: ' \r\n\n',
+      done: false,
+      deletedAt: null,
+    },
+  );
 });
 it('normal close drains late inline input before destroying and keeps the window open on commit failure', async () => {
   const { attachCloseGuard } = await import('../../src/lib/platform/lifecycle');
@@ -139,7 +165,8 @@ it('normal close drains late inline input before destroying and keeps the window
         return () => {};
       },
       destroy: async () => {
-        destroyed = repo.snapshot.notes[0].markdown;
+        destroyed = repo.snapshot.items.filter((x) => x.kind === 'note')[0]
+          .markdown;
       },
     },
     () => c.flush(),
@@ -167,7 +194,7 @@ it('delayed creation retains a newer search query rather than clearing a later u
   let release!: () => void;
   repo.delayCreate = new Promise<void>((r) => (release = r));
   c.setQuery('previous');
-  const pending = c.createStash('Untitled');
+  const pending = c.createStash();
   await new Promise((r) => setTimeout(r, 0));
   c.setQuery('new intent');
   release();
@@ -178,10 +205,18 @@ it('delayed creation retains a newer search query rather than clearing a later u
 for (const action of ['finish', 'navigate', 'close'] as const)
   it(`recovered existing edit commits without new typing on ${action}, while its owner's compose remains a draft`, async () => {
     const repo = new MemoryRepository();
-    const owner = (await repo.createStash('Owner', null)).stashes[0].id;
-    const id = (
-      await repo.saveNote(null, 'old saved', `compose:${owner}`, 1, owner)
-    ).notes[0].id;
+    const owner = crypto.randomUUID(),
+      id = crypto.randomUUID();
+    await repo.createChildStash({
+      id: owner,
+      parent: { scope: 'live', itemId: null },
+    });
+    await repo.captureItem({
+      id,
+      location: { scope: 'live', itemId: owner },
+      markdown: 'old saved',
+      draft: { key: `compose:${owner}`, revision: 1 },
+    });
     await repo.checkpointDraft(id, 'recovered edit\r\n', 7);
     await repo.checkpointDraft(`compose:${owner}`, 'recovered capture\n', 4);
     const c = new WorkspaceController(repo);
@@ -196,9 +231,11 @@ for (const action of ['finish', 'navigate', 'close'] as const)
           ? c.openStash(null)
           : c.flush()),
     ).toBe(true);
-    expect(repo.snapshot.notes[0]).toMatchObject({
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0],
+    ).toMatchObject({
       id,
-      stashId: owner,
+      parentId: owner,
       markdown: 'recovered edit\r\n',
     });
     expect(repo.snapshot.drafts).toEqual([
@@ -227,11 +264,15 @@ for (const laterTyping of [false, true])
     expect(c.state.source).toBe(
       laterTyping ? 'latest visible source!' : 'latest visible source',
     );
-    expect(repo.snapshot.notes[0].markdown).toBe(
-      laterTyping ? 'latest visible source!' : 'latest visible source',
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown,
+    ).toBe(laterTyping ? 'latest visible source!' : 'latest visible source');
+    expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(
+      1,
     );
-    expect(repo.snapshot.notes).toHaveLength(1);
-    expect(repo.snapshot.notes[0].stashId).toBeNull();
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].parentId,
+    ).toBeNull();
     expect(await c.finishEdit(id, 'blur')).toBe(true);
     expect(c.state.activeKey).toBe('compose');
   });
@@ -248,5 +289,7 @@ it('newer retain-edit intent does not cancel an explicit finish', async () => {
   release();
   expect(await finishing).toBe(true);
   expect(c.state.activeKey).toBe('compose');
-  expect(repo.snapshot.notes[0].markdown).toBe('explicit newer');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'explicit newer',
+  );
 });

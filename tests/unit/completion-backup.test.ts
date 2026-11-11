@@ -1,6 +1,9 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { encodeBackup, validateBackup } from '../../src/lib/domain/backup';
+import {
+  encodeBackup,
+  validateBackup,
+} from '../../src/lib/domain/legacy-backup';
 import { MAX_ENVELOPE } from '../../src/lib/domain/notes';
 const old = () =>
   JSON.parse(
