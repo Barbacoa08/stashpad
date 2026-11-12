@@ -8,6 +8,7 @@
   import ItemCard from './ItemCard.svelte';
   import ColorPalette from './ColorPalette.svelte';
   import { SiblingDrag, siblingDragType } from '../workspace/sibling-drag';
+  import { createReorderMotion } from '../workspace/reorder-motion';
   import type { ReorderItem } from '../platform/workspace';
   import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
@@ -32,6 +33,7 @@
   import { filterNotes } from '../domain/search';
   import { timestampPresentation } from '../domain/timestamps';
   import { attachCloseGuard } from '../platform/lifecycle';
+  import { attachMouseHistory } from '../platform/mouse-history';
   let {
     repository = nativeRepository,
     onready,
@@ -124,6 +126,7 @@
   });
   let search = $state<HTMLInputElement>();
   let stream = $state<HTMLElement>();
+  let reorderMotion: ReturnType<typeof createReorderMotion> | undefined;
   let closeFailed = $state(false);
   let detailsOpen = $state(false);
   let detailsChoice: boolean | null = null;
@@ -340,9 +343,45 @@
     node.focus();
   }
   onMount(() => {
+    const detachMouseHistory = attachMouseHistory(window, traverseHistory);
+    reorderMotion = createReorderMotion(() => stream);
     let previous = controller.state;
     navigation.reset(previous.location);
     const unsubscribe = controller.subscribe((next) => {
+      // Capture only acknowledged sibling-order changes before Svelte moves the
+      // existing keyed cards. Source saves and other snapshot changes only settle.
+      if (
+        next.location !== previous.location ||
+        next.query !== previous.query ||
+        next.activeKey !== previous.activeKey ||
+        next.buffers !== previous.buffers
+      )
+        reorderMotion?.cancel();
+      if (next.snapshot !== previous.snapshot) {
+        const before = directEntries(previous.snapshot, previous.location);
+        const after = directEntries(next.snapshot, next.location);
+        const old = new Map(before.map((item) => [item.id, item]));
+        const siblingReorder =
+          next.operation === 'reorder' &&
+          !next.query.trim() &&
+          next.location === previous.location &&
+          before.length === after.length &&
+          after.every((item) => {
+            const prior = old.get(item.id);
+            return (
+              prior &&
+              prior.markdown === item.markdown &&
+              prior.kind === item.kind &&
+              prior.parentId === item.parentId &&
+              prior.done === item.done &&
+              prior.color === item.color &&
+              prior.deletedAt === item.deletedAt
+            );
+          });
+        if (siblingReorder)
+          reorderMotion?.reorder(after.map((item) => item.id));
+        else reorderMotion?.cancel();
+      }
       // Subscribe sees each patch synchronously; Svelte effects can coalesce the
       // operation/location/finally patches and lose the structural cause.
       if (next.location !== previous.location) {
@@ -430,6 +469,8 @@
       );
     return () => {
       disposed = true;
+      detachMouseHistory();
+      reorderMotion?.destroy();
       clearCommand();
       clearDrag();
       window.removeEventListener('dragend', clearDrag);
@@ -894,6 +935,7 @@
     void moveItem({ id, group: { ...controller.state.location }, toIndex });
   }
   function startDrag(event: DragEvent, id: string) {
+    reorderMotion?.cancel();
     if (blocked || viewState.query.trim() || !event.dataTransfer) {
       event.preventDefault();
       return;
