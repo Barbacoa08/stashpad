@@ -98,36 +98,47 @@
   {ondrop}
   class:done={item.done}
   data-note-id={item.id}
+  style:--selection-color={item.color ? markerColors[item.color] : undefined}
   data-kind={item.kind}
   data-entry-id={item.id}
   onclick={onselect}
   ondblclick={ondoubleclick}
 >
-  {#if reorderable}<button
-      class="drag-handle"
-      draggable="true"
+  <div class="item-slot">
+    <button
+      class="note-select"
+      aria-pressed={selected}
       {disabled}
-      aria-label="Reorder item"
-      title="Drag to reorder · Command Up/Down"
-      {ondragstart}
-      {ondragend}
-      onkeydown={onmovekey}><span aria-hidden="true">⠿</span></button
-    >{/if}
-  <button
-    class="note-select"
-    aria-pressed={selected}
-    {disabled}
-    onclick={onselectbutton}
-    aria-label={item.kind === 'stash' ? 'Select stash' : 'Select note'}
-    title={item.kind === 'stash' ? 'Select stash' : 'Select note'}
-    >{#if item.kind === 'stash'}<StashIcon
-        color={item.color}
-      />{:else if item.color}<span
-        class="note-color"
-        style:background={markerColors[item.color]}
-        aria-hidden="true"
-      ></span>{/if}</button
-  >
+      onclick={onselectbutton}
+      aria-label={item.kind === 'stash' ? 'Select stash' : 'Select note'}
+      title={item.kind === 'stash' ? 'Select stash' : 'Select note'}
+      >{#if item.kind === 'stash'}<StashIcon
+          color={item.color}
+        />{:else if item.color}<span
+          class="note-color"
+          style:background={markerColors[item.color]}
+          aria-hidden="true"
+        ></span>{/if}</button
+    >
+    {#if reorderable}<button
+        class="drag-handle"
+        draggable="true"
+        {disabled}
+        aria-label="Reorder item"
+        title="Drag to reorder · Command Up/Down"
+        onclick={onselectbutton}
+        {ondragstart}
+        {ondragend}
+        onkeydown={onmovekey}
+        ><span aria-hidden="true"
+          ><svg viewBox="0 0 16 16"
+            ><path
+              d="M5 3h.01M11 3h.01M5 8h.01M11 8h.01M5 13h.01M11 13h.01"
+            /></svg
+          ></span
+        ></button
+      >{/if}
+  </div>
   {#if item.done}<span class="sr-only">Done</span>{/if}
   <div class="note-meta">
     <time datetime={updated.datetime}>{updated.label}</time>

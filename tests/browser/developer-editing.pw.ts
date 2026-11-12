@@ -242,9 +242,7 @@ for (const large of [false, true])
     });
     const expandedHeight = (await last.locator('.note-body').boundingBox())!
       .height;
-    await last
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await last.locator('.note-body').click();
     await page.keyboard.press('e');
     await expect(inline(page)).toBeFocused();
     expect((await last.locator('.note-body').boundingBox())!.height).toBe(
@@ -276,10 +274,7 @@ test('unchanged edit baseline follows a constrained resize and late text scaling
     );
   await seed(page, [source, source]);
   const notes = page.getByRole('article', { name: 'Saved note' });
-  await notes
-    .first()
-    .getByRole('button', { name: 'Select note', exact: true })
-    .click();
+  await notes.first().locator('.note-body').click();
   await page.keyboard.press('e');
   await expect(inline(page)).toBeFocused();
   await page.setViewportSize({ width: 800, height: 600 });
@@ -311,7 +306,7 @@ test('expansion uses exact note identity across filters and survives deletion/Un
   await expect(
     first.getByRole('button', { name: 'Collapse note', exact: true }),
   ).toHaveAttribute('aria-expanded', 'true');
-  await first.getByRole('button', { name: 'Select note', exact: true }).click();
+  await first.locator('.note-body').click();
   await page.keyboard.press('Meta+Backspace');
   await page.getByRole('button', { name: 'Undo delete', exact: true }).click();
   await expect(
@@ -410,9 +405,7 @@ for (const activation of ['click', 'keyboard'] as const)
     ]);
     await page.addStyleTag({ content: ':root{font-size:24px!important}' });
     const first = page.getByRole('article', { name: 'Saved note' }).first();
-    await first
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await first.locator('.note-body').click();
     await page.keyboard.press('e');
     await inline(page).press('Meta+Home');
     await inline(page).press('ArrowDown');
@@ -442,9 +435,7 @@ for (const activation of ['click', 'keyboard'] as const)
         path: 'test-results/captures/developer-editing/task-2-code-hint-150.png',
       });
     await details.click();
-    await first
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await first.locator('.note-body').click();
     await page.keyboard.press('e');
     await expect(inline(page)).toBeFocused();
     await page.keyboard.insertText('Q');
@@ -463,7 +454,7 @@ for (const activation of ['click', 'keyboard'] as const)
     await page
       .getByRole('article', { name: 'Saved note' })
       .last()
-      .getByRole('button', { name: 'Select note', exact: true })
+      .locator('.note-body')
       .click();
     await details.click();
     await expect(hint).toHaveCount(0);

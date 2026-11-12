@@ -6,14 +6,26 @@ const sameGroup = (a: Location, b: Location) =>
   a.scope === b.scope && a.itemId === b.itemId;
 /** A transfer string alone never grants movement: this workspace must own the drag. */
 export class SiblingDrag {
-  private owned: { id: string; group: Location; token: string } | null = null;
+  private owned: {
+    id: string;
+    group: Location;
+    token: string;
+    valid: boolean;
+  } | null = null;
   begin(id: string, group: Location) {
     const token = crypto.randomUUID();
-    this.owned = { id, group: { ...group }, token };
+    this.owned = { id, group: { ...group }, token, valid: true };
     return token;
   }
   clear() {
     this.owned = null;
+  }
+  invalidate() {
+    // Keep rejection feedback until this native drag ends, but never revive its authority.
+    if (this.owned) this.owned.valid = false;
+  }
+  owns(types: readonly string[]) {
+    return !!this.owned && types.length === 1 && types[0] === siblingDragType;
   }
   preview(
     snapshot: WorkspaceSnapshot,
@@ -25,11 +37,10 @@ export class SiblingDrag {
   ): ReorderItem | null {
     const owned = this.owned;
     if (
-      !owned ||
+      !owned?.valid ||
+      !this.owns(types) ||
       query.trim() ||
-      !sameGroup(owned.group, group) ||
-      types.length !== 1 ||
-      types[0] !== siblingDragType
+      !sameGroup(owned.group, group)
     )
       return null;
     const source = snapshot.items.find((x) => x.id === owned.id),

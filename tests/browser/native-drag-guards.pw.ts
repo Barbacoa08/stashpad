@@ -148,6 +148,7 @@ test('grip cursor is grab on hover, grabbing on press, and grab on release witho
     name: 'Reorder item',
     exact: true,
   });
+  await page.locator(`[data-entry-id="${id}"]`).hover();
   await handle.hover();
   await expect(handle).toHaveCSS('cursor', 'grab');
   const before = await handle.boundingBox();

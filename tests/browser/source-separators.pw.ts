@@ -37,9 +37,7 @@ for (const [name, source] of [
       });
       await t.controller.start();
     }, source);
-    await page
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await page.locator('.note-body').click();
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
     await editor(page).press('Meta+a');
     await editor(page).press('Meta+c');

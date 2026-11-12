@@ -50,9 +50,7 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   expect(
     await cards(page).locator('time').first().getAttribute('datetime'),
   ).toBeNull();
-  await cards(page)
-    .getByRole('button', { name: 'Select note', exact: true })
-    .click();
+  await cards(page).locator('.note-body').click();
   await expect(
     page.getByRole('complementary', { name: 'Note details' }),
   ).toContainText('Created Date unavailable');
@@ -115,16 +113,14 @@ for (const constrained of [false, true])
       path: `test-results/captures/final-fixes/visual-residual-${suffix}-normal.png`,
     });
     for (const index of [0, 1]) {
-      await cards(page)
-        .nth(index)
-        .getByRole('button', { name: 'Select note', exact: true })
-        .click();
+      await cards(page).nth(index).locator('.note-body').click();
       expect(await geometry()).toEqual(baseline);
       const card = cards(page).nth(index);
       await card
         .getByRole('button', { name: 'Select note', exact: true })
         .focus();
       for (const name of [
+        'Reorder item',
         'Edit note',
         'Mark done',
         'Copy Markdown',

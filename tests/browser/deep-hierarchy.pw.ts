@@ -134,7 +134,7 @@ for (const constrained of [false, true])
         .locator('.note-location')
         .evaluate((el) => Array.from(el.textContent ?? '').length),
     ).toBeLessThanOrEqual(96);
-    await cards.first().getByRole('button', { name: 'Select note' }).click();
+    await cards.first().locator('.note-body').click();
     await page.keyboard.press('e');
     await expect(
       page.getByRole('textbox', { name: 'Edit Markdown' }),

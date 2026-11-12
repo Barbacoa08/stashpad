@@ -28,6 +28,7 @@
 
 <nav aria-label="Stashes" class="stash-navigation">
   <button
+    class="home-link"
     class:current={live && currentId === null}
     aria-current={live && currentId === null ? 'page' : undefined}
     onclick={() => onopen(null)}

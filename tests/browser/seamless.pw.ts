@@ -188,9 +188,7 @@ for (const large of [false, true])
     for (let i = 0; i < 4; i++) {
       const card = cards.nth(i);
       await card.scrollIntoViewIfNeeded();
-      await card
-        .getByRole('button', { name: 'Select note', exact: true })
-        .click();
+      await card.click({ position: { x: 4, y: 4 } });
       const measure = () =>
         page.evaluate(() => ({
           cards: [
@@ -382,9 +380,7 @@ for (const laterTyping of [false, true])
   }) => {
     await seed(page, ['original']);
     const card = page.locator('.note-card[data-kind="note"]');
-    await card
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await card.locator('.note-body').click();
     await page.keyboard.press('e');
     await page.evaluate(() => (window as any).__test.delay());
     await inline(page).fill('latest visible source');

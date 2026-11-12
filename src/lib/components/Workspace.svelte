@@ -57,6 +57,19 @@
     siblingDrag.clear();
     dragGuide = null;
   }
+  function defaultOwnedDragOver(event: DragEvent) {
+    const transfer = event.dataTransfer;
+    if (!transfer || !siblingDrag.owns(Array.from(transfer.types))) return;
+    event.preventDefault();
+    transfer.dropEffect = 'none';
+    dragGuide = null;
+  }
+  function finishOwnedDragOver(event: DragEvent) {
+    const transfer = event.dataTransfer;
+    // A child editor must not turn a rejected sibling move into text-copy feedback.
+    if (transfer && siblingDrag.owns(Array.from(transfer.types)) && !dragGuide)
+      transfer.dropEffect = 'none';
+  }
   function rejectFileDrop(event: DragEvent) {
     const transfer = event.dataTransfer;
     if (
@@ -113,7 +126,8 @@
   $effect(() => {
     // A drag belongs to one exact view, including its search and replacement epoch.
     void metadataView;
-    clearDrag();
+    siblingDrag.invalidate();
+    dragGuide = null;
     palette = null;
   });
   let scopes = $derived(scopeIndex(viewState.snapshot.items));
@@ -331,6 +345,8 @@
     window.addEventListener('keyup', releaseCommand);
     window.addEventListener('blur', clearCommand);
     window.addEventListener('dragend', clearDrag);
+    window.addEventListener('dragover', defaultOwnedDragOver, true);
+    window.addEventListener('dragover', finishOwnedDragOver);
     window.addEventListener('drop', rejectFileDrop, true);
     window.addEventListener('drop', cancelUnhandledDrop);
     document.addEventListener('visibilitychange', clearCommand);
@@ -353,6 +369,8 @@
       clearCommand();
       clearDrag();
       window.removeEventListener('dragend', clearDrag);
+      window.removeEventListener('dragover', defaultOwnedDragOver, true);
+      window.removeEventListener('dragover', finishOwnedDragOver);
       window.removeEventListener('drop', rejectFileDrop, true);
       window.removeEventListener('drop', cancelUnhandledDrop);
       window.removeEventListener('keydown', globalCommands, true);

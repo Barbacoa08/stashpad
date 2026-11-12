@@ -462,6 +462,7 @@ test('drag identity is handle-only, rejects cross-parent and cross-scope reuse a
   const target = card(page, ids[2]);
   await target.hover();
   const box = (await target.boundingBox())!;
+  await card(page, ids[0]).hover();
   await source.dragTo(target, {
     targetPosition: { x: box.width / 2, y: box.height * 0.75 },
   });

@@ -68,9 +68,7 @@ test('X leaves typing, IME, DOM ranges, and modifiers alone, and toggles selecte
   await page.keyboard.press('Meta+n');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   const stash = page.locator('.note-card[data-kind="stash"]');
-  await stash
-    .getByRole('button', { name: 'Select stash', exact: true })
-    .click();
+  await stash.locator('.note-body').click();
   await page.keyboard.press('x');
   await expect(stash).toHaveClass(/done/);
 });
@@ -218,9 +216,7 @@ for (const scale of [100, 150])
     if (scale === 150)
       await page.addStyleTag({ content: 'html{font-size:150%}' });
     const first = card(page).first();
-    await first
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await first.locator('.note-body').click();
     const before = await first.boundingBox();
     await page.keyboard.press('x');
     await expect(first).toHaveClass(/done/);

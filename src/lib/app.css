@@ -170,7 +170,7 @@ kbd {
   font-size: 0.82rem;
 }
 .note-card.selected {
-  border-color: var(--accent);
+  border-color: var(--selection-color, var(--accent));
 }
 .note-meta {
   position: absolute;
@@ -379,7 +379,7 @@ kbd {
   font-size: inherit;
   outline: none;
 }
-.note-card.editing:focus-within {
+.note-card.editing {
   border-color: #92caff;
 }
 .note-card.editing .note-meta time {
@@ -992,43 +992,109 @@ main:has(.workspace) .details-rail {
   top: 1rem;
 }
 
-/* Fixed marker slots leave source geometry and contrast unchanged. */
+/* One fixed slot: pointer hover swaps stack/marker for grip without moving source. */
 .note-color {
   display: inline-block;
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 1px;
 }
-.note-select .stash-icon {
-  width: 1.15rem;
-  height: 1.15rem;
-}
 .note-card {
-  padding-left: 2.6rem;
+  padding-left: 2.25rem;
 }
-.note-select {
-  left: 1.05rem;
+.item-slot {
+  position: absolute;
+  left: 0.375rem;
+  top: 0.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
 }
+.item-slot .note-select,
 .drag-handle {
   position: absolute;
-  left: 0;
-  top: 0.25rem;
-  width: 1rem;
-  height: 1.5rem;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
   padding: 0;
   border: 0;
   background: transparent;
   color: #bdbdbd;
+}
+.item-slot .note-select {
+  pointer-events: none;
+}
+.item-slot .note-select:hover:enabled,
+.drag-handle:hover:enabled {
+  background: transparent;
+}
+.note-card[data-kind='stash'] .note-select {
+  pointer-events: auto;
+}
+.item-slot .stash-icon,
+.drag-handle svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.drag-handle svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.drag-handle span {
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+.drag-handle {
   cursor: grab;
   opacity: 0;
+  pointer-events: none;
 }
+/* Keep the pressed surface active after hover exits, until native drag initiation. */
 .drag-handle:active {
   cursor: grabbing;
+  pointer-events: auto;
+}
+.drag-handle:active span {
+  pointer-events: auto;
 }
 .note-card:hover .drag-handle,
-.note-card:focus-within .drag-handle,
-.note-stream:focus .selected .drag-handle {
+.note-card[data-kind='note'].selected .drag-handle,
+.note-card[data-kind='note']:focus-within .drag-handle,
+.drag-handle:focus-visible {
   opacity: 1;
+  pointer-events: auto;
+}
+/* The revealed child covers the slot, including its padding. */
+.note-card:hover .drag-handle span,
+.note-card[data-kind='note'].selected .drag-handle span,
+.note-card[data-kind='note']:focus-within .drag-handle span,
+.drag-handle:focus-visible span {
+  pointer-events: auto;
+}
+.note-card:hover:has(.drag-handle) .note-select,
+.note-card[data-kind='note'].selected:has(.drag-handle) .note-select,
+.note-card[data-kind='note']:focus-within:has(.drag-handle) .note-select {
+  opacity: 0;
+  pointer-events: none;
+}
+.note-card:hover:has(.drag-handle) .note-select > * {
+  visibility: hidden;
+}
+.item-slot .note-select:focus-visible {
+  opacity: 1 !important;
+}
+.item-slot .note-select:focus-visible .note-color {
+  visibility: hidden;
+}
+/* Keyboard reorder keeps a stash's stack; its focus ring identifies the action. */
+.note-card[data-kind='stash']:not(:hover) .drag-handle span {
+  opacity: 0;
 }
 .note-card.drop-before::before,
 .note-card.drop-after::after {
@@ -1105,4 +1171,30 @@ main:has(.workspace) .details-rail {
   border: 1px solid #bdbdbd;
   border-radius: 2px;
   flex: none;
+}
+
+/* Search, Home, and top-level stacks use the same icon column. */
+main:has(.workspace) .sidebar {
+  padding-inline: 6px;
+}
+.sidebar-search {
+  padding-inline: calc(24px + 2px);
+  padding-right: 0;
+  gap: 0.3rem;
+}
+.sidebar-search .icon,
+.stash-navigation .home-link .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.sidebar .stash-navigation .home-link {
+  padding-left: calc(24px + 2px);
+  gap: 0.3rem;
+  border-color: transparent;
+  border-radius: 0;
+}
+.sidebar .stash-navigation .home-link.current,
+.sidebar .stash-navigation .home-link:hover:enabled {
+  background: #303b4f;
+  color: #fff;
 }
