@@ -19,28 +19,33 @@ for (const [name, source] of [
     await expect(capture(page)).toBeVisible();
     await page.evaluate(async (markdown) => {
       const t = (window as any).__test;
-      t.repo.snapshot.notes = [
-        {
-          id: '00000000-0000-4000-8000-000000000001',
-          markdown,
-          createdAt: 0,
-          updatedAt: 0,
-          deletedAt: null,
-        },
-      ];
+      t.seedLegacy({
+        stashes: [],
+        notes: [
+          {
+            id: '00000000-0000-4000-8000-000000000001',
+            markdown,
+            createdAt: 0,
+            updatedAt: 0,
+            stashId: null,
+            done: false,
+            deletedAt: null,
+          },
+        ],
+        drafts: [],
+        undoDeleteId: null,
+      });
       await t.controller.start();
     }, source);
-    await page
-      .getByRole('button', { name: 'Select note', exact: true })
-      .click();
+    await page.locator('.note-body').click();
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Copy Markdown', exact: true })
-      .click();
+    await editor(page).press('Meta+a');
+    await editor(page).press('Meta+c');
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       source,
     );
     await editor(page).focus();
+    await editor(page).press('Meta+Home');
     await editor(page).press('End');
     await editor(page).press('x');
     const edited = source.replace('line 1', 'line 1x');
@@ -49,7 +54,8 @@ for (const [name, source] of [
     await expect.poll(() => current(page)).toBe(source);
     await editor(page).press('Meta+Shift+z');
     await expect.poll(() => current(page)).toBe(edited);
-    await page.getByRole('button', { name: /New note/ }).click();
+    await page.getByRole('region', { name: 'Note stream' }).focus();
+    await page.keyboard.press('Space');
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
     await page.keyboard.insertText('y');
     await expect
@@ -62,13 +68,17 @@ for (const [name, source] of [
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       edited,
     );
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await editor(page).press('Enter');
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     ).toBe(edited);
     await page.getByRole('button', { name: 'Edit note', exact: true }).click();
+    await editor(page).press('Meta+Home');
     await editor(page).press('End');
     await editor(page).press('Shift+Enter');
     const separator = name === 'LF' ? '\n' : '\r\n';
@@ -113,7 +123,10 @@ test('raw mixed clipboard payload keeps separators when available before normali
   await capture(page).press('Enter');
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0].markdown,
     ),
   ).toBe(source);
 });

@@ -32,7 +32,9 @@ describe('ordered workspace', () => {
     expect(c.state.source).toBe('retained');
     repo.fail = null;
     await c.save();
-    expect(repo.snapshot.notes).toHaveLength(1);
+    expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(
+      1,
+    );
     c.dispose();
   });
   it('retains selection/source outside filtered results and query through save', async () => {
@@ -41,11 +43,15 @@ describe('ordered workspace', () => {
     await c.start();
     c.editSource('alpha');
     await c.save();
-    await c.selectNote(repo.snapshot.notes[0].id);
+    await c.selectNote(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].id,
+    );
     c.setQuery('alpha');
     c.editSource('beta');
     await c.save();
-    expect(repo.snapshot.notes[0].markdown).toBe('beta');
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown,
+    ).toBe('beta');
     expect(c.state.query).toBe('alpha');
     expect(c.visibleNotes).toHaveLength(0);
     c.dispose();
@@ -94,7 +100,7 @@ it('save retry and rapid repeated submission create exactly one note', async () 
   expect(c.state.source).toBe('one');
   repo.fail = null;
   await Promise.all([c.save(), c.save()]);
-  expect(repo.snapshot.notes).toHaveLength(1);
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(1);
   c.dispose();
 });
 it('disposal during delayed save emits no late state', async () => {
@@ -166,18 +172,18 @@ for (const operation of ['newNote', 'flush'] as const) {
     }
   });
 }
-it('note selection waits for the latest checkpoint and restores that draft on return', async () => {
+it('note selection waits for the latest save and restores that source on return', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   try {
     await c.start();
     c.editSource('saved');
     await c.save();
-    const id = repo.snapshot.notes[0].id;
+    const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
     await c.selectNote(id);
     c.editSource('older edit');
     let release!: () => void;
-    repo.delayCheckpoint = new Promise<void>((resolve) => (release = resolve));
+    repo.delaySave = new Promise<void>((resolve) => (release = resolve));
     const navigate = c.newNote();
     await tick();
     c.editSource('latest edit');
@@ -199,20 +205,22 @@ it('capture clears only after success and stays in compose; whitespace is retain
   await c.save();
   expect(c.state.activeKey).toBe('compose');
   expect(c.state.source).toBe('');
-  expect(repo.snapshot.notes[0].markdown).toBe(' **capture** ');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    ' **capture** ',
+  );
   c.editSource('  \n');
   expect(await c.save()).toBe(false);
   expect(c.state.source).toBe('  \n');
-  expect(repo.snapshot.notes).toHaveLength(1);
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(1);
   c.dispose();
 });
-it('inline cancellation discards persisted edit while composer and resumable contexts remain independent', async () => {
+it('inline finish saves edits while composer and resumable contexts remain independent', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   await c.start();
   c.editSource('saved');
   await c.save();
-  const id = repo.snapshot.notes[0].id;
+  const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
   c.editSource('capture draft');
   await c.selectNote(id);
   c.editSource('unfinished');
@@ -220,9 +228,11 @@ it('inline cancellation discards persisted edit while composer and resumable con
   expect(c.state.source).toBe('capture draft');
   await c.selectNote(id);
   expect(c.state.source).toBe('unfinished');
-  expect(await c.cancelEdit()).toBe(true);
+  expect(await c.finishEdit()).toBe(true);
   expect(repo.snapshot.drafts.some((d) => d.key === id)).toBe(false);
-  expect(repo.snapshot.notes[0].markdown).toBe('saved');
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
+    'unfinished',
+  );
   expect(c.state.source).toBe('capture draft');
   c.dispose();
 });
@@ -232,12 +242,12 @@ it('persists composer typing independently during an inline save and retains a l
   await c.start();
   c.editSource('saved');
   await c.save();
-  const id = repo.snapshot.notes[0].id;
+  const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
   await c.selectNote(id);
   c.editSource('captured edit');
   let release!: () => void;
   repo.delaySave = new Promise<void>((r) => (release = r));
-  const saving = c.save();
+  const saving = c.flush();
   await tick();
   c.editSource('later edit');
   c.editContext('compose', 'new capture');
@@ -245,32 +255,206 @@ it('persists composer typing independently during an inline save and retains a l
   expect(await saving).toBe(true);
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('later edit');
-  expect(repo.snapshot.notes[0].markdown).toBe('captured edit');
-  await c.flush();
-  expect(repo.snapshot.drafts.find((d) => d.key === id)?.markdown).toBe(
+  expect(repo.snapshot.items.filter((x) => x.kind === 'note')[0].markdown).toBe(
     'later edit',
   );
+  await c.flush();
+  expect(repo.snapshot.drafts.some((d) => d.key === id)).toBe(false);
   expect(repo.snapshot.drafts.find((d) => d.key === 'compose')?.markdown).toBe(
     'new capture',
   );
   c.dispose();
 });
-it('failed ordinary cancellation retains the editable source and retry discards only that note', async () => {
+it('failed finish retains the editable source and retry saves only that note', async () => {
   const repo = new MemoryRepository();
   const c = new WorkspaceController(repo);
   await c.start();
   c.editSource('saved');
   await c.save();
-  const id = repo.snapshot.notes[0].id;
+  const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
   await c.selectNote(id);
   c.editSource('unfinished');
-  await c.flush();
-  repo.fail = 'discard';
-  expect(await c.cancelEdit()).toBe(false);
+  repo.fail = 'save';
+  expect(await c.finishEdit()).toBe(false);
   expect(c.state.activeKey).toBe(id);
   expect(c.state.source).toBe('unfinished');
   repo.fail = null;
-  expect(await c.cancelEdit()).toBe(true);
+  expect(await c.finishEdit()).toBe(true);
   expect(repo.snapshot.drafts).toEqual([]);
   c.dispose();
+});
+
+it('nested captures retain independent drafts, checkpoint failures block navigation, and edits retain ownership', async () => {
+  const repo = new MemoryRepository(),
+    c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    c.editSource('Home draft');
+    expect(await c.createStash()).toBe(true);
+    const parent = c.state.stashId!;
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'stash')[0].parentId,
+    ).toBeNull();
+    c.editSource('Parent draft');
+    expect(await c.createStash()).toBe(true);
+    const child = c.state.stashId!;
+    expect(
+      repo.snapshot.items
+        .filter((x) => x.kind === 'stash')
+        .find((s) => s.id === child)?.parentId,
+    ).toBe(parent);
+    c.editSource('nested source');
+    await c.save();
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].parentId,
+    ).toBe(child);
+    const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
+    await c.openStash(null);
+    expect(c.state.source).toBe('Home draft');
+    await c.openStash(parent);
+    expect(c.state.source).toBe('Parent draft');
+    repo.fail = 'checkpoint';
+    c.editSource('retained parent');
+    expect(await c.openStash(child)).toBe(false);
+    expect(c.state.stashId).toBe(parent);
+    expect(c.state.source).toBe('retained parent');
+    repo.fail = null;
+    await c.selectNote(id);
+    expect(c.state.stashId).toBe(child);
+    c.editSource('edited nested');
+    await c.save();
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0].parentId,
+    ).toBe(child);
+    expect(c.state.activeKey).toBe(`compose:${child}`);
+    expect(await c.openStash('missing')).toBe(false);
+    expect(c.state.stashId).toBe(child);
+  } finally {
+    c.dispose();
+  }
+});
+it('delayed nested save captures its destination and later typing before queued Home navigation', async () => {
+  const repo = new MemoryRepository(),
+    c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    await c.createStash();
+    const id = c.state.stashId!;
+    c.editSource('submitted');
+    let release!: () => void;
+    repo.delaySave = new Promise<void>((r) => (release = r));
+    const save = c.save();
+    await tick();
+    c.editSource('later');
+    const navigation = c.openStash(null);
+    release();
+    expect(await save).toBe(true);
+    expect(await navigation).toBe(true);
+    expect(
+      repo.snapshot.items.filter((x) => x.kind === 'note')[0],
+    ).toMatchObject({
+      markdown: 'submitted',
+      parentId: id,
+    });
+    expect(
+      repo.snapshot.drafts.find((d) => d.key === `compose:${id}`)?.markdown,
+    ).toBe('later');
+    await c.openStash(id);
+    expect(c.state.source).toBe('later');
+  } finally {
+    c.dispose();
+  }
+});
+it('create captures parent before queueing and stash source edits preserve current context', async () => {
+  const repo = new MemoryRepository(),
+    c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    await c.createStash();
+    const parent = c.state.stashId!;
+    const navigation = c.openStash(null),
+      creation = c.createStash();
+    await navigation;
+    await creation;
+    expect(repo.snapshot.items.find((x) => x.id !== parent)?.parentId).toBe(
+      parent,
+    );
+    await c.selectNote(parent);
+    c.editSource(' Renamed **source** ');
+    await c.finishEdit();
+    expect(repo.snapshot.items.find((x) => x.id === parent)?.markdown).toBe(
+      ' Renamed **source** ',
+    );
+  } finally {
+    c.dispose();
+  }
+});
+it('version2 restore replaces stale contexts and reopens scoped capture drafts at their exact destinations', async () => {
+  const repo = new MemoryRepository(),
+    c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    await c.createStash();
+    const previousId = c.state.stashId;
+    c.editSource('stale');
+    const restored = new MemoryRepository();
+    const id = crypto.randomUUID();
+    await restored.createChildStash({
+      id,
+      parent: { scope: 'live', itemId: null },
+    });
+    await restored.checkpointDraft(
+      `compose:${id}`,
+      'restored stash source\r\n',
+      9,
+    );
+    const { encodeBackup } = await import('../../src/lib/domain/backup');
+    repo.restoreText = encodeBackup(restored.snapshot);
+    await c.previewRestore();
+    expect(c.state.preview?.stashes).toBe(1);
+    expect(await c.restore()).toBe(true);
+    expect(c.state.stashId).toBeNull();
+    expect(c.state.buffers).not.toHaveProperty(`compose:${previousId}`);
+    await c.openStash(id);
+    expect(c.state.source).toBe('restored stash source\r\n');
+    expect(c.state.revision).toBe(9);
+  } finally {
+    c.dispose();
+  }
+});
+
+it('delayed stash creation opens only on success and retains later typing in the captured parent', async () => {
+  const repo = new MemoryRepository(),
+    c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    await c.createStash();
+    const parent = c.state.stashId!;
+    c.editSource('before create');
+    let release!: () => void;
+    repo.delayCreate = new Promise<void>((resolve) => (release = resolve));
+    const creating = c.createStash();
+    await tick();
+    expect(c.state.stashId).toBe(parent);
+    c.editSource('later parent input');
+    release();
+    expect(await creating).toBe(true);
+    const child = c.state.stashId!;
+    expect(
+      repo.snapshot.items
+        .filter((x) => x.kind === 'stash')
+        .find((s) => s.id === child)?.parentId,
+    ).toBe(parent);
+    await c.flush();
+    expect(
+      repo.snapshot.drafts.find((d) => d.key === `compose:${parent}`)?.markdown,
+    ).toBe('later parent input');
+    await c.openStash(parent);
+    expect(c.state.source).toBe('later parent input');
+    repo.fail = 'create';
+    expect(await c.createStash()).toBe(false);
+    expect(c.state.stashId).toBe(parent);
+  } finally {
+    c.dispose();
+  }
 });

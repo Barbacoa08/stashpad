@@ -20,9 +20,11 @@ test('save search selected-outside-results, clear, new, and compose recovery', a
   await expect(page.getByRole('status')).toHaveText('Saved');
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   const search = page.getByRole('searchbox', { name: 'Search saved notes' });
-  await search.fill('alpha');
+  await page.evaluate(() =>
+    (window as any).__test.controller.setQuery('alpha'),
+  );
   await replace(page, 'beta draft');
-  await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Edit Markdown' }).press('Enter');
   await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
     0,
   );
@@ -31,7 +33,7 @@ test('save search selected-outside-results, clear, new, and compose recovery', a
   await expect(search).toHaveValue('');
   await expect(page.getByRole('region', { name: 'Note stream' })).toBeFocused();
   await expect(editor).toHaveText('');
-  await page.keyboard.press('Meta+n');
+  await page.keyboard.press('Space');
   await expect(editor).toHaveText('');
   await expect(editor).toBeFocused();
 });
@@ -54,7 +56,8 @@ test('delayed save keeps later typing and failed navigation has retry', async ({
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'checkpoint';
   });
-  await page.getByRole('button', { name: /^New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(page.getByRole('alert')).toContainText('failure');
   await expect(editor).toHaveText('newer input');
   await page.evaluate(() => {
@@ -63,26 +66,23 @@ test('delayed save keeps later typing and failed navigation has retry', async ({
   await page.getByRole('button', { name: 'Retry checkpoint' }).click();
   await expect(page.getByRole('status')).toHaveText('Draft checkpointed');
 });
-test('delete explicitly confirms discarded draft, cancel preserves it, and undo restores saved source', async ({
+test('explicit delete after finish saves latest edit and Undo restores it', async ({
   page,
 }) => {
   await page.goto('/?fixture');
-  const editor = edit(page);
   await replace(page, 'saved source');
-  await page.getByRole('button', { name: /^Save note/ }).click();
+  await edit(page).press('Enter');
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-  await replace(page, 'unfinished edit');
-  await page.getByRole('button', { name: 'Delete note', exact: true }).click();
-  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-  await expect(editor).toHaveText('unfinished edit');
-  await page.getByRole('button', { name: 'Delete note', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Discard draft and delete', exact: true })
-    .click();
+  await replace(page, 'latest edit');
+  await edit(page).press('Escape');
+  await page.keyboard.press('Meta+Backspace');
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
+    0,
+  );
   await page.getByRole('button', { name: 'Undo delete', exact: true }).click();
-  await page.getByRole('button', { name: 'Select note', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-  await expect(editor).toHaveText('saved source');
+  await page.locator('.note-card .note-body').click();
+  await page.keyboard.press('e');
+  await expect(edit(page)).toHaveText('latest edit');
 });
 test('named controls, visible focus, and 800px 150% text reflow', async ({
   page,
@@ -128,22 +128,31 @@ test('initial read failure offers retry, then save failure retains source and su
   );
 });
 
-test('discard confirmation holds the note context until a choice is made', async ({
+test('failed finish retains note source and prevents navigation until retry', async ({
   page,
 }) => {
   await page.goto('/?fixture');
   await replace(page, 'saved');
-  await page.getByRole('button', { name: /^Save note/ }).click();
+  await edit(page).press('Enter');
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-  await replace(page, 'unfinished');
-  await page.getByRole('button', { name: 'Delete note', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^New note/ })).toBeDisabled();
-  await page.keyboard.press('Meta+n');
-  await expect(edit(page)).toHaveText('unfinished');
-  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^New note/ })).toBeEnabled();
+  await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
+  await replace(page, 'retained');
+  await edit(page).press('Escape');
+  await expect(page.getByRole('alert')).toContainText('failure');
+  await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
+    'retained',
+  );
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
+    'retained',
+  );
+  await page.evaluate(() => ((window as any).__test.repo.fail = null));
+  await page.getByRole('button', { name: 'Retry save', exact: true }).click();
+  await expect(
+    page.getByRole('textbox', { name: 'Edit Markdown' }),
+  ).toHaveCount(0);
 });
-
 for (const failFollowup of [false, true])
   test(`pending navigation checkpoint preserves later typing; follow-up failure=${failFollowup}`, async ({
     page,
@@ -155,7 +164,8 @@ for (const failFollowup of [false, true])
       t.delayCheckpoint();
       if (fail) t.repo.failCheckpointCall = 2;
     }, failFollowup);
-    await page.getByRole('button', { name: /^New note/ }).click();
+    await page.getByRole('region', { name: 'Note stream' }).focus();
+    await page.keyboard.press('Space');
     await expect
       .poll(() =>
         page.evaluate(() => (window as any).__test.repo.checkpointCalls),
@@ -187,18 +197,14 @@ for (const failFollowup of [false, true])
       .toBe('latest');
   });
 
-test('Keep editing restores editor focus and the existing selection without changing the draft', async ({
+test('background acknowledgment retains editor selection and autosaves replacement selection exactly', async ({
   page,
 }) => {
   await page.goto('/?fixture');
-  const editor = edit(page);
   await replace(page, 'saved source');
-  await page.getByRole('button', { name: /^Save note/ }).click();
-  await expect(page.getByRole('status')).toHaveText('Saved');
+  await edit(page).press('Enter');
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
-  const key = await page.evaluate(
-    () => (window as any).__test.controller.state.activeKey,
-  );
+  const editor = page.getByRole('textbox', { name: 'Edit Markdown' });
   const draft = 'unfinished edit';
   await replace(page, draft);
   await editor.press('Home');
@@ -207,19 +213,19 @@ test('Keep editing restores editor focus and the existing selection without chan
   await editor.press('ArrowRight');
   await editor.press('Shift+ArrowRight');
   await editor.press('Shift+ArrowRight');
-  await page.getByRole('button', { name: 'Delete note', exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: 'Keep editing', exact: true }),
-  ).toBeFocused();
-  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-  await expect(editor).toBeFocused();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.source),
+      page.evaluate(
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
+      ),
     )
     .toBe(draft);
+  await expect(editor).toBeFocused();
   await page.keyboard.insertText('X');
-  const expected = draft.slice(0, 3) + 'X' + draft.slice(5);
+  const expected = 'unfXished edit';
   await expect
     .poll(() =>
       page.evaluate(() => (window as any).__test.controller.state.source),
@@ -228,17 +234,11 @@ test('Keep editing restores editor focus and the existing selection without chan
   await expect
     .poll(() =>
       page.evaluate(
-        (key) =>
-          (window as any).__test.repo.snapshot.drafts.find(
-            (d: any) => d.key === key,
-          )?.markdown,
-        key,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
     )
     .toBe(expected);
-  expect(
-    await page.evaluate(
-      () => (window as any).__test.repo.snapshot.notes[0].markdown,
-    ),
-  ).toBe('saved source');
 });

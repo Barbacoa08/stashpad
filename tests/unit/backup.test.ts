@@ -1,22 +1,29 @@
+import { convertLegacy } from '../../src/lib/domain/backup';
 import { WorkspaceController } from '../../src/lib/workspace/controller';
 import { MemoryRepository } from '../fixtures/memory';
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
+import {
+  validateBackup,
+  encodeBackup,
+} from '../../src/lib/domain/legacy-backup';
 import {
   MAX_SOURCE,
   MAX_ENVELOPE,
-  type WorkspaceSnapshot,
+  type V3Workspace as WorkspaceSnapshot,
 } from '../../src/lib/domain/notes';
 const id = '11111111-1111-4111-8111-111111111111',
   deleted = '22222222-2222-4222-8222-222222222222';
 const snapshot = (): WorkspaceSnapshot => ({
+  stashes: [],
   notes: [
     {
       id,
       markdown: 'α **source**  \n```json\n{"a":1}\n```\n',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -24,6 +31,8 @@ const snapshot = (): WorkspaceSnapshot => ({
       markdown: 'deleted',
       createdAt: 0,
       updatedAt: 3,
+      stashId: null,
+      done: false,
       deletedAt: 3,
     },
   ],
@@ -53,7 +62,7 @@ describe('strict whole-envelope backup validation', () => {
     'undoActive',
   ])('rejects %s without normalizing', (kind) => {
     const b = valid();
-    if (kind === 'future') b.version = 2;
+    if (kind === 'future') b.version = 4;
     if (kind === 'duplicate') b.workspace.notes.push(b.workspace.notes[0]);
     if (kind === 'draftDuplicate')
       b.workspace.drafts.push(b.workspace.drafts[0]);
@@ -85,7 +94,7 @@ it('validates public reusable fixtures', () => {
         'utf8',
       ),
     ),
-  ).toHaveProperty('version', 1);
+  ).toHaveProperty('version', 3);
   expect(
     validateBackup(
       readFileSync(
@@ -99,12 +108,15 @@ it('validates public reusable fixtures', () => {
 const upperActive = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
   upperDeleted = 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB';
 const upperWorkspace = (): WorkspaceSnapshot => ({
+  stashes: [],
   notes: [
     {
       id: upperActive,
       markdown: 'saved uppercase',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
+      done: false,
       deletedAt: null,
     },
     {
@@ -112,6 +124,8 @@ const upperWorkspace = (): WorkspaceSnapshot => ({
       markdown: 'deleted uppercase',
       createdAt: 1,
       updatedAt: 2,
+      stashId: null,
+      done: false,
       deletedAt: 3,
     },
   ],
@@ -147,12 +161,12 @@ it('restores and selects an uppercase exact-reference draft and preserves origin
     repo.restoreText = encodeBackup(upperWorkspace());
     expect(await c.previewRestore()).toBe(true);
     expect(await c.restore()).toBe(true);
-    expect(repo.snapshot).toEqual(upperWorkspace());
+    expect(repo.snapshot).toEqual(convertLegacy(upperWorkspace()));
     await c.selectNote(upperActive);
     expect(c.state.source).toBe('unfinished uppercase');
     await c.undoRemove();
     expect(
-      repo.snapshot.notes.find((n) => n.id === upperDeleted)?.deletedAt,
+      repo.snapshot.items.find((n) => n.id === upperDeleted)?.deletedAt,
     ).toBeNull();
   } finally {
     c.dispose();

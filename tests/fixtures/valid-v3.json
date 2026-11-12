@@ -1,0 +1,57 @@
+{
+  "format": "stashpad-alpha",
+  "version": 3,
+  "exportedAt": "2026-11-10T00:00:00.000Z",
+  "workspace": {
+    "notes": [
+      {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "markdown": "α **visible**  \n- one\n  - two\n```json\n{\"n\":1}\n```\n",
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": null,
+        "stashId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        "done": true
+      },
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "markdown": "Synthetic deleted note",
+        "createdAt": 1,
+        "updatedAt": 3,
+        "deletedAt": 4,
+        "stashId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        "done": false
+      }
+    ],
+    "drafts": [
+      {
+        "key": "compose",
+        "markdown": "Unfinished capture  \n",
+        "revision": 8,
+        "updatedAt": 5
+      },
+      {
+        "key": "11111111-1111-4111-8111-111111111111",
+        "markdown": "Unfinished edit",
+        "revision": 4,
+        "updatedAt": 5
+      },
+      {
+        "key": "compose:AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        "markdown": "Scoped draft\r\n",
+        "revision": 9,
+        "updatedAt": 6
+      }
+    ],
+    "undoDeleteId": "22222222-2222-4222-8222-222222222222",
+    "stashes": [
+      {
+        "id": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        "name": "Synthetic owner",
+        "parentId": null,
+        "createdAt": 1,
+        "updatedAt": 2
+      }
+    ]
+  }
+}

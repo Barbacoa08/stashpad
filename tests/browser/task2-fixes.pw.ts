@@ -45,12 +45,16 @@ for (const mode of ['capture', 'inline'] as const) {
         page.evaluate(() => (window as any).__test.controller.state.operation),
       )
       .toBeNull();
-    await expect(editor).toHaveText(expected);
+    if (mode === 'capture') await expect(editor).toHaveText(expected);
+    else await expect(inline(page)).toHaveCount(0);
     expect(
       await page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0].markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0].markdown,
       ),
-    ).toBe(mode === 'inline' ? 'capture edit' : 'capture');
+    ).toBe(mode === 'inline' ? expected : 'capture');
     if (mode === 'inline') await expect(capture(page)).toHaveText('ab');
   });
   test(`pending ${mode} save preserves newer Search focus after acknowledgment`, async ({
@@ -66,7 +70,10 @@ for (const mode of ['capture', 'inline'] as const) {
     await expect
       .poll(() =>
         page.evaluate(
-          () => (window as any).__test.repo.snapshot.notes[0]?.markdown,
+          () =>
+            (window as any).__test.repo.snapshot.items.filter(
+              (x: any) => x.kind === 'note',
+            )[0]?.markdown,
         ),
       )
       .toBe(mode === 'inline' ? 'capture edit' : 'capture');
@@ -122,7 +129,7 @@ test('button submission restores normal capture and inline-stream focus without 
     .getByRole('button', { name: 'Edit note', exact: true })
     .click();
   await replace(page, inline(page), 'edited');
-  await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+  await inline(page).press('Enter');
   await expect(page.getByRole('region', { name: 'Note stream' })).toBeFocused();
   await expect(inline(page)).toHaveCount(0);
 });

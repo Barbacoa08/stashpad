@@ -19,11 +19,7 @@
     defaultKeymap,
     indentWithTab,
   } from '@codemirror/commands';
-  import {
-    markdown,
-    markdownKeymap,
-    insertNewlineContinueMarkup,
-  } from '@codemirror/lang-markdown';
+  import { markdown, markdownKeymap } from '@codemirror/lang-markdown';
   import { javascript } from '@codemirror/lang-javascript';
   import { json } from '@codemirror/lang-json';
   import {
@@ -37,6 +33,12 @@
     editorSource,
     sourceReplacement,
   } from '../editor/source';
+  import {
+    toggleMarkdownStyle,
+    formattingExtensions,
+  } from '../editor/formatting';
+  import { enterKey, fencedSelection, captureUp } from '../editor/policy';
+  import { fenceCompletion } from '../editor/fences';
   let {
     contextKey,
     label,
@@ -45,13 +47,23 @@
     onchange,
     onsubmit,
     oncancel,
+    onblur,
+    onfocus,
     states,
+    onup,
+    oncontext,
+    ongeometry,
   }: {
     contextKey: string;
     label: string;
     states?: Map<string, EditorState>;
+    onup?: () => boolean;
+    oncontext?: (fenced: boolean) => void;
+    ongeometry?: (height: number) => void;
     onsubmit: () => void;
     oncancel: () => void;
+    onblur?: () => void;
+    onfocus?: () => void;
     source: string;
     readOnly?: boolean;
     onchange: (source: string) => void;
@@ -61,6 +73,22 @@
   let applyingSource = false;
   let currentKey = '';
   const editable = new Compartment();
+  let lastContext: boolean | undefined;
+  function reportContext(state: EditorState) {
+    const next = fencedSelection(state);
+    if (next !== lastContext) {
+      lastContext = next;
+      oncontext?.(next);
+    }
+  }
+  function measure(editor: EditorView) {
+    if (!ongeometry) return;
+    editor.requestMeasure({
+      key: host,
+      read: (view) => view.contentHeight,
+      write: (height) => ongeometry?.(height),
+    });
+  }
   const styles = HighlightStyle.define([
     { tag: tags.keyword, color: '#d5a6ff' },
     { tag: tags.string, color: '#a9d4a4' },
@@ -77,32 +105,40 @@
   function extensions(text: string) {
     return [
       drawSelection(),
+      EditorView.theme({
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: '#fff',
+          marginLeft: '0',
+        },
+      }),
       highlightActiveLine(),
       history(),
+      formattingExtensions,
       sourceExtensions(text),
+      fenceCompletion,
       indentOnInput(),
       Prec.highest(
         keymap.of([
           {
-            key: 'Enter',
-            run: (v) => {
-              if (v.composing || readOnly) return true;
-              onsubmit();
-              return true;
-            },
+            key: 'Mod-b',
+            run: (v) => toggleMarkdownStyle(v, 'bold'),
+            preventDefault: true,
           },
           {
+            key: 'Mod-i',
+            run: (v) => toggleMarkdownStyle(v, 'italic'),
+            preventDefault: true,
+          },
+          { key: 'Enter', run: (v) => enterKey(v, false, readOnly, onsubmit) },
+          {
             key: 'Mod-Enter',
-            run: (v) => {
-              if (v.composing || readOnly) return true;
-              onsubmit();
-              return true;
-            },
+            run: (v) => enterKey(v, false, readOnly, onsubmit),
           },
           {
             key: 'Shift-Enter',
-            run: (v) => readOnly || insertNewlineContinueMarkup(v) || false,
+            run: (v) => enterKey(v, true, readOnly, onsubmit),
           },
+          { key: 'ArrowUp', run: (v) => captureUp(v, readOnly, onup) },
           {
             key: 'Escape',
             run: (v) => {
@@ -135,12 +171,27 @@
 
       syntaxHighlighting(styles),
       EditorView.lineWrapping,
+      EditorView.domEventHandlers({
+        focus: () => {
+          onfocus?.();
+        },
+        blur: (event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !host.contains(event.relatedTarget)
+          )
+            onblur?.();
+        },
+      }),
       EditorView.contentAttributes.of({
         'aria-label': label,
         'aria-multiline': 'true',
         spellcheck: 'false',
       }),
       EditorView.updateListener.of((update) => {
+        if (update.docChanged || update.selectionSet || update.viewportChanged)
+          reportContext(update.state);
+        if (update.docChanged || update.geometryChanged) measure(update.view);
         if (update.docChanged && !applyingSource)
           onchange(editorSource(update.state));
       }),
@@ -163,7 +214,11 @@
     // A capturing listener bypasses app/editor shortcuts without preventDefault:
     // the browser must still commit its IME candidate on Enter.
     function composingEnter(event: KeyboardEvent) {
-      if (event.key === 'Enter' && (event.isComposing || view?.composing))
+      if (
+        (event.key === 'Enter' ||
+          ((event.metaKey || event.ctrlKey) && /^[bi]$/i.test(event.key))) &&
+        (event.isComposing || view?.composing)
+      )
         event.stopPropagation();
     }
     host.addEventListener('keydown', composingEnter, true);
@@ -173,6 +228,8 @@
       state: restoreState(saved, source),
       parent: host,
     });
+    reportContext(view.state);
+    measure(view);
     return () => {
       host.removeEventListener('keydown', composingEnter, true);
       if (view) states?.set(currentKey, view.state);
@@ -190,6 +247,9 @@
       const saved = states?.get(key);
       view.setState(restoreState(saved, text));
       currentKey = key;
+      lastContext = undefined;
+      reportContext(view.state);
+      measure(view);
     } else if (editorSource(view.state) !== text) {
       applyingSource = true;
       view.dispatch({
@@ -206,7 +266,12 @@
     });
     view.contentDOM.setAttribute('aria-readonly', String(disabled));
   });
-  export function focus() {
+  export function focus(options?: { end?: boolean }) {
+    if (view && options?.end)
+      view.dispatch({
+        selection: { anchor: view.state.doc.length },
+        scrollIntoView: true,
+      });
     view?.focus();
   }
 </script>

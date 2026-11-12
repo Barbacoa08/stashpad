@@ -112,7 +112,10 @@ test('Command Enter persists exact Markdown without adding a line', async ({
   await expect
     .poll(() =>
       page.evaluate(
-        () => (window as any).__test.repo.snapshot.notes[0]?.markdown,
+        () =>
+          (window as any).__test.repo.snapshot.items.filter(
+            (x: any) => x.kind === 'note',
+          )[0]?.markdown,
       ),
     )
     .toBe(source);

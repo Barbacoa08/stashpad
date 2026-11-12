@@ -21,7 +21,9 @@ test('stream scrolls independently and constrained text remains reachable', asyn
     code: [...document.querySelectorAll('.code-block')].every(
       (el) =>
         el.getBoundingClientRect().right <=
-        el.closest('.note-card')!.getBoundingClientRect().right + 1,
+        el.closest('.note-card[data-kind="note"]')!.getBoundingClientRect()
+          .right +
+          1,
     ),
   }));
   expect(bounds).toEqual({ page: true, stream: true, code: true });
@@ -33,8 +35,8 @@ test('stream scrolls independently and constrained text remains reachable', asyn
   ).toBe(true);
   await backup.focus();
   await expect(backup).toBeFocused();
-  await page.getByRole('button', { name: /New note/ }).scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: /New note/ }).click();
+  await page.getByRole('region', { name: 'Note stream' }).focus();
+  await page.keyboard.press('Space');
   await expect(composer).toBeFocused();
   const before = await composer.boundingBox();
   await stream.evaluate((el) => {

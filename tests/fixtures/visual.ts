@@ -1,4 +1,4 @@
-import type { Note } from '../../src/lib/domain/notes';
+import type { Item } from '../../src/lib/domain/notes';
 /** Public, deterministic development examples. Never loaded into native profiles. */
 const sources = [
   '# Capture ideas without losing the source\nMarkdown stays **bold**, *expressive*, and ***editable***. Keep `small details` close to the work.',
@@ -10,10 +10,17 @@ const sources = [
   '## A longer source line\n```text\nGET /local/example?view=notes&sort=created&source=synthetic&purpose=horizontal-overflow-check-without-moving-the-page\n```',
   'Fresh capture goes here.\n\nShift+Enter adds another line. Enter saves the exact Markdown and makes room for the next note.',
 ];
-export const visualNotes: Note[] = sources.map((markdown, index) => ({
+export const visualNotes: Item[] = sources.map((markdown, index) => ({
   id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
   markdown,
   createdAt: 1794351600000 + index * 60000,
   updatedAt: 1794351600000 + index * 60000,
+  parentId: null,
+  kind: 'note',
+  color: null,
+  position: index,
+  restoreParentId: null,
+  restoreIndex: null,
+  done: false,
   deletedAt: null,
 }));

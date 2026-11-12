@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { item } from '../fixtures/items';
 import { filterNotes } from '../../src/lib/domain/search';
 const notes = [
   {
@@ -6,6 +7,8 @@ const notes = [
     markdown: '**Alpha**',
     createdAt: 0,
     updatedAt: 2,
+    parentId: null,
+    done: false,
     deletedAt: null,
   },
   {
@@ -13,10 +16,20 @@ const notes = [
     markdown: 'ALPHA beta',
     createdAt: 0,
     updatedAt: 2,
+    parentId: null,
+    done: false,
     deletedAt: null,
   },
-  { id: 'c', markdown: 'alpha', createdAt: 0, updatedAt: 3, deletedAt: 3 },
-];
+  {
+    id: 'c',
+    markdown: 'alpha',
+    createdAt: 0,
+    updatedAt: 3,
+    parentId: null,
+    done: false,
+    deletedAt: 3,
+  },
+].map((x) => item(x));
 describe('saved-source search', () => {
   it('trims, ignores case, excludes deleted, and sorts ties', () =>
     expect(filterNotes(notes, ' ALpHa ').map((n) => n.id)).toEqual(['a', 'b']));
@@ -28,9 +41,33 @@ describe('saved-source search', () => {
 });
 it('keeps capture order after edits, appends newer captures, and breaks creation ties by ID', () => {
   const source = [
-    { id: 'b', markdown: 'one', createdAt: 1, updatedAt: 100, deletedAt: null },
-    { id: 'c', markdown: 'two', createdAt: 2, updatedAt: 2, deletedAt: null },
-    { id: 'a', markdown: 'tie', createdAt: 1, updatedAt: 1, deletedAt: null },
-  ];
+    {
+      id: 'b',
+      markdown: 'one',
+      createdAt: 1,
+      updatedAt: 100,
+      parentId: null,
+      done: false,
+      deletedAt: null,
+    },
+    {
+      id: 'c',
+      markdown: 'two',
+      createdAt: 2,
+      updatedAt: 2,
+      parentId: null,
+      done: false,
+      deletedAt: null,
+    },
+    {
+      id: 'a',
+      markdown: 'tie',
+      createdAt: 1,
+      updatedAt: 1,
+      parentId: null,
+      done: false,
+      deletedAt: null,
+    },
+  ].map((x) => item(x));
   expect(filterNotes(source, '').map((n) => n.id)).toEqual(['a', 'b', 'c']);
 });

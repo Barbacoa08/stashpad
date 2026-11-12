@@ -50,9 +50,7 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   expect(
     await cards(page).locator('time').first().getAttribute('datetime'),
   ).toBeNull();
-  await cards(page)
-    .getByRole('button', { name: 'Select note', exact: true })
-    .click();
+  await cards(page).locator('.note-body').click();
   await expect(
     page.getByRole('complementary', { name: 'Note details' }),
   ).toContainText('Created Date unavailable');
@@ -62,7 +60,12 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).locator('strong')).toHaveText('boundary source');
   expect(
-    await page.evaluate(() => (window as any).__test.repo.snapshot.notes[0]),
+    await page.evaluate(
+      () =>
+        (window as any).__test.repo.snapshot.items.filter(
+          (x: any) => x.kind === 'note',
+        )[0],
+    ),
   ).toMatchObject({
     createdAt: Number.MAX_SAFE_INTEGER,
     updatedAt: Number.MAX_SAFE_INTEGER,
@@ -107,19 +110,22 @@ for (const constrained of [false, true])
     }
     const suffix = constrained ? 'small-150' : 'wide';
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-normal.png`,
+      path: `test-results/captures/final-fixes/visual-residual-${suffix}-normal.png`,
     });
     for (const index of [0, 1]) {
-      await cards(page)
-        .nth(index)
-        .getByRole('button', { name: 'Select note', exact: true })
-        .click();
+      await cards(page).nth(index).locator('.note-body').click();
       expect(await geometry()).toEqual(baseline);
       const card = cards(page).nth(index);
       await card
         .getByRole('button', { name: 'Select note', exact: true })
         .focus();
-      for (const name of ['Edit note', 'Copy Markdown', 'Delete note']) {
+      for (const name of [
+        'Reorder item',
+        'Edit note',
+        'Mark done',
+        'Copy Markdown',
+        'Delete note',
+      ]) {
         await page.keyboard.press('Tab');
         const action = card.getByRole('button', { name, exact: true });
         await expect(action).toBeFocused();
@@ -146,7 +152,7 @@ for (const constrained of [false, true])
           body = node.querySelector('.markdown-view')!.getBoundingClientRect();
         return {
           contained:
-            actions.length === 3 &&
+            actions.length === 4 &&
             actions.every(
               (r) =>
                 r.left >= card.left &&
@@ -167,7 +173,7 @@ for (const constrained of [false, true])
       expect(bounds).toEqual({ contained: true, separate: true });
     }
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-selected.png`,
+      path: `test-results/captures/final-fixes/visual-residual-${suffix}-selected.png`,
     });
     const selected = cards(page).nth(1);
     await selected
@@ -180,26 +186,18 @@ for (const constrained of [false, true])
       .getByRole('button', { name: 'Edit note', exact: true })
       .press('Enter');
     await expect(inline(page)).toBeFocused();
-    await page
-      .getByRole('button', { name: 'Save edit', exact: true })
-      .scrollIntoViewIfNeeded();
-    await selected.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+    await expect(selected.locator('time')).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Save edit', exact: true }),
-    ).toBeInViewport();
-    await expect(
-      page.getByRole('button', { name: 'Cancel edit', exact: true }),
-    ).toBeInViewport();
+      selected.getByRole('button', { name: 'Save edit' }),
+    ).toHaveCount(0);
     await page.screenshot({
-      path: `.projects/2026-11-10-stashpad-fidelity/visual-residual-${suffix}-inline.png`,
+      path: `test-results/captures/final-fixes/inline-action-${suffix}.png`,
     });
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await inline(page).press('Enter');
     await selected
       .getByRole('button', { name: 'Edit note', exact: true })
       .click();
-    await page
-      .getByRole('button', { name: 'Cancel edit', exact: true })
-      .click();
+    await inline(page).press('Escape');
     await selected
       .getByRole('button', { name: 'Delete note', exact: true })
       .click();

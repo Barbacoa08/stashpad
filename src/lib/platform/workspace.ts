@@ -1,10 +1,30 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { WorkspaceSnapshot } from '../domain/notes';
+import type { WorkspaceSnapshot, Location, ColorToken } from '../domain/notes';
 export interface RestorePreview {
   token: string;
   notes: number;
   drafts: number;
+  stashes: number;
   warning: string;
+}
+export interface DraftAck {
+  key: string;
+  revision: number;
+}
+export interface CaptureItem {
+  id: string;
+  location: Location;
+  markdown: string;
+  draft: DraftAck;
+}
+export interface CreateChildStash {
+  id: string;
+  parent: Location;
+}
+export interface ReorderItem {
+  id: string;
+  group: Location;
+  toIndex: number;
 }
 export interface Repository {
   loadWorkspace(): Promise<WorkspaceSnapshot>;
@@ -13,15 +33,24 @@ export interface Repository {
     markdown: string,
     revision: number,
   ): Promise<WorkspaceSnapshot>;
-  saveNote(
-    id: string | null,
-    markdown: string,
-    draftKey: string,
-    draftRevision: number,
-  ): Promise<WorkspaceSnapshot>;
   discardDraft(key: string): Promise<WorkspaceSnapshot>;
-  deleteNote(id: string): Promise<WorkspaceSnapshot>;
+  saveItemSource(
+    id: string,
+    markdown: string,
+    draft: DraftAck,
+  ): Promise<WorkspaceSnapshot>;
+  captureItem(request: CaptureItem): Promise<WorkspaceSnapshot>;
+  createChildStash(request: CreateChildStash): Promise<WorkspaceSnapshot>;
+  promoteItem(id: string): Promise<WorkspaceSnapshot>;
+  deleteItem(id: string): Promise<WorkspaceSnapshot>;
+  restoreItem(id: string): Promise<WorkspaceSnapshot>;
   undoDelete(): Promise<WorkspaceSnapshot>;
+  setItemDone(id: string, done: boolean): Promise<WorkspaceSnapshot>;
+  setItemColor(
+    id: string,
+    color: ColorToken | null,
+  ): Promise<WorkspaceSnapshot>;
+  reorderItem(request: ReorderItem): Promise<WorkspaceSnapshot>;
   exportBackup(): Promise<string | null>;
   previewRestore(): Promise<RestorePreview | null>;
   confirmRestore(
@@ -33,11 +62,18 @@ export const nativeRepository: Repository = {
   loadWorkspace: () => invoke('workspace_load'),
   checkpointDraft: (key, markdown, revision) =>
     invoke('draft_checkpoint', { key, markdown, revision }),
-  saveNote: (id, markdown, draftKey, draftRevision) =>
-    invoke('note_save', { id, markdown, draftKey, draftRevision }),
   discardDraft: (key) => invoke('draft_discard', { key }),
-  deleteNote: (id) => invoke('note_delete', { id }),
-  undoDelete: () => invoke('note_undo_delete'),
+  saveItemSource: (id, markdown, draft) =>
+    invoke('item_save_source', { id, markdown, draft }),
+  captureItem: (request) => invoke('item_capture', { request }),
+  createChildStash: (request) => invoke('item_create_child_stash', { request }),
+  promoteItem: (id) => invoke('item_promote', { id }),
+  deleteItem: (id) => invoke('item_delete', { id }),
+  restoreItem: (id) => invoke('item_restore', { id }),
+  undoDelete: () => invoke('item_undo_delete'),
+  setItemDone: (id, done) => invoke('item_set_done', { id, done }),
+  setItemColor: (id, color) => invoke('item_set_color', { id, color }),
+  reorderItem: (request) => invoke('item_reorder', { request }),
   exportBackup: () => invoke('backup_export'),
   previewRestore: () => invoke('backup_preview_restore'),
   confirmRestore: (token, confirm) =>
