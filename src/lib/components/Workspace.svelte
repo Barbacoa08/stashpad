@@ -44,6 +44,7 @@
   const controller = new WorkspaceController(untrack(() => repository));
   let viewState: ViewState = $state(controller.state);
   let selected = $state('');
+  let undoPending = $state(false);
   const selection = new LocationSelection();
   let editHeights = $state<Record<string, number>>({});
   let expandedNotes = $state<Record<string, boolean>>({});
@@ -776,7 +777,8 @@
     }
   }
   async function undoDelete() {
-    if (blocked) return;
+    if (blocked || undoPending) return;
+    undoPending = true;
     clearDrag();
     const id = controller.state.snapshot.undoDeleteId,
       ordinal = shownEntries.findIndex((x) => x.id === selected),
@@ -797,6 +799,7 @@
         else composer?.focus();
       }
     } finally {
+      undoPending = false;
       focus.stop();
     }
   }
@@ -1066,6 +1069,17 @@
         event.preventDefault();
         search?.focus();
       } else if (
+        key === 'z' &&
+        !undoPending &&
+        viewState.operation === null &&
+        !event.repeat &&
+        !isTyping(event.target) &&
+        !window.getSelection()?.toString() &&
+        viewState.snapshot.undoDeleteId
+      ) {
+        event.preventDefault();
+        void undoDelete();
+      } else if (
         key === 'backspace' &&
         !isTyping(event.target) &&
         !window.getSelection()?.toString()
@@ -1180,11 +1194,8 @@
       !viewState.mutationRetry}
     aria-label="Workspace status"
   >
-    <h2 class:sr-only={compact}><Icon name="info" /> Workspace status</h2>
-    {#if !compact}<p>
-        Shows the latest local action, including this device’s note saves and
-        capture draft checkpoints. It does not indicate online synchronization.
-      </p>{/if}
+    <h2 class:sr-only={compact}><Icon name="info" /> Local activity</h2>
+    {#if !compact}<p>Notes and drafts on this Mac.</p>{/if}
     <p role="status" aria-live="polite">{viewState.status}</p>
     <p role="alert">{viewState.error}</p>
     {#if paletteRetry && viewState.mutationRetry && paletteRetry.epoch === workspaceEpoch && paletteRetry.identity === controller.mutationRetryIdentity}
@@ -1323,8 +1334,9 @@
             disabled={blocked}><Icon name="upload" /> Restore backup</button
           ><button
             onclick={() => void undoDelete()}
-            disabled={!viewState.snapshot.undoDeleteId || blocked}
-            ><Icon name="undo" /> Undo delete</button
+            disabled={!viewState.snapshot.undoDeleteId ||
+              undoPending ||
+              blocked}><Icon name="undo" /> Undo delete</button
           >
         </div>
       </aside>
@@ -1592,6 +1604,13 @@
                 class="sr-only">Delete selected: Command Backspace</span
               ><span class="shortcut-keys" aria-hidden="true"
                 ><kbd>⌘</kbd><kbd>⌫</kbd></span
+              >
+            </div>
+            <div>
+              <span aria-hidden="true">Undo delete</span><span class="sr-only"
+                >Undo delete outside text editing: Command Z</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>⌘</kbd><kbd>Z</kbd></span
               >
             </div>
           </div>

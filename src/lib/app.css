@@ -1260,7 +1260,16 @@ kbd {
   flex: none;
 }
 
-/* Search, Home, and top-level stacks use the same icon column. */
+.color-reset {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-color: transparent;
+  line-height: 1;
+}
+
+/* Search, Home, top-level stacks, and footer actions share icon columns. */
 main:has(.workspace) .sidebar {
   padding-inline: 6px;
 }
@@ -1270,11 +1279,13 @@ main:has(.workspace) .sidebar {
   gap: 0.3rem;
 }
 .sidebar-search .icon,
-.stash-navigation .home-link .icon {
+.stash-navigation .home-link .icon,
+.backup-actions .icon {
   width: 1.125rem;
   height: 1.125rem;
 }
-.sidebar .stash-navigation .home-link {
+.sidebar .stash-navigation .home-link,
+.sidebar .backup-actions button {
   padding-left: calc(24px + 2px);
   gap: 0.3rem;
   border-color: transparent;

@@ -345,9 +345,7 @@ test('right-side status retains explanation when expanded; collapsed retry remai
   await page.goto('/?fixture');
   await expect(capture(page)).toBeVisible();
   const status = page.getByRole('region', { name: 'Workspace status' });
-  await expect(status).toContainText(
-    'does not indicate online synchronization',
-  );
+  await expect(status).toContainText('Notes and drafts on this Mac.');
   expect(
     await status.evaluate((el) =>
       el.closest('.details-pane')?.classList.contains('open'),
@@ -370,9 +368,7 @@ test('right-side status retains explanation when expanded; collapsed retry remai
     .getByRole('button', { name: 'Show Details', exact: true })
     .dispatchEvent('click');
   await expect(retry).toBeFocused();
-  await expect(status).toContainText(
-    'does not indicate online synchronization',
-  );
+  await expect(status).toContainText('Notes and drafts on this Mac.');
   await page
     .getByRole('button', { name: 'Hide Details', exact: true })
     .dispatchEvent('click');

@@ -128,12 +128,12 @@
             >
               <span
                 class="color-swatch"
+                class:color-reset={choice === null}
                 style:background={choice ? markerColors[choice] : 'transparent'}
-                aria-hidden="true"
-              ></span>
-              <span>{name(choice)}</span><span
-                class="color-saved"
-                aria-hidden="true">{color === choice ? '✓' : ''}</span
+                aria-hidden="true">{choice === null ? '↺' : ''}</span
+              >
+              <span class="color-saved" aria-hidden="true"
+                >{color === choice ? '✓' : ''}</span
               >
             </button>
           </div>
