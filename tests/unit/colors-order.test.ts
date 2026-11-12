@@ -219,3 +219,25 @@ for (const operation of ['color', 'reorder'] as const)
     );
     c.dispose();
   });
+
+it('opaque retry ownership changes for a replacement failure and clears after success', async () => {
+  const { r, c } = await setup();
+  expect(c.mutationRetryIdentity).toBeNull();
+  r.fail = 'color';
+  expect(await c.setItemColor(a, 'red')).toBe(false);
+  const colorRetry = c.mutationRetryIdentity;
+  expect(colorRetry).not.toBeNull();
+  c.setQuery('newer view');
+  expect(c.mutationRetryIdentity).toBe(colorRetry);
+  expect(await c.retryMutation()).toBe(false);
+  expect(c.mutationRetryIdentity).not.toBe(colorRetry);
+  const repeatedColor = c.mutationRetryIdentity;
+  r.fail = 'reorder';
+  expect(await c.reorderItem({ id: b, group: home, toIndex: 0 })).toBe(false);
+  expect(c.mutationRetryIdentity).not.toBe(repeatedColor);
+  r.fail = null;
+  expect(await c.retryMutation()).toBe(true);
+  expect(c.mutationRetryIdentity).toBeNull();
+  expect(r.snapshot.items.find((x) => x.id === a)?.color).toBeNull();
+  c.dispose();
+});

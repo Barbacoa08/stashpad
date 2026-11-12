@@ -5,82 +5,74 @@
   let {
     color,
     disabled,
+    error,
     onchoose,
     onclose,
   }: {
     color: ColorToken | null;
     disabled: boolean;
-    onchoose: (color: ColorToken | null) => Promise<boolean>;
+    error: string;
+    onchoose: (color: ColorToken | null) => Promise<void>;
     onclose: (returnFocus: boolean) => void;
   } = $props();
+  const choices = [...COLORS, null];
+  let candidate = $state(0);
   let panel: HTMLDivElement;
   onMount(() => {
-    panel.querySelector<HTMLInputElement>('input:checked')?.focus();
+    candidate = choices.indexOf(color);
+    focusCandidate();
   });
-  async function choose(choice: ColorToken | null) {
-    if (await onchoose(choice)) return;
-    // Native radios change before acknowledgment; failed writes keep the saved choice.
-    if (panel.isConnected)
-      for (const input of panel.querySelectorAll<HTMLInputElement>('input'))
-        input.checked = input.value === (color ?? 'reset');
+  function focusCandidate() {
+    panel.querySelectorAll<HTMLButtonElement>('button')[candidate]?.focus();
   }
   function outside(event: PointerEvent) {
     if (event.target instanceof Node && !panel.contains(event.target))
       onclose(false);
   }
   function keys(event: KeyboardEvent) {
-    if (
-      disabled &&
-      [' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(
-        event.key,
-      )
-    ) {
-      event.preventDefault();
+    if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey)
       return;
-    }
-    if (
-      !event.isComposing &&
-      !event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey &&
-      event.target instanceof HTMLInputElement &&
-      event.target.type === 'radio'
-    ) {
-      if (event.key === 'Tab') {
-        // Focus and the acknowledged checked radio can differ during a write.
-        event.preventDefault();
-        panel.querySelector<HTMLButtonElement>('button')?.focus();
-        return;
-      }
-      const radios = Array.from(
-        panel.querySelectorAll<HTMLInputElement>('input'),
-      );
-      const index = radios.indexOf(event.target);
-      const next =
-        index === radios.length - 1 &&
-        ['ArrowRight', 'ArrowDown'].includes(event.key)
-          ? radios[0]
-          : index === 0 && ['ArrowLeft', 'ArrowUp'].includes(event.key)
-            ? radios.at(-1)
-            : undefined;
-      // WebKit stops at group boundaries; retain native navigation everywhere else.
-      if (next) {
-        event.preventDefault();
-        next.focus();
-        next.click();
-      }
-    }
-    if (event.key === 'Escape' && !event.isComposing) {
+    if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       onclose(true);
+      return;
     }
+    // Tab uses the browser's normal page order; dismissal never returns focus.
+    if (event.key === 'Tab') {
+      setTimeout(() => onclose(false), 0);
+      return;
+    }
+    if (event.shiftKey) return;
+    if (
+      [
+        'ArrowUp',
+        'ArrowDown',
+        'ArrowLeft',
+        'ArrowRight',
+        'Home',
+        'End',
+      ].includes(event.key)
+    ) {
+      event.preventDefault();
+      if (disabled) return;
+      if (event.key === 'ArrowLeft' && candidate % 2 === 1) candidate--;
+      if (event.key === 'ArrowRight' && candidate % 2 === 0) candidate++;
+      if (event.key === 'ArrowUp' && candidate >= 2) candidate -= 2;
+      if (event.key === 'ArrowDown' && candidate < 8) candidate += 2;
+      if (event.key === 'Home') candidate -= candidate % 2;
+      if (event.key === 'End') candidate += 1 - (candidate % 2);
+      focusCandidate();
+    }
+    if (disabled && [' ', 'Enter'].includes(event.key)) event.preventDefault();
+  }
+  function name(choice: ColorToken | null) {
+    return choice ? choice[0].toUpperCase() + choice.slice(1) : 'Reset';
   }
 </script>
 
 <svelte:window onpointerdown={outside} />
-<!-- Nonmodal: native radio navigation and Tab remain available. -->
+<!-- Nonmodal layout grid: arrows stage focus, native button activation commits. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="color-palette"
@@ -97,33 +89,57 @@
       onclose(false);
   }}
 >
-  <fieldset aria-disabled={disabled} aria-busy={disabled}>
-    <legend>Assign color</legend>
-    <div class="color-choices">
-      {#each [...COLORS, null] as choice}
-        <label>
-          <input
-            type="radio"
-            name="item-color"
-            value={choice ?? 'reset'}
-            checked={color === choice}
-            tabindex="0"
-            onclick={(event) => {
-              if (disabled) event.preventDefault();
-            }}
-            onchange={() => {
-              if (!disabled) void choose(choice);
-            }}
-          />
-          <span
-            class="color-swatch"
-            style:background={choice ? markerColors[choice] : 'transparent'}
-            aria-hidden="true"
-          ></span>
-          {choice ? choice[0].toUpperCase() + choice.slice(1) : 'Reset'}
-        </label>
-      {/each}
-    </div>
-  </fieldset>
-  <button tabindex="0" onclick={() => onclose(true)}>Done</button>
+  <p class="sr-only" id="color-palette-instructions">
+    Arrows preview a choice. Enter or Space applies it. Escape cancels. Pressed
+    marks the saved color.
+  </p>
+  <div
+    class="color-choices"
+    role="grid"
+    aria-label="Item color"
+    aria-describedby="color-palette-instructions"
+    aria-disabled={disabled}
+    aria-busy={disabled}
+  >
+    {#each [0, 2, 4, 6, 8] as row}
+      <div class="color-row" role="row">
+        {#each choices.slice(row, row + 2) as choice, column}
+          <div role="gridcell">
+            <button
+              class="color-choice"
+              class:saved={color === choice}
+              aria-label={name(choice)}
+              aria-pressed={color === choice}
+              aria-disabled={disabled}
+              tabindex={candidate === row + column ? 0 : -1}
+              onfocus={() => {
+                if (!disabled) candidate = row + column;
+              }}
+              onclick={(event) => {
+                if (disabled) {
+                  event.preventDefault();
+                  return;
+                }
+                candidate = row + column;
+                // Mac pointer activation need not focus a button by default.
+                event.currentTarget.focus();
+                void onchoose(choice);
+              }}
+            >
+              <span
+                class="color-swatch"
+                style:background={choice ? markerColors[choice] : 'transparent'}
+                aria-hidden="true"
+              ></span>
+              <span>{name(choice)}</span><span
+                class="color-saved"
+                aria-hidden="true">{color === choice ? '✓' : ''}</span
+              >
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/each}
+  </div>
+  {#if error}<p role="alert">{error}</p>{/if}
 </div>

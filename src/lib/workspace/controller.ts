@@ -407,6 +407,10 @@ export class WorkspaceController {
       }
     });
   }
+  // Opaque identity lets UI continuations match a captured retry without invoking it.
+  get mutationRetryIdentity(): object | null {
+    return this.retryIntent;
+  }
   async retryMutation() {
     const intent = this.retryIntent;
     if (!intent) return false;

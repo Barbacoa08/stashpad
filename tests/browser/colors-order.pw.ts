@@ -56,13 +56,11 @@ test('named color palette applies and resets without moving source, with keyboar
   const palette = page.getByRole('dialog', { name: 'Assign color' });
   await expect(palette).toBeVisible();
   await expect(
-    palette.getByRole('radio', { name: 'Reset', exact: true }),
-  ).toBeChecked();
+    palette.getByRole('button', { name: 'Reset', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
   await palette
-    .getByRole('radio', { name: 'Blue', exact: true })
+    .getByRole('button', { name: 'Blue', exact: true })
     .press('Space');
-  await expect(palette).toBeVisible();
-  await palette.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(palette).toHaveCount(0);
   await expect(stream(page)).toBeFocused();
   expect(
@@ -73,12 +71,12 @@ test('named color palette applies and resets without moving source, with keyboar
   );
   await page.keyboard.press('l');
   await expect(
-    palette.getByRole('radio', { name: 'Blue', exact: true }),
-  ).toBeChecked();
+    palette.getByRole('button', { name: 'Blue', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
   await expect(stream(page)).toBeFocused();
   await page.getByRole('button', { name: 'Assign color', exact: true }).click();
-  await palette.getByRole('radio', { name: 'Reset', exact: true }).click();
+  await palette.getByRole('button', { name: 'Reset', exact: true }).click();
   expect(
     (await snapshot(page)).items.find((x: any) => x.id === ids[0]).color,
   ).toBeNull();
@@ -118,45 +116,32 @@ test('Command arrows move mixed siblings and preserve selection, children, sourc
   await expect.poll(() => order(page)).toEqual([ids[0], ids[1], ids[2]]);
 });
 
-test('native radios browse with arrows, keep focus, expose current color, and Tab leaves the nonmodal palette', async ({
+test('layout grid stages arrows, announces saved color, and Tab leaves without writes', async ({
   page,
 }) => {
   const ids = await seed(page);
   await card(page, ids[0]).click();
   await page.keyboard.press('l');
   const palette = page.getByRole('dialog', { name: 'Assign color' });
+  const reset = palette.getByRole('button', { name: 'Reset', exact: true });
+  await expect(reset).toBeFocused();
+  await reset.press('ArrowLeft');
   await expect(
-    palette.getByRole('radio', { name: 'Reset', exact: true }),
+    palette.getByRole('button', { name: 'Gray', exact: true }),
   ).toBeFocused();
-  await page.keyboard.press('ArrowRight');
+  await expect(reset).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('ArrowUp');
   await expect(
-    palette.getByRole('radio', { name: 'Red', exact: true }),
-  ).toBeChecked();
-  await expect(
-    palette.getByRole('radio', { name: 'Red', exact: true }),
+    palette.getByRole('button', { name: 'Purple', exact: true }),
   ).toBeFocused();
-  await expect
-    .poll(
-      async () =>
-        (await snapshot(page)).items.find((x: any) => x.id === ids[0]).color,
-    )
-    .toBe('red');
-  await page.keyboard.press('ArrowRight');
-  await expect(
-    palette.getByRole('radio', { name: 'Orange', exact: true }),
-  ).toBeFocused();
-  await expect
-    .poll(
-      async () =>
-        (await snapshot(page)).items.find((x: any) => x.id === ids[0]).color,
-    )
-    .toBe('orange');
+  expect(
+    (await snapshot(page)).items.find((x: any) => x.id === ids[0]).color,
+  ).toBeNull();
   await page.keyboard.press('Tab');
-  await expect(
-    palette.getByRole('button', { name: 'Done', exact: true }),
-  ).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(stream(page)).toBeFocused();
+  await expect(palette).toHaveCount(0);
+  expect(
+    (await snapshot(page)).items.find((x: any) => x.id === ids[0]).color,
+  ).toBeNull();
 });
 
 test('L and reorder guards preserve typing, selections, IME, repeats, modifiers, and normal editor Command arrows', async ({
@@ -227,14 +212,14 @@ test('color failure retries the captured target and keeps latest source and capt
   await stream(page).focus();
   await page.keyboard.press('l');
   const palette = page.getByRole('dialog', { name: 'Assign color' });
-  await palette.getByRole('radio', { name: 'Purple', exact: true }).click();
+  await palette.getByRole('button', { name: 'Purple', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Retry action', exact: true }),
   ).toBeVisible();
   await expect(
-    palette.getByRole('radio', { name: 'Reset', exact: true }),
-  ).toBeChecked();
-  await palette.getByRole('button', { name: 'Done', exact: true }).click();
+    palette.getByRole('button', { name: 'Reset', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
   await card(page, ids[2]).click();
   await page.evaluate(() => {
     (window as any).__test.repo.fail = null;
@@ -261,7 +246,7 @@ test('color source-flush acknowledgment keeps captured target while newer Search
     t.controller.editContext(id, 'pending exact source');
   }, ids[0]);
   await page.keyboard.press('l');
-  await page.getByRole('radio', { name: 'Teal', exact: true }).click();
+  await page.getByRole('button', { name: 'Teal', exact: true }).click();
   await page.getByRole('searchbox').fill('parent');
   await page.evaluate(() => (window as any).__test.release());
   await expect
@@ -475,8 +460,8 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   const ids = await seed(page);
   await card(page, ids[0]).click();
   await page.keyboard.press('l');
-  await page.getByRole('radio', { name: 'Pink', exact: true }).click();
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Pink', exact: true }).click();
+  await page.keyboard.press('Escape');
   await page.keyboard.press('x');
   await page.keyboard.press('ArrowRight');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
@@ -540,12 +525,18 @@ for (const scale of [100, 150])
       .getByRole('button', { name: 'Assign color', exact: true })
       .click();
     await expect(
-      page.getByRole('radio', { name: 'Reset', exact: true }),
+      page.getByRole('button', { name: 'Reset', exact: true }),
     ).toBeFocused();
-    await page.getByRole('radio', { name: 'Blue', exact: true }).click();
+    await page.getByRole('button', { name: 'Blue', exact: true }).click();
     await expect(
-      page.getByRole('radio', { name: 'Blue', exact: true }),
-    ).toBeChecked();
+      page.getByRole('dialog', { name: 'Assign color' }),
+    ).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Assign color', exact: true })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Blue', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({
       path: `test-results/captures/colors-order/colors-order-palette-${scale}.png`,
     });
@@ -589,8 +580,8 @@ for (const scale of [100, 150])
     await card(page, ids[0]).click();
     await page.keyboard.press('l');
     await expect(
-      page.getByRole('radio', { name: 'Blue', exact: true }),
-    ).toBeChecked();
+      page.getByRole('button', { name: 'Blue', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({
       path: `test-results/captures/colors-order/colors-order-trash-${scale}.png`,
     });
@@ -746,7 +737,7 @@ test('held hint focus observation tolerates focused-control removal and reorderi
   const ids = await seed(page);
   await card(page, ids[1]).click();
   await page.keyboard.press('l');
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.keyboard.press('Escape');
   await expect(stream(page)).toBeFocused();
   const handle = card(page, ids[1]).getByRole('button', {
     name: 'Reorder item',
@@ -763,7 +754,7 @@ test('held hint focus observation tolerates focused-control removal and reorderi
     t.controller.editContext(id, 'source during palette removal');
   }, ids[0]);
   await page.keyboard.press('l');
-  await page.getByRole('radio', { name: 'Teal', exact: true }).click();
+  await page.getByRole('button', { name: 'Teal', exact: true }).click();
   await page.getByRole('searchbox').fill('parent');
   await page.evaluate(() => (window as any).__test.release());
   await expect

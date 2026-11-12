@@ -48,9 +48,23 @@
         Object.entries(expandedNotes).filter(([id]) => live.has(id)),
       );
   });
-  let palette = $state<{ id: string; returnTo: HTMLElement | null } | null>(
-    null,
-  );
+  type PaletteSession = {
+    session: number;
+    id: string;
+    returnTo: HTMLElement | null;
+    pending: boolean;
+    error: string;
+  };
+  let palette = $state<PaletteSession | null>(null);
+  let paletteSequence = 0;
+  let paletteRetry = $state.raw<{
+    session: number;
+    id: string;
+    label: string;
+    color: ColorToken | null;
+    identity: object;
+    epoch: number;
+  } | null>(null);
   const siblingDrag = new SiblingDrag();
   let dragGuide = $state<{ id: string; edge: 'before' | 'after' } | null>(null);
   function clearDrag() {
@@ -128,7 +142,9 @@
     void metadataView;
     siblingDrag.invalidate();
     dragGuide = null;
-    palette = null;
+    untrack(() => {
+      if (!palette?.pending) palette = null;
+    });
   });
   let scopes = $derived(scopeIndex(viewState.snapshot.items));
   let hierarchy = $derived(
@@ -596,8 +612,35 @@
       request = ++interaction,
       focus = observeSubmissionFocus();
     try {
-      if (!(await controller.retryMutation()) || request !== interaction)
+      const retry =
+        paletteRetry?.identity === controller.mutationRetryIdentity &&
+        paletteRetry.epoch === workspaceEpoch
+          ? paletteRetry
+          : null;
+      if (retry && palette?.session === retry.session) {
+        palette.pending = true;
+        palette.error = '';
+      }
+      const ok = await controller.retryMutation();
+      if (retry) {
+        if (palette?.session === retry.session) {
+          palette.pending = false;
+          palette.error = ok ? '' : controller.state.error;
+        }
+        if (ok) {
+          paletteRetry = null;
+          if (palette?.session === retry.session)
+            closePalette(focus.mayRestore(), retry.session);
+        } else if (controller.mutationRetryIdentity) {
+          paletteRetry = {
+            ...retry,
+            identity: controller.mutationRetryIdentity,
+          };
+        }
+        // Color retry owns no selection, navigation, or focus continuation.
         return;
+      }
+      if (!ok || request !== interaction) return;
       const entries = currentEntries();
       if (before !== JSON.stringify(controller.state.location))
         selected = selection.open(
@@ -676,7 +719,10 @@
     )
       return;
     palette = {
+      session: ++paletteSequence,
       id: selectedNote.id,
+      pending: false,
+      error: '',
       returnTo:
         invoker ??
         (document.activeElement instanceof HTMLElement
@@ -684,8 +730,9 @@
           : null),
     };
   }
-  function closePalette(returnFocus: boolean) {
+  function closePalette(returnFocus: boolean, session = palette?.session) {
     const previous = palette;
+    if (!previous || previous.session !== session || previous.pending) return;
     palette = null;
     if (returnFocus && previous) {
       if (
@@ -697,8 +744,43 @@
     }
   }
   async function chooseColor(color: ColorToken | null) {
-    const id = palette?.id;
-    return !!id && !blocked && controller.setItemColor(id, color);
+    const current = palette;
+    if (!current || current.pending || blocked) return;
+    const session = current.session,
+      epoch = workspaceEpoch;
+    const label = itemLabel(
+      viewState.snapshot.items.find((x) => x.id === current.id)!,
+    );
+    const focus = observeSubmissionFocus();
+    current.pending = true;
+    current.error = '';
+    try {
+      const ok = await controller.setItemColor(current.id, color);
+      if (epoch !== workspaceEpoch) return;
+      if (ok) {
+        paletteRetry = null;
+        if (palette?.session === session) {
+          palette.pending = false;
+          closePalette(focus.mayRestore(), session);
+        }
+      } else {
+        if (controller.mutationRetryIdentity)
+          paletteRetry = {
+            session,
+            id: current.id,
+            label,
+            color,
+            identity: controller.mutationRetryIdentity,
+            epoch,
+          };
+        if (palette?.session === session) {
+          palette.pending = false;
+          palette.error = controller.state.error;
+        }
+      }
+    } finally {
+      focus.stop();
+    }
   }
   async function moveItem(request: ReorderItem) {
     if (blocked || viewState.query.trim()) return;
@@ -1349,6 +1431,14 @@
           </p>
           <p role="status" aria-live="polite">{viewState.status}</p>
           <p role="alert">{viewState.error}</p>
+          {#if paletteRetry && viewState.mutationRetry && paletteRetry.epoch === workspaceEpoch && paletteRetry.identity === controller.mutationRetryIdentity}
+            <p role="status">
+              Retry color: {paletteRetry.color
+                ? paletteRetry.color[0].toUpperCase() +
+                  paletteRetry.color.slice(1)
+                : 'Reset'} for {paletteRetry.label} ({paletteRetry.id}).
+            </p>
+          {/if}
           {#if viewState.completionRetry}<button
               disabled={blocked}
               onclick={() => controller.retryCompletion()}
@@ -1404,16 +1494,18 @@
           disabled={viewState.operation !== null}>Replace workspace</button
         >
       </section>{/if}
-    {#if palette}{@const target = viewState.snapshot.items.find(
-        (x) => x.id === palette!.id,
+    {#each palette ? [palette] : [] as session (session.session)}
+      {@const target = viewState.snapshot.items.find(
+        (x) => x.id === session.id,
       )}
       {#if target}<ColorPalette
           color={target.color}
-          disabled={blocked}
+          disabled={session.pending || blocked}
+          error={session.error}
           onchoose={chooseColor}
-          onclose={closePalette}
+          onclose={(returnFocus) => closePalette(returnFocus, session.session)}
         />{/if}
-    {/if}
+    {/each}
     {#if closeFailed}<section
         class="confirmation"
         aria-label="Draft could not be saved"

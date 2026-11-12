@@ -27,44 +27,67 @@ async function savedColor(page: Page, id: string) {
   );
 }
 
-// Removing boundary handling must break the WebKit wrap assertions, while ordinary
-// native inputs still own checked state, Space, and non-boundary navigation.
-for (const [start, key, next, color] of [
-  ['Reset', 'ArrowRight', 'Red', 'red'],
-  ['Reset', 'ArrowDown', 'Red', 'red'],
-  ['Red', 'ArrowLeft', 'Reset', null],
-  ['Red', 'ArrowUp', 'Reset', null],
+// These layout-grid cases supersede the former immediate radio/Done contract.
+// Losing row/column navigation or writing on arrows must fail these assertions.
+for (const [start, key, next] of [
+  ['Red', 'ArrowRight', 'Orange'],
+  ['Red', 'ArrowDown', 'Yellow'],
+  ['Yellow', 'ArrowUp', 'Red'],
+  ['Orange', 'ArrowLeft', 'Red'],
+  ['Red', 'ArrowLeft', 'Red'],
+  ['Red', 'ArrowUp', 'Red'],
+  ['Orange', 'ArrowRight', 'Orange'],
+  ['Reset', 'ArrowDown', 'Reset'],
+  ['Gray', 'ArrowLeft', 'Gray'],
+  ['Gray', 'ArrowDown', 'Gray'],
 ] as const)
-  test(`palette wraps ${start} ${key} to ${next} with native checked state and saved color`, async ({
+  test(`staged grid ${start} ${key} focuses ${next} without saving`, async ({
     page,
   }) => {
     const id = await seed(page);
-    const body = page.locator(`[data-entry-id="${id}"] .note-body`);
-    const before = await body.boundingBox();
+    await page.evaluate(
+      async ({ id, start }) => {
+        await (window as any).__test.controller.setItemColor(
+          id,
+          start?.toLowerCase() ?? null,
+        );
+      },
+      { id, start: start === 'Reset' ? null : start },
+    );
     await page.keyboard.press('l');
     const palette = page.getByRole('dialog', { name: 'Assign color' });
-    const initial = palette.getByRole('radio', { name: start, exact: true });
-    if (start === 'Red') {
-      await initial.press('Space');
-      await expect.poll(() => savedColor(page, id)).toBe('red');
-    }
-    await expect(initial).toBeFocused();
-    await initial.press(key);
-    const target = palette.getByRole('radio', { name: next, exact: true });
-    await expect(target).toBeChecked();
-    await expect(target).toBeFocused();
-    await expect(palette.locator('input:checked')).toHaveCount(1);
-    await expect.poll(() => savedColor(page, id)).toBe(color);
+    const grid = palette.getByRole('grid', { name: 'Item color' });
+    await expect(grid).toBeVisible();
+    await expect(grid.getByRole('row')).toHaveCount(5);
+    await expect(grid.getByRole('gridcell')).toHaveCount(10);
+    await expect(grid.getByRole('button')).toHaveCount(10);
+    await expect(grid.locator('button[tabindex="0"]')).toHaveCount(1);
+    const body = page.locator(`[data-entry-id="${id}"] .note-body`);
+    const before = await body.boundingBox();
+    const saved = grid.getByRole('button', { name: start, exact: true });
+    await expect(saved).toBeFocused();
+    await saved.press(key);
+    await expect(
+      grid.getByRole('button', { name: next, exact: true }),
+    ).toBeFocused();
+    await expect(saved).toHaveAttribute('aria-pressed', 'true');
+    await expect(grid.locator('[aria-pressed="true"]')).toHaveCount(1);
+    expect(await savedColor(page, id)).toBe(
+      start === 'Reset' ? null : (start?.toLowerCase() ?? null),
+    );
+    await page.keyboard.press('Escape');
+    await expect(palette).toHaveCount(0);
     expect(await body.boundingBox()).toEqual(before);
+    await expect(
+      page.getByRole('region', { name: 'Note stream' }),
+    ).toBeFocused();
   });
 
-// Capturing only activeElement fails on Mac pointer activation, which need not
-// focus the clicked button. Both explicit close actions must use the invoker.
-for (const close of ['Escape', 'Done'] as const)
-  test(`pointer-opened palette ${close} returns to its actual invoker`, async ({
+for (const action of ['Escape', 'Enter', 'Space', 'click'] as const)
+  test(`pointer invoker returns after ${action}, with exact acknowledged choice`, async ({
     page,
   }) => {
-    await seed(page);
+    const id = await seed(page);
     const invoker = page.getByRole('button', {
       name: 'Assign color',
       exact: true,
@@ -72,173 +95,245 @@ for (const close of ['Escape', 'Done'] as const)
     await invoker.click();
     const palette = page.getByRole('dialog', { name: 'Assign color' });
     await expect(
-      palette.getByRole('radio', { name: 'Reset', exact: true }),
+      palette.getByRole('button', { name: 'Reset', exact: true }),
     ).toBeFocused();
-    if (close === 'Escape') await page.keyboard.press('Escape');
-    else
-      await palette.getByRole('button', { name: 'Done', exact: true }).click();
+    const red = palette.getByRole('button', { name: 'Red', exact: true });
+    await red.focus();
+    if (action === 'click') await red.click();
+    else await red.press(action);
     await expect(palette).toHaveCount(0);
     await expect(invoker).toBeFocused();
+    expect(await savedColor(page, id)).toBe(action === 'Escape' ? null : 'red');
   });
 
-test('wrapped color choice blocks further radio changes while pending and restores saved state after failed acknowledgment', async ({
-  page,
-}) => {
-  const id = await seed(page);
-  await page.evaluate((id) => {
-    const t = (window as any).__test;
-    t.delay();
-    t.repo.fail = 'color';
-    t.controller.editContext(id, 'latest **pending** source');
-  }, id);
-  await page.keyboard.press('l');
-  const palette = page.getByRole('dialog', { name: 'Assign color' });
-  const reset = palette.getByRole('radio', { name: 'Reset', exact: true });
-  const red = palette.getByRole('radio', { name: 'Red', exact: true });
-  await reset.press('ArrowRight');
-  await expect(palette.locator('fieldset')).toHaveAttribute(
-    'aria-busy',
-    'true',
-  );
-  await expect(red).toBeChecked();
-  await red.press('ArrowLeft');
-  await red.press('Space');
-  await expect(red).toBeChecked();
-  expect(await savedColor(page, id)).toBeNull();
-  await page.evaluate(() => (window as any).__test.release());
-  await expect(
-    page.getByRole('button', { name: 'Retry action', exact: true }),
-  ).toBeVisible();
-  await expect(reset).toBeChecked();
-  await expect(red).toBeFocused();
-  await expect(palette.locator('fieldset')).toHaveAttribute(
-    'aria-busy',
-    'false',
-  );
-  await page.evaluate(() => ((window as any).__test.repo.fail = null));
-  const retry = page.getByRole('button', { name: 'Retry action', exact: true });
-  await retry.focus();
-  await retry.press('Enter');
-  await expect.poll(() => savedColor(page, id)).toBe('red');
-  expect(
-    await page.evaluate(
-      (id) =>
-        (window as any).__test.repo.snapshot.items.find((x: any) => x.id === id)
-          .markdown,
-      id,
-    ),
-  ).toBe('latest **pending** source');
-  await expect(palette).toHaveCount(0);
-});
-
-test('wrapped choice acknowledgment preserves newer Search input and focus', async ({
-  page,
-}) => {
-  const id = await seed(page);
-  await page.evaluate((id) => {
-    const t = (window as any).__test;
-    t.delay();
-    t.controller.editContext(id, 'latest exact source');
-  }, id);
-  await page.keyboard.press('l');
-  await page
-    .getByRole('radio', { name: 'Reset', exact: true })
-    .press('ArrowRight');
-  const search = page.getByRole('searchbox');
-  await search.fill('newer search');
-  await page.evaluate(() => (window as any).__test.release());
-  await expect.poll(() => savedColor(page, id)).toBe('red');
-  await expect(search).toBeFocused();
-  await expect(search).toHaveValue('newer search');
-  await expect(page.getByRole('dialog', { name: 'Assign color' })).toHaveCount(
-    0,
-  );
-});
-
-// Palette tab stops must remain reachable even when Mac WebKit skips implicit
-// control tab stops. Forward/backward Tab must not become a focus trap.
-test('palette Tab reaches Done, Shift Tab returns to the checked radio, and another Tab leaves', async ({
-  page,
-}) => {
-  const id = await seed(page);
-  await page.keyboard.press('l');
-  const palette = page.getByRole('dialog', { name: 'Assign color' });
-  const gray = palette.getByRole('radio', { name: 'Gray', exact: true });
-  await page.keyboard.press('ArrowLeft');
-  await expect.poll(() => savedColor(page, id)).toBe('gray');
-  await expect(gray).toBeFocused();
-  await page.keyboard.press('Tab');
-  const done = palette.getByRole('button', { name: 'Done', exact: true });
-  await expect(done).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
-  await expect(gray).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(done).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect
-    .poll(() =>
-      palette.evaluateAll((panels) =>
-        panels.some((panel) => panel.contains(document.activeElement)),
+for (const exit of ['Escape', 'Tab', 'outside'] as const)
+  test(`failed choice ${exit} dismissal preserves captured Retry and newer Search focus`, async ({
+    page,
+  }) => {
+    const id = await seed(page);
+    await page.evaluate((id) => {
+      const t = (window as any).__test;
+      t.repo.fail = 'color';
+      t.controller.editContext(id, 'latest **pending** source');
+    }, id);
+    await page.keyboard.press('l');
+    const palette = page.getByRole('dialog', { name: 'Assign color' });
+    const red = palette.getByRole('button', { name: 'Red', exact: true });
+    await red.click();
+    await expect(palette.getByRole('alert')).toContainText('failure');
+    await expect(red).toBeFocused();
+    await expect(
+      palette.getByRole('button', { name: 'Reset', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    if (exit === 'outside') await page.getByRole('searchbox').click();
+    else await red.press(exit);
+    await expect(palette).toHaveCount(0);
+    expect(await savedColor(page, id)).toBeNull();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Retry color' }),
+    ).toContainText('Red');
+    await page.evaluate(() => {
+      const t = (window as any).__test;
+      t.repo.fail = null;
+      t.delay();
+      t.controller.editContext(
+        t.repo.snapshot.items[0].id,
+        'retry exact source',
+      );
+    });
+    const retry = page.getByRole('button', {
+      name: 'Retry action',
+      exact: true,
+    });
+    await retry.click();
+    const search = page.getByRole('searchbox');
+    await search.fill('newer search');
+    await page.evaluate(() => (window as any).__test.release());
+    await expect.poll(() => savedColor(page, id)).toBe('red');
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('newer search');
+    expect(
+      await page.evaluate(
+        (id) =>
+          (window as any).__test.repo.snapshot.items.find(
+            (x: any) => x.id === id,
+          ).markdown,
+        id,
       ),
-    )
-    .toBe(false);
-});
+    ).toBe('retry exact source');
+  });
 
-for (const phase of ['pending', 'failed'] as const)
-  test(`Tab from the focused boundary radio reaches Done during ${phase} color acknowledgment`, async ({
+for (const exit of ['Escape', 'Tab', 'outside'] as const)
+  test(`pending choice freezes submission and ${exit} cannot cancel its exact write`, async ({
     page,
   }) => {
     const id = await seed(page);
     await page.evaluate((id) => {
       const t = (window as any).__test;
       t.delay();
-      t.repo.fail = 'color';
-      t.controller.editContext(id, 'latest **Tab acknowledgment** source');
+      t.controller.editContext(id, 'latest exact source');
     }, id);
     await page.keyboard.press('l');
-    await page.keyboard.press('ArrowRight');
     const palette = page.getByRole('dialog', { name: 'Assign color' });
-    const red = palette.getByRole('radio', { name: 'Red', exact: true });
-    const reset = palette.getByRole('radio', { name: 'Reset', exact: true });
-    await expect(palette.locator('fieldset')).toHaveAttribute(
+    const red = palette.getByRole('button', { name: 'Red', exact: true });
+    await red.click();
+    await expect(palette.getByRole('grid')).toHaveAttribute(
       'aria-busy',
       'true',
     );
-    await expect(red).toBeChecked();
-    if (phase === 'failed') {
-      await page.evaluate(() => (window as any).__test.release());
-      await expect(palette.locator('fieldset')).toHaveAttribute(
-        'aria-busy',
-        'false',
-      );
-      await expect(reset).toBeChecked();
-    }
-    await expect(red).toBeFocused();
+    await red.press('ArrowRight');
+    await red.press('Enter');
     expect(await savedColor(page, id)).toBeNull();
-    await page.keyboard.press('Tab');
-    const done = palette.getByRole('button', { name: 'Done', exact: true });
-    await expect(done).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
-    if (phase === 'failed') {
-      await expect(reset).toBeFocused();
-      await expect(reset).toBeChecked();
-    } else {
-      await expect(red).toBeFocused();
-      await expect(red).toBeChecked();
-    }
-    await page.keyboard.press('Tab');
-    await expect(done).toBeFocused();
-    if (phase === 'pending') {
-      await page.evaluate(() => (window as any).__test.release());
-      await expect(reset).toBeChecked();
-      await expect(done).toBeFocused();
-    }
-    await page.keyboard.press('Tab');
-    await expect
-      .poll(() =>
-        palette.evaluateAll((panels) =>
-          panels.some((panel) => panel.contains(document.activeElement)),
-        ),
-      )
-      .toBe(false);
+    if (exit === 'outside')
+      await page.getByRole('searchbox').fill('newer search');
+    else await red.press(exit);
+    await expect(palette).toBeVisible();
+    await page.evaluate(() => (window as any).__test.release());
+    await expect.poll(() => savedColor(page, id)).toBe('red');
+    await expect(palette).toHaveCount(0);
+    if (exit === 'outside')
+      await expect(page.getByRole('searchbox')).toBeFocused();
+    expect(
+      await page.evaluate(
+        (id) =>
+          (window as any).__test.repo.snapshot.items.find(
+            (x: any) => x.id === id,
+          ).markdown,
+        id,
+      ),
+    ).toBe('latest exact source');
   });
+
+for (const key of ['Tab', 'Shift+Tab'])
+  test(`${key} leaves the single-tab-stop grid without saving or trapping focus`, async ({
+    page,
+  }) => {
+    const id = await seed(page);
+    await page.keyboard.press('l');
+    const palette = page.getByRole('dialog', { name: 'Assign color' });
+    await palette
+      .getByRole('button', { name: 'Reset', exact: true })
+      .press(key);
+    await expect(palette).toHaveCount(0);
+    expect(await savedColor(page, id)).toBeNull();
+  });
+
+for (const retryPath of ['submit', 'global'] as const)
+  test(`${retryPath} retry closes its own failed session only after success`, async ({
+    page,
+  }) => {
+    const id = await seed(page);
+    await page.evaluate(() => ((window as any).__test.repo.fail = 'color'));
+    await page.keyboard.press('l');
+    const palette = page.getByRole('dialog', { name: 'Assign color' });
+    const orange = palette.getByRole('button', { name: 'Orange', exact: true });
+    await orange.focus();
+    await orange.press('Enter');
+    await expect(palette.getByRole('alert')).toContainText('failure');
+    await page.evaluate(() => ((window as any).__test.repo.fail = null));
+    if (retryPath === 'submit') await orange.press('Enter');
+    else
+      await page
+        .getByRole('button', { name: 'Retry action', exact: true })
+        .dispatchEvent('click');
+    await expect.poll(() => savedColor(page, id)).toBe('orange');
+    await expect(palette).toHaveCount(0);
+    await expect(
+      page.getByRole('region', { name: 'Note stream' }),
+    ).toBeFocused();
+  });
+
+test('older global Retry leaves a newer staged session and focus intact', async ({
+  page,
+}) => {
+  const id = await seed(page);
+  await page.evaluate(() => ((window as any).__test.repo.fail = 'color'));
+  await page.keyboard.press('l');
+  const palette = page.getByRole('dialog', { name: 'Assign color' });
+  await palette.getByRole('button', { name: 'Red', exact: true }).click();
+  await expect(palette.getByRole('alert')).toContainText('failure');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('l');
+  const purple = palette.getByRole('button', { name: 'Purple', exact: true });
+  await purple.focus();
+  await page.evaluate(() => ((window as any).__test.repo.fail = null));
+  await page
+    .getByRole('button', { name: 'Retry action', exact: true })
+    .dispatchEvent('click');
+  await expect.poll(() => savedColor(page, id)).toBe('red');
+  await expect(palette).toBeVisible();
+  await expect(purple).toBeFocused();
+  await expect(
+    palette.getByRole('button', { name: 'Red', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  expect(await savedColor(page, id)).toBe('red');
+});
+
+test('delayed metadata acknowledgment freezes the captured choice and writes once', async ({
+  page,
+}) => {
+  const id = await seed(page);
+  await page.evaluate(() => {
+    const t = (window as any).__test;
+    let release!: () => void;
+    const waiting = new Promise<void>((r) => {
+      release = r;
+    });
+    const original = t.repo.setItemColor.bind(t.repo);
+    t.colorCalls = 0;
+    t.releaseColor = release;
+    t.repo.setItemColor = async (...args: any[]) => {
+      t.colorCalls++;
+      await waiting;
+      return original(...args);
+    };
+  });
+  await page.keyboard.press('l');
+  const palette = page.getByRole('dialog', { name: 'Assign color' });
+  const blue = palette.getByRole('button', { name: 'Blue', exact: true });
+  await blue.click();
+  await expect(palette.getByRole('grid')).toHaveAttribute('aria-busy', 'true');
+  await blue.press('ArrowLeft');
+  await blue.press('Space');
+  await palette
+    .getByRole('button', { name: 'Red', exact: true })
+    .dispatchEvent('click');
+  await blue.press('Escape');
+  await expect(palette).toBeVisible();
+  await page.getByRole('searchbox').fill('new focus');
+  await expect(palette).toBeVisible();
+  await page.evaluate(() => (window as any).__test.releaseColor());
+  await expect.poll(() => savedColor(page, id)).toBe('blue');
+  await expect(palette).toHaveCount(0);
+  await expect(page.getByRole('searchbox')).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__test.colorCalls)).toBe(1);
+});
+
+test('same-session global Retry is pending until acknowledgment without trapping external focus', async ({
+  page,
+}) => {
+  const id = await seed(page);
+  await page.evaluate(() => ((window as any).__test.repo.fail = 'color'));
+  await page.keyboard.press('l');
+  const palette = page.getByRole('dialog', { name: 'Assign color' });
+  await palette.getByRole('button', { name: 'Red', exact: true }).click();
+  await expect(palette.getByRole('alert')).toContainText('failure');
+  await page.evaluate((id) => {
+    const t = (window as any).__test;
+    t.repo.fail = null;
+    t.delay();
+    t.controller.editContext(id, 'global retry pending source');
+  }, id);
+  await page
+    .getByRole('button', { name: 'Retry action', exact: true })
+    .dispatchEvent('click');
+  await expect(palette.getByRole('grid')).toHaveAttribute('aria-busy', 'true');
+  const search = page.getByRole('searchbox');
+  await search.fill('new focus');
+  await expect(palette).toBeVisible();
+  await page.evaluate(() => (window as any).__test.release());
+  await expect.poll(() => savedColor(page, id)).toBe('red');
+  await expect(palette).toHaveCount(0);
+  await expect(search).toBeFocused();
+});

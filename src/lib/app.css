@@ -1136,34 +1136,36 @@ main:has(.workspace) .details-rail {
   border-radius: 4px;
   box-shadow: 0 0.5rem 2rem #0008;
 }
-.color-palette fieldset {
-  border: 0;
-  padding: 0;
-  margin: 0 0 0.6rem;
-  min-width: 0;
-}
-.color-palette legend {
-  margin-bottom: 0.6rem;
-  font-weight: 600;
-}
 .color-choices {
+  display: grid;
+  gap: 0.3rem;
+}
+.color-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.3rem;
 }
-.color-choices label {
+.color-choice {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  width: 100%;
   min-height: 2rem;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
 }
-.color-choices input {
-  width: 1rem;
-  margin: 0;
+.color-choice.saved {
+  border-color: #788373;
 }
-.color-choices label:focus-within {
-  outline: 2px solid #92caff;
-  outline-offset: 1px;
+.color-choice:focus {
+  outline: 2px solid #d5cba9;
+  outline-offset: -2px;
+  background: #ffffff0a;
+}
+.color-saved {
+  margin-left: auto;
+  width: 1em;
 }
 .color-swatch {
   width: 0.8rem;
