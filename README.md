@@ -16,7 +16,13 @@ This is an early alpha for Apple Silicon Macs. Your library lives on one device;
 
 1. If updating, export a backup and quit the old Stashpad Preview first.
 2. Open the downloaded DMG, drag Stashpad Preview to Applications, and replace the existing app if prompted. Your app data is stored separately from the app.
-3. Open Stashpad Preview from Applications. This alpha is ad-hoc signed, but is not Developer ID signed or notarized. macOS may block its first launch; use Apple's [per-app Open Anyway instructions](https://support.apple.com/en-us/102445) if needed. A managed Mac may restrict this option.
+3. Open Stashpad Preview from Applications. This alpha is ad-hoc signed, but is not Developer ID signed or notarized, so macOS may block the first launch.
+4. If macOS shows a warning, click **Done**. Open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** for Stashpad Preview.
+5. Authenticate if prompted, and confirm **Open**.
+
+Only open the app if you trust the download. A managed Mac may restrict this option. See [Apple’s instructions for safely opening apps](https://support.apple.com/en-us/102445) for more information.
+
+![macOS Privacy & Security settings showing Open Anyway for Stashpad Preview](docs/media/macos-open-anyway.png)
 
 ## Get started
 

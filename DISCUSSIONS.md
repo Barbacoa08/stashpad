@@ -44,6 +44,10 @@ A later MVP is intended to use one shared API/backend database and device-local 
 
 Mac comes first. Future iOS and Android companions are intended primarily for viewing, copy/paste, and short Markdown capture. Tauri is preferred, with Capacitor as a fallback if mobile friction warrants it. Decide the mobile scope and validate platform/editor constraints separately.
 
+## Developer ID signing and notarization
+
+The current Mac alpha is ad-hoc signed and is not notarized, so macOS can block its first launch. Decide whether and when to use Developer ID signing and notarization, including their distribution and maintenance implications. See [issue #6](https://github.com/Barbacoa08/stashpad/issues/6).
+
 ## Other repository decision
 
 No public license has been selected. Choose one separately before representing the project as licensed for reuse.

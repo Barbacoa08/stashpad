@@ -109,7 +109,7 @@ trap - EXIT HUP INT TERM
 
 ## Release notes, upload, and publication
 
-Write release notes inside the task folder. Include changes, source commit, actual verification and omissions, Apple Silicon/local-only limits, internal version, ad-hoc signing/notarization status, and installation/update instructions. Explain that replacing the app retains its separately stored library, while restoring a backup **replaces** the destination library. Recommend export before updating. Link [Apple's per-app opening instructions](https://support.apple.com/en-us/102445); managed Macs may restrict opening. Do not prescribe disabling system-wide protections or removing quarantine attributes.
+Write release notes inside the task folder. Include changes, source commit, actual verification and omissions, Apple Silicon/local-only limits, internal version, ad-hoc signing/notarization status, and installation/update instructions. Explain that replacing the app retains its separately stored library, while restoring a backup **replaces** the destination library. Recommend export before updating. For an ad-hoc release, tell users to install the app in Applications, try opening it, click **Done** on the warning, then open **System Settings → Privacy & Security → Security** and click **Open Anyway**. They should authenticate if prompted and confirm **Open**. Say to proceed only if they trust the download, link [Apple's per-app opening instructions](https://support.apple.com/en-us/102445), and note that managed Macs may restrict opening. Do not prescribe disabling system-wide protections or removing quarantine attributes.
 
 Create a draft first so uploaded files can be checked before public publication:
 
