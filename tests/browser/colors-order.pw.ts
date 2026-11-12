@@ -520,7 +520,7 @@ for (const scale of [100, 150])
     await card(page, ids[0]).click();
     const before = await card(page, ids[0]).locator('.note-body').boundingBox();
     if (scale === 150)
-      await page.getByRole('button', { name: 'Details', exact: true }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     await page
       .getByRole('button', { name: 'Assign color', exact: true })
       .click();
@@ -545,7 +545,7 @@ for (const scale of [100, 150])
       page.getByRole('button', { name: 'Assign color', exact: true }),
     ).toBeFocused();
     if (scale === 150)
-      await page.getByRole('button', { name: 'Details', exact: true }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     expect(
       await card(page, ids[0]).locator('.note-body').boundingBox(),
     ).toEqual(before);

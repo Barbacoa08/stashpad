@@ -15,7 +15,11 @@
         "title": "Stashpad Preview",
         "width": 1100,
         "height": 760,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "decorations": true,
+        "backgroundColor": "#141414"
       }
     ],
     "security": {

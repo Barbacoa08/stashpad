@@ -58,7 +58,7 @@ for (const constrained of [false, true])
       capture = page.getByRole('textbox', { name: 'Capture Markdown' });
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     expect(
       await stream.evaluate((el) => el.getBoundingClientRect().height),
     ).toBeGreaterThanOrEqual(80);

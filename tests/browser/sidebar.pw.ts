@@ -38,9 +38,7 @@ test('narrow details exposes failed save and retry without stealing focus', asyn
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await capture.fill('Synthetic failed save');
   await capture.press('Enter');
-  await expect(page.getByRole('button', { name: /Details/ })).toContainText(
-    'error',
-  );
+  await expect(page.getByRole('alert')).toContainText('failure');
   await expect(capture).toBeFocused();
   await page.getByRole('button', { name: /Details/ }).click();
   await expect(page.getByRole('alert')).toContainText('failure');
@@ -198,7 +196,7 @@ async function failedCapture(
   await capture.press('Enter');
   return capture;
 }
-test('responsive narrowing hands a focused retry to visible Details without changing source or error', async ({
+test('responsive narrowing retains visible retry focus without changing source or error', async ({
   page,
 }) => {
   const capture = await failedCapture(page, 1440);
@@ -208,9 +206,10 @@ test('responsive narrowing hands a focused retry to visible Details without chan
   const error = await page.getByRole('alert').textContent();
   await page.setViewportSize({ width: 800, height: 600 });
   const details = page.getByRole('button', { name: /Details/ });
-  await expect(details).toBeFocused();
-  await expect(details).toBeVisible();
   await expect(details).toHaveAttribute('aria-expanded', 'false');
+  await expect(retry).toBeFocused();
+  await expect(retry).toBeVisible();
+  await expect(details).toBeVisible();
   await page.screenshot({
     path: 'test-results/captures/sidebar/final-fix-focus-narrow.png',
   });
@@ -227,7 +226,7 @@ test('responsive narrowing hands a focused retry to visible Details without chan
     ),
   ).toBe(0);
 });
-test('responsive widening hands a focused Details disclosure to the visible panel', async ({
+test('responsive widening retains focused Details disclosure while revealing its default panel', async ({
   page,
 }) => {
   const capture = await failedCapture(page, 800);
@@ -236,15 +235,15 @@ test('responsive widening hands a focused Details disclosure to the visible pane
   await page.setViewportSize({ width: 1440, height: 900 });
   const panel = page.getByRole('complementary', { name: 'Note details' });
   await expect(panel).toBeVisible();
-  await expect(panel).toBeFocused();
-  await expect(panel).toHaveCSS('outline-style', 'solid');
+  await expect(details).toBeFocused();
+  await expect(details).toHaveCSS('outline-style', 'solid');
   await page.screenshot({
     path: 'test-results/captures/sidebar/final-fix-focus-wide.png',
   });
   await expect(capture).toHaveText('Responsive recovery source');
   await expect(page.getByRole('alert')).toContainText('failure');
 });
-test('responsive changes retain visible open-panel focus and explicit close returns it to Details', async ({
+test('responsive changes and explicit close retain visible recovery focus', async ({
   page,
 }) => {
   await failedCapture(page, 800);
@@ -258,8 +257,9 @@ test('responsive changes retain visible open-panel focus and explicit close retu
   await expect(retry).toBeFocused();
   await expect(retry).toBeVisible();
   await details.dispatchEvent('click');
-  await expect(details).toBeFocused();
   await expect(details).toHaveAttribute('aria-expanded', 'false');
+  await expect(retry).toBeFocused();
+  await expect(retry).toBeVisible();
 });
 test('responsive changes never steal newer unrelated Search or capture focus', async ({
   page,

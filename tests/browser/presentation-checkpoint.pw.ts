@@ -104,7 +104,7 @@ for (const constrained of [false, true]) {
     await expect(stash.locator('.markdown-view p')).toHaveText('<Plain stash>');
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await expect(page.locator('.capture-destination')).toHaveCount(0);
     await expect(page.locator('.app-header h1')).toContainText('Home');
     await expect(page.locator('.details-rail > h2')).toHaveText(

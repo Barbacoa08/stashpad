@@ -86,10 +86,8 @@ test('completion failure has its own narrow retry, preserving capture and latest
   });
   await stream(page).focus();
   await page.keyboard.press('x');
-  await expect(page.getByRole('button', { name: 'Details' })).toContainText(
-    'error',
-  );
-  await page.getByRole('button', { name: 'Details' }).click();
+  await expect(page.getByRole('alert')).toContainText('failure');
+  await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
   await expect(
     page.getByRole('region', { name: 'Workspace status' }),
   ).toContainText('completion failure');
@@ -107,7 +105,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await expect(
     page.getByRole('textbox', { name: 'Capture Markdown' }),
   ).toHaveText('Pending capture');
-  await page.getByRole('button', { name: 'Details' }).click();
+  await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'Edit Markdown' })

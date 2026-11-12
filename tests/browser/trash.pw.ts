@@ -386,14 +386,14 @@ for (const large of [false, true])
     const details = page.getByRole('complementary', { name: 'Note details' });
     if (large) {
       await expect(details).toBeHidden();
-      await page.getByRole('button', { name: 'Details', exact: true }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     }
     await expect(restore(page)).toBeVisible();
     await page.screenshot({
       path: `test-results/captures/trash/details-${large ? '150' : 'normal'}.png`,
     });
     if (large)
-      await page.getByRole('button', { name: 'Details', exact: true }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     await page.evaluate(async () => {
       const t = (window as any).__test;
       for (let i = 0; i < 30; i++) {

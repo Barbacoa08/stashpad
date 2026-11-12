@@ -41,7 +41,16 @@ for (const large of [false, true]) {
         };
       });
     const before = await measure();
-    if (!large) expect(before.wrapper[1]).toBeLessThanOrEqual(8);
+    if (!large) {
+      const titlebar = await page.locator('.app-header').boundingBox();
+      // The unified title strip reserves the native-safe top row for all columns.
+      expect(
+        before.wrapper[1] - (titlebar!.y + titlebar!.height),
+      ).toBeLessThanOrEqual(8);
+      expect(before.wrapper[1]).toBeGreaterThanOrEqual(
+        titlebar!.y + titlebar!.height,
+      );
+    }
     await search.focus();
     const focused = await measure();
     expect(focused).toEqual(before);

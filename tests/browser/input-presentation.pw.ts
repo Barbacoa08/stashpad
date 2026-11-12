@@ -152,10 +152,10 @@ for (const constrained of [false, true]) {
     await capture(page).fill('Synthetic focus view');
     await capture(page).press('Enter');
     if (constrained)
-      await page.getByRole('button', { name: 'Details' }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     await expect(page.getByRole('status')).toContainText('Saved');
     if (constrained)
-      await page.getByRole('button', { name: 'Details' }).click();
+      await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
     await cards(page).first().click();
     await expect(stream).toBeFocused();
     await page.keyboard.press('c');

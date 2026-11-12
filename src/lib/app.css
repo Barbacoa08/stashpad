@@ -56,7 +56,7 @@ h2 {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 15.25rem minmax(0, 1fr) 17rem;
+  grid-template-columns: 15.25rem minmax(0, 1fr);
   gap: 0.25rem;
 }
 .sidebar,
@@ -67,6 +67,7 @@ h2 {
 }
 .sidebar {
   background: var(--panel);
+  padding-top: 0.5rem;
 }
 .sidebar h2 {
   margin: 0 0 1rem;
@@ -850,7 +851,7 @@ kbd {
   margin: 0 0.4rem 0.4rem 0;
 }
 .details-toggle {
-  display: none;
+  display: inline-flex;
 }
 @media (max-width: 1050px) {
   .details-toggle {
@@ -863,7 +864,7 @@ kbd {
   .details-rail {
     display: none;
   }
-  .details-rail.open {
+  .details-pane.open {
     display: flex;
     position: absolute;
     z-index: 3;
@@ -874,20 +875,8 @@ kbd {
     background: var(--panel);
     box-shadow: -4px 0 12px #0009;
   }
-}
-
-.narrow-announcement {
-  display: none;
-}
-@media (max-width: 1050px) {
-  .narrow-announcement:not(.open) {
-    display: block;
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
+  .details-pane.open .details-rail.open {
+    display: flex;
   }
 }
 
@@ -935,36 +924,132 @@ kbd {
   text-decoration-color: var(--muted);
 }
 
-/* The sidebar starts at the content edge while the path occupies the other columns. */
-main:has(.workspace) .app-header {
+/* One title strip spans the sidebar and native overlay without a color seam. */
+.app-header {
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  min-height: 2.5rem;
+}
+.native-controls-inset {
+  display: none;
+}
+.native-chrome .native-controls-inset {
+  display: block;
+  width: 78px;
+  flex: none;
+}
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0.35rem;
+  min-width: 1.9rem;
+  min-height: 1.9rem;
+  background: transparent;
+  border-color: transparent;
+}
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+.breadcrumbs button {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border-color: transparent;
+  padding: 0.3rem;
+}
+.breadcrumbs button:first-child {
+  flex: none;
+}
+.breadcrumbs button[aria-current='page'] {
+  color: var(--muted);
+}
+.breadcrumb-separator,
+.breadcrumb-omission {
+  color: var(--muted);
+  flex: none;
+}
+.titlebar-drag {
+  flex: 1;
+  align-self: stretch;
+  min-width: 1rem;
+}
+.workspace.details-open {
+  grid-template-columns: 15.25rem minmax(0, 1fr) 17rem;
+}
+.details-rail[hidden] {
+  display: none;
+}
+.details-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.details-pane:not(.open) {
+  display: contents;
+}
+.details-pane .details-rail {
+  flex: 1;
+  min-height: 0;
+}
+.details-pane > .workspace-feedback {
+  flex: none;
+  max-height: 45%;
+  overflow: auto;
+  margin-top: 0;
+  padding: 0.75rem 1rem;
+}
+.workspace-feedback.compact:not(.sr-only) {
   position: absolute;
-  top: 0;
-  left: 15.5rem;
-  right: 0;
-  z-index: 1;
-  padding-left: 0.75rem;
+  z-index: 4;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  width: min(22rem, calc(100% - 16rem));
+  max-height: 25dvh;
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px #0009;
+  font-size: 0.75rem;
 }
-main:has(.workspace) .sidebar {
-  padding-top: 0.5rem;
+.workspace {
+  position: relative;
 }
-main:has(.workspace) .notes-column,
-main:has(.workspace) .details-rail {
-  margin-top: 2.5rem;
+.compact-palette .color-palette {
+  max-height: calc(75dvh - 6rem);
+}
+.workspace-feedback p {
+  overflow-wrap: anywhere;
+}
+.workspace-feedback [role='alert']:not(:empty) {
+  color: #f3c49f;
 }
 @media (max-width: 1050px) {
-  main:has(.workspace) .app-header {
-    left: calc(min(12rem, 192px) + 0.25rem);
+  .workspace-feedback.compact:not(.sr-only) {
+    width: min(22rem, calc(100% - min(12rem, 192px) - 0.75rem));
   }
-  main:has(.workspace) .sidebar {
+  .workspace.details-open {
+    grid-template-columns: min(12rem, 192px) minmax(0, 1fr);
+  }
+  .sidebar {
     padding-inline: 0.5rem;
-  }
-  main:has(.workspace) .details-rail.open {
-    top: 0;
   }
 }
 @media (max-width: 650px) {
-  main:has(.workspace) .app-header {
-    left: 8.25rem;
+  .workspace-feedback.compact:not(.sr-only) {
+    width: min(22rem, calc(100% - 8.75rem));
+  }
+  .workspace.details-open {
+    grid-template-columns: 8rem minmax(0, 1fr);
   }
 }
 

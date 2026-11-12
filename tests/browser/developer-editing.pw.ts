@@ -411,7 +411,7 @@ for (const activation of ['click', 'keyboard'] as const)
     await inline(page).press('ArrowDown');
     await inline(page).press('End');
     await page.keyboard.insertText('!');
-    const details = page.getByRole('button', { name: 'Details', exact: true });
+    const details = page.getByRole('button', { name: /^(Show|Hide) Details$/ });
     if (activation === 'click') await details.click();
     else {
       await details.focus();

@@ -3,6 +3,8 @@
     name,
   }: {
     name:
+      | 'back'
+      | 'panel'
       | 'home'
       | 'search'
       | 'chevron'
@@ -15,7 +17,15 @@
 </script>
 
 <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-  {#if name === 'home'}<path
+  {#if name === 'back'}<path d="m10 3-5 5 5 5" />
+  {:else if name === 'panel'}<rect
+      x="2"
+      y="2.5"
+      width="12"
+      height="11"
+      rx="1"
+    /><path d="M10 2.5v11" />
+  {:else if name === 'home'}<path
       d="M2 7.2 8 2l6 5.2M3.5 6.3V14h9V6.3M6.5 14v-4h3v4"
     />
   {:else if name === 'search'}<circle cx="7" cy="7" r="4.5" /><path

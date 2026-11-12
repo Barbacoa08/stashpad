@@ -20,6 +20,11 @@
     scopeIndex,
     itemLabel,
   } from '../domain/hierarchy';
+  import {
+    NavigationHistory,
+    breadcrumbs,
+    historyLocationValidator,
+  } from '../workspace/navigation-history';
   import { LocationSelection } from '../workspace/selection';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
   import { nativeRepository, type Repository } from '../platform/workspace';
@@ -121,11 +126,27 @@
   let stream = $state<HTMLElement>();
   let closeFailed = $state(false);
   let detailsOpen = $state(false);
+  let detailsChoice: boolean | null = null;
+  let nativeChrome = $state(false);
+  const navigation = new NavigationHistory();
+  let historyRevision = $state(0);
+  let backVisit = $derived.by(() => {
+    void historyRevision;
+    return navigation.target(-1, validVisit);
+  });
+  let forwardVisit = $derived.by(() => {
+    void historyRevision;
+    return navigation.target(1, validVisit);
+  });
+  let crumbs = $derived(
+    breadcrumbs(viewState.snapshot.items, viewState.location),
+  );
   let commandHeld = $state(false);
   let hintFocus = $state.raw<EventTarget | null>(null);
   let hintTextSelected = $state(false);
   let detailsToggle = $state<HTMLButtonElement>();
   let detailsRail = $state<HTMLElement>();
+  let detailsPane = $state<HTMLElement>();
   let composerEpochs = $state<Record<string, number>>({});
   let workspaceEpoch = $state(0);
   let captureKey = $derived(composeKey(viewState.location));
@@ -147,6 +168,9 @@
     });
   });
   let scopes = $derived(scopeIndex(viewState.snapshot.items));
+  let validVisit = $derived(
+    historyLocationValidator(viewState.snapshot.items, scopes),
+  );
   let hierarchy = $derived(
     createHierarchyPresentation(
       viewState.snapshot.items.filter(
@@ -255,15 +279,18 @@
     id: string | null,
     preferred?: string,
     scope: Location['scope'] = 'live',
+    exact = false,
+    traversing = false,
   ) {
     if (blocked) return;
+    if (!traversing) navigation.cancel();
     const request = ++interaction,
       focus = observeSubmissionFocus();
     selection.remember(viewState.location, selected);
     try {
       if (
-        await (id === null
-          ? controller.openLocation({ scope, itemId: null })
+        await (id === null || exact
+          ? controller.openLocation({ scope, itemId: id })
           : controller.enterItem(id))
       ) {
         if (request !== interaction) return;
@@ -288,6 +315,7 @@
   }
   async function createStash() {
     if (blocked || creating) return;
+    navigation.cancel();
     creating = true;
     const request = ++interaction,
       focus = observeSubmissionFocus();
@@ -312,12 +340,33 @@
     node.focus();
   }
   onMount(() => {
-    const unsubscribe = controller.subscribe((next) => (viewState = next));
+    let previous = controller.state;
+    navigation.reset(previous.location);
+    const unsubscribe = controller.subscribe((next) => {
+      // Subscribe sees each patch synchronously; Svelte effects can coalesce the
+      // operation/location/finally patches and lose the structural cause.
+      if (next.location !== previous.location) {
+        const structural =
+          next.operation === 'delete' ||
+          next.operation === 'restore-item' ||
+          (next.location.itemId !== null &&
+            next.location.itemId === previous.location.itemId &&
+            next.location.scope !== previous.location.scope);
+        if (structural) navigation.reconcile(next.location);
+        else if (!navigation.acknowledge(next.location))
+          navigation.visit(next.location);
+      }
+      previous = next;
+      viewState = next;
+      historyRevision++;
+    });
+    nativeChrome = isTauri();
     void controller.start().then(() => onready?.(controller));
     // CSS can drop activeElement to body before the breakpoint event arrives.
     // Remember only the current focus, and let any newer real target take precedence.
     const detailsMedia = window.matchMedia('(max-width: 1050px)');
     let narrow = detailsMedia.matches;
+    detailsOpen = !narrow;
     let focused: HTMLElement | null = null;
     function rememberFocus(event: FocusEvent) {
       if (
@@ -344,16 +393,15 @@
         active !== document.documentElement
           ? active
           : focused;
-      if (target?.isConnected) {
-        if (
-          detailsMedia.matches &&
-          !detailsOpen &&
-          detailsRail?.contains(target)
-        )
-          detailsToggle?.focus();
-        else if (!detailsMedia.matches && target === detailsToggle)
-          detailsRail?.focus();
-      }
+      const open = detailsChoice ?? !detailsMedia.matches;
+      if (
+        detailsOpen &&
+        !open &&
+        target?.isConnected &&
+        detailsRail?.contains(target)
+      )
+        detailsToggle?.focus();
+      detailsOpen = open;
       narrow = detailsMedia.matches;
     }
     // Capture only global navigation keys before CodeMirror's comment keymap.
@@ -1056,7 +1104,20 @@
   function toggleDetails() {
     if (detailsOpen && detailsRail?.contains(document.activeElement))
       detailsToggle?.focus();
-    detailsOpen = !detailsOpen;
+    detailsChoice = !detailsOpen;
+    detailsOpen = detailsChoice;
+  }
+  function traverseHistory(direction: -1 | 1) {
+    if (blocked) return;
+    const visit = navigation.begin(direction, validVisit);
+    if (visit)
+      void openStash(
+        visit.location.itemId,
+        undefined,
+        visit.location.scope,
+        true,
+        true,
+      );
   }
   async function retryClose() {
     if (await controller.flush()) {
@@ -1067,18 +1128,101 @@
 </script>
 
 <svelte:window onkeydown={commands} />
-<main>
+{#snippet feedback(compact: boolean)}
+  <section
+    class="workspace-feedback"
+    class:compact
+    class:sr-only={compact &&
+      !viewState.error &&
+      !viewState.completionRetry &&
+      !viewState.mutationRetry}
+    aria-label="Workspace status"
+  >
+    <h2 class:sr-only={compact}><Icon name="info" /> Workspace status</h2>
+    {#if !compact}<p>
+        Shows the latest local action, including this device’s note saves and
+        capture draft checkpoints. It does not indicate online synchronization.
+      </p>{/if}
+    <p role="status" aria-live="polite">{viewState.status}</p>
+    <p role="alert">{viewState.error}</p>
+    {#if paletteRetry && viewState.mutationRetry && paletteRetry.epoch === workspaceEpoch && paletteRetry.identity === controller.mutationRetryIdentity}
+      <p role="status">
+        Retry color: {paletteRetry.color
+          ? paletteRetry.color[0].toUpperCase() + paletteRetry.color.slice(1)
+          : 'Reset'} for {paletteRetry.label}.
+      </p>
+    {/if}
+    {#if viewState.completionRetry}<button
+        disabled={blocked}
+        onclick={() => controller.retryCompletion()}>Retry completion</button
+      >
+    {:else if viewState.mutationRetry}<button
+        disabled={blocked}
+        onclick={() => void retryAction()}>Retry action</button
+      >
+    {:else if viewState.error}<button
+        disabled={blocked}
+        onclick={() => controller.flush()}>Retry checkpoint</button
+      ><button disabled={blocked} onclick={() => submit(viewState.activeKey)}
+        >Retry save</button
+      >{/if}
+  </section>
+{/snippet}
+<main
+  class:native-chrome={nativeChrome}
+  class:compact-palette={!!palette && !detailsOpen && !!viewState.error}
+>
   <header class="app-header">
-    <h1 title={destination}>{destination}</h1>
-    <span class="local-label">Local workspace</span>
+    <div class="native-controls-inset" aria-hidden="true"></div>
+    <button
+      class="toolbar-button"
+      aria-label="Back"
+      title="Back"
+      disabled={blocked || !backVisit}
+      onclick={() => traverseHistory(-1)}><Icon name="back" /></button
+    >
+    <button
+      class="toolbar-button"
+      aria-label="Forward"
+      title="Forward"
+      disabled={blocked || !forwardVisit}
+      onclick={() => traverseHistory(1)}><Icon name="chevron" /></button
+    >
+    <h1 class="sr-only" title={destination}>{destination}</h1>
+    <nav class="breadcrumbs" aria-label="Breadcrumbs">
+      {#each crumbs as crumb, index}
+        {#if index}<span class="breadcrumb-separator" aria-hidden="true">/</span
+          >{/if}
+        {#if crumb.location}
+          <button
+            aria-label={'Go to ' + crumb.label}
+            aria-current={crumb.current ? 'page' : undefined}
+            disabled={blocked}
+            title={crumb.label}
+            onclick={() =>
+              void openStash(
+                crumb.location!.itemId,
+                undefined,
+                crumb.location!.scope,
+                true,
+              )}>{crumb.label}</button
+          >
+        {:else}<span
+            class="breadcrumb-omission"
+            aria-label={crumb.label}
+            title={crumb.label}>…</span
+          >{/if}
+      {/each}
+    </nav>
+    <div class="titlebar-drag" data-tauri-drag-region aria-hidden="true"></div>
     {#if viewState.loaded}<button
-        class="details-toggle"
+        class="details-toggle toolbar-button"
         bind:this={detailsToggle}
+        aria-label={detailsOpen ? 'Hide Details' : 'Show Details'}
+        title={detailsOpen ? 'Hide Details' : 'Show Details'}
         aria-expanded={detailsOpen}
         aria-controls="workspace-details"
-        onclick={toggleDetails}
-        >Details{#if viewState.error}
-          <span role="status">· error</span>{/if}</button
+        onclick={toggleDetails}><Icon name="panel" /></button
       >{/if}
   </header>
   {#if !viewState.loaded}
@@ -1090,15 +1234,7 @@
         >{/if}
     </section>
   {:else}
-    <div
-      class="narrow-announcement"
-      class:open={detailsOpen}
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      {viewState.error || viewState.status}
-    </div>
-    <div class="workspace">
+    <div class="workspace" class:details-open={detailsOpen}>
       <aside class="sidebar" aria-label="Workspace navigation">
         <div class="sidebar-search">
           <label class="sr-only" for="search">Search saved notes</label>
@@ -1292,171 +1428,147 @@
           </p>
         </section>
       </section>
-      <aside
-        id="workspace-details"
-        class="details-rail"
-        bind:this={detailsRail}
-        tabindex="-1"
+      <div
+        class="details-pane"
         class:open={detailsOpen}
-        aria-label="Note details"
+        bind:this={detailsPane}
       >
-        <h2>Details and shortcuts</h2>
-        <p>
-          {visibleNotes.length}
-          {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace
-        </p>
-        {#if selectedNote}{@const created = timestampPresentation(
-            selectedNote.createdAt,
-            'full',
-          )}
+        <aside
+          id="workspace-details"
+          class="details-rail"
+          bind:this={detailsRail}
+          tabindex="-1"
+          class:open={detailsOpen}
+          hidden={!detailsOpen}
+          aria-label="Note details"
+        >
+          <h2>Details and shortcuts</h2>
           <p>
-            Created <time datetime={created.datetime}>{created.label}</time>
+            {visibleNotes.length}
+            {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace
           </p>
-          <button
-            onclick={(event) => openPalette(event.currentTarget)}
-            disabled={blocked}>Assign color</button
-          >
-          <p>Color: {selectedNote.color ?? 'None'}</p>
-          {#if viewState.query.trim()}<p>
-              Open the containing stash to reorder search results.
-            </p>{/if}
-        {/if}
-        {#if viewState.location.scope === 'trash'}
-          <section aria-label="Trash details">
-            <h2>Trash</h2>
+          {#if selectedNote}{@const created = timestampPresentation(
+              selectedNote.createdAt,
+              'full',
+            )}
             <p>
-              Items are retained for at least 90 days. Automatic permanent
-              cleanup is not enabled yet.
+              Created <time datetime={created.datetime}>{created.label}</time>
             </p>
-            {#if deletionRoot}{@const deleted = timestampPresentation(
-                deletionRoot.deletedAt!,
-                'full',
-              )}
-              <p>
-                {selectedNote && selectedNote.id !== deletionRoot.id
-                  ? `Inherited from ${itemLabel(deletionRoot)} · Deleted`
-                  : 'Deleted'}
-                <time datetime={deleted.datetime}>{deleted.label}</time>
-              </p>
-            {/if}
-            {#if selectedNote && scopes.get(selectedNote.id) === 'trash'}
-              <button onclick={() => void restoreSelected()} disabled={blocked}
-                >Restore item</button
-              >
-              <p>
-                {selectedNote.deletedAt === null
-                  ? 'Restore this item and its children to Home.'
-                  : 'Restore to its remembered live parent, or Home if unavailable.'}
-              </p>
-            {/if}
-          </section>
-        {/if}
-        <div class="shortcut-list" aria-label="Keyboard shortcuts">
-          <div>
-            <span>New stash</span><span class="shortcut-keys"
-              ><kbd>⌘</kbd><kbd>N</kbd></span
+            <button
+              onclick={(event) => openPalette(event.currentTarget)}
+              disabled={blocked}>Assign color</button
             >
-          </div>
-          <div>
-            <span>Home</span><span class="shortcut-keys"
-              ><kbd>⌘</kbd><kbd>1</kbd></span
-            >
-          </div>
-          <div>
-            <span>Bold / Italic</span><span class="shortcut-keys"
-              ><kbd>⌘</kbd><kbd>B</kbd><span>/</span><kbd>⌘</kbd><kbd>I</kbd
-              ></span
-            >
-          </div>
-          <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
-          <div>
-            <span aria-hidden="true">Search</span><span class="sr-only"
-              >Search: Command slash, Command F, or slash</span
-            ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>⌘</kbd><kbd>/</kbd><span aria-hidden="true">/</span><kbd
-                >/</kbd
-              ></span
-            >
-          </div>
-          <div>
-            <span aria-hidden="true">Select note</span><span class="sr-only"
-              >Select note: up or down arrow</span
-            ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>↑</kbd><kbd>↓</kbd></span
-            >
-          </div>
-          <div>
-            <span aria-hidden="true">Edit / Copy</span><span class="sr-only"
-              >Edit: E; Copy: C</span
-            ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>E</kbd><span aria-hidden="true">/</span><kbd>C</kbd></span
-            >
-          </div>
-          <div><span>Mark done / not done</span><kbd>X</kbd></div>
-          <div><span>Assign color</span><kbd>L</kbd></div>
-          <div>
-            <span aria-hidden="true">Reorder siblings</span><span
-              class="sr-only">Reorder siblings: Command Up or Command Down</span
-            ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>⌘</kbd><kbd>↑</kbd><kbd>↓</kbd></span
-            >
-          </div>
-          <div>
-            <span aria-hidden="true">Delete selected</span><span class="sr-only"
-              >Delete selected: Command Backspace</span
-            ><span class="shortcut-keys" aria-hidden="true"
-              ><kbd>⌘</kbd><kbd>⌫</kbd></span
-            >
-          </div>
-        </div>
-        {#if activeNote || (selectedNote && selectedEditingContext?.id === selectedNote.id)}<p
-            class="inline-hint"
-            aria-label="Inline editing keys"
-          >
-            <strong
-              >{activeNote
-                ? 'Editing shortcuts'
-                : 'Selected note editing'}</strong
-            ><br />
-            {(activeNote ? inlineFenced : selectedEditingContext?.fenced)
-              ? 'Enter adds a code line · Move outside code to finish editing'
-              : 'Enter finishes editing · Shift Enter adds a line'}
-          </p>{/if}
-        <section class="workspace-feedback" aria-label="Workspace status">
-          <h2><Icon name="info" /> Workspace status</h2>
-          <p>
-            Shows the latest local action, including this device’s note saves
-            and capture draft checkpoints. It does not indicate online
-            synchronization.
-          </p>
-          <p role="status" aria-live="polite">{viewState.status}</p>
-          <p role="alert">{viewState.error}</p>
-          {#if paletteRetry && viewState.mutationRetry && paletteRetry.epoch === workspaceEpoch && paletteRetry.identity === controller.mutationRetryIdentity}
-            <p role="status">
-              Retry color: {paletteRetry.color
-                ? paletteRetry.color[0].toUpperCase() +
-                  paletteRetry.color.slice(1)
-                : 'Reset'} for {paletteRetry.label} ({paletteRetry.id}).
-            </p>
+            <p>Color: {selectedNote.color ?? 'None'}</p>
+            {#if viewState.query.trim()}<p>
+                Open the containing stash to reorder search results.
+              </p>{/if}
           {/if}
-          {#if viewState.completionRetry}<button
-              disabled={blocked}
-              onclick={() => controller.retryCompletion()}
-              >Retry completion</button
+          {#if viewState.location.scope === 'trash'}
+            <section aria-label="Trash details">
+              <h2>Trash</h2>
+              <p>
+                Items are retained for at least 90 days. Automatic permanent
+                cleanup is not enabled yet.
+              </p>
+              {#if deletionRoot}{@const deleted = timestampPresentation(
+                  deletionRoot.deletedAt!,
+                  'full',
+                )}
+                <p>
+                  {selectedNote && selectedNote.id !== deletionRoot.id
+                    ? `Inherited from ${itemLabel(deletionRoot)} · Deleted`
+                    : 'Deleted'}
+                  <time datetime={deleted.datetime}>{deleted.label}</time>
+                </p>
+              {/if}
+              {#if selectedNote && scopes.get(selectedNote.id) === 'trash'}
+                <button
+                  onclick={() => void restoreSelected()}
+                  disabled={blocked}>Restore item</button
+                >
+                <p>
+                  {selectedNote.deletedAt === null
+                    ? 'Restore this item and its children to Home.'
+                    : 'Restore to its remembered live parent, or Home if unavailable.'}
+                </p>
+              {/if}
+            </section>
+          {/if}
+          <div class="shortcut-list" aria-label="Keyboard shortcuts">
+            <div>
+              <span>New stash</span><span class="shortcut-keys"
+                ><kbd>⌘</kbd><kbd>N</kbd></span
+              >
+            </div>
+            <div>
+              <span>Home</span><span class="shortcut-keys"
+                ><kbd>⌘</kbd><kbd>1</kbd></span
+              >
+            </div>
+            <div>
+              <span>Bold / Italic</span><span class="shortcut-keys"
+                ><kbd>⌘</kbd><kbd>B</kbd><span>/</span><kbd>⌘</kbd><kbd>I</kbd
+                ></span
+              >
+            </div>
+            <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
+            <div>
+              <span aria-hidden="true">Search</span><span class="sr-only"
+                >Search: Command slash, Command F, or slash</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>⌘</kbd><kbd>/</kbd><span aria-hidden="true">/</span><kbd
+                  >/</kbd
+                ></span
+              >
+            </div>
+            <div>
+              <span aria-hidden="true">Select note</span><span class="sr-only"
+                >Select note: up or down arrow</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>↑</kbd><kbd>↓</kbd></span
+              >
+            </div>
+            <div>
+              <span aria-hidden="true">Edit / Copy</span><span class="sr-only"
+                >Edit: E; Copy: C</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>E</kbd><span aria-hidden="true">/</span><kbd>C</kbd></span
+              >
+            </div>
+            <div><span>Mark done / not done</span><kbd>X</kbd></div>
+            <div><span>Assign color</span><kbd>L</kbd></div>
+            <div>
+              <span aria-hidden="true">Reorder siblings</span><span
+                class="sr-only"
+                >Reorder siblings: Command Up or Command Down</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>⌘</kbd><kbd>↑</kbd><kbd>↓</kbd></span
+              >
+            </div>
+            <div>
+              <span aria-hidden="true">Delete selected</span><span
+                class="sr-only">Delete selected: Command Backspace</span
+              ><span class="shortcut-keys" aria-hidden="true"
+                ><kbd>⌘</kbd><kbd>⌫</kbd></span
+              >
+            </div>
+          </div>
+          {#if activeNote || (selectedNote && selectedEditingContext?.id === selectedNote.id)}<p
+              class="inline-hint"
+              aria-label="Inline editing keys"
             >
-          {:else if viewState.mutationRetry}<button
-              disabled={blocked}
-              onclick={() => void retryAction()}>Retry action</button
-            >
-          {:else if viewState.error}<button
-              disabled={blocked}
-              onclick={() => controller.flush()}>Retry checkpoint</button
-            ><button
-              disabled={blocked}
-              onclick={() => submit(viewState.activeKey)}>Retry save</button
-            >{/if}
-        </section>
-      </aside>
+              <strong
+                >{activeNote
+                  ? 'Editing shortcuts'
+                  : 'Selected note editing'}</strong
+              ><br />
+              {(activeNote ? inlineFenced : selectedEditingContext?.fenced)
+                ? 'Enter adds a code line · Move outside code to finish editing'
+                : 'Enter finishes editing · Shift Enter adds a line'}
+            </p>{/if}
+        </aside>
+        {@render feedback(!detailsOpen)}
+      </div>
     </div>
     {#if viewState.preview}<section
         class="confirmation"
@@ -1483,6 +1595,8 @@
               expandedNotes = {};
               editHeights = {};
               workspaceEpoch++;
+              navigation.reset(controller.state.location);
+              historyRevision++;
               composerEpochs = {};
               selected = '';
               await tick();
