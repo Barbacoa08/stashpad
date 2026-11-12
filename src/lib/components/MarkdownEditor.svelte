@@ -38,6 +38,7 @@
     formattingExtensions,
   } from '../editor/formatting';
   import { enterKey, fencedSelection, captureUp } from '../editor/policy';
+  import { fenceCompletion } from '../editor/fences';
   let {
     contextKey,
     label,
@@ -105,12 +106,16 @@
     return [
       drawSelection(),
       EditorView.theme({
-        '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#fff' },
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: '#fff',
+          marginLeft: '0',
+        },
       }),
       highlightActiveLine(),
       history(),
       formattingExtensions,
       sourceExtensions(text),
+      fenceCompletion,
       indentOnInput(),
       Prec.highest(
         keymap.of([
