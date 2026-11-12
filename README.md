@@ -1,8 +1,32 @@
 # Stashpad Preview
 
-An independent, local-only Mac notes alpha using SvelteKit 3 static client assets, Svelte 5, CodeMirror 6, Tauri 2, and native SQLite. This is the accepted desktop stack. No original Stashpad code, assets, note data, or import behavior is included.
+Stashpad Preview is an independent, local-only Mac notes app for developers who want to capture ideas quickly and keep Markdown visible while editing. Write in the bottom composer, organize notes into nested stashes, search your saved source, and navigate with the keyboard or mouse.
 
-Capture notes in a persistent bottom composer, then read full saved Markdown in a scrollable stream. Select a card to edit its raw source inline, copy its Markdown, or delete it. New captures append; editing keeps cards in place. Notes and stashes share one source-bearing item tree, with Home as the root. Stashes display and edit their full Markdown, and navigation labels use bounded first-line previews. Accounts, synchronization, mobile, signing, distribution, and original-app import remain outside this increment.
+This is an early alpha for Apple Silicon Macs. Your library lives on one device; there are no accounts or automatic synchronization. You can export a backup and transfer it manually, but restoring a backup **replaces the current library**. Stashpad Preview is independent of the original Stashpad team and includes no original code, assets, note data, or import behavior.
+
+![Reordering notes in Stashpad Preview](docs/media/note-reordering.gif)
+
+![Navigating history with mouse side buttons](docs/media/mouse-history.gif)
+
+[Watch the full preview demo](docs/media/preview-demo.webm). The demos use synthetic notes in a browser fixture; the side-button events shown were simulated and the physical buttons were confirmed separately.
+
+## Download and install
+
+[Download Stashpad Preview v0.1.0-alpha.2 for Apple Silicon](https://github.com/Barbacoa08/stashpad/releases/download/v0.1.0-alpha.2/Stashpad-Preview_0.1.0-alpha.2_aarch64.dmg) · [Release notes](https://github.com/Barbacoa08/stashpad/releases/tag/v0.1.0-alpha.2)
+
+1. If updating, export a backup and quit the old Stashpad Preview first.
+2. Open the downloaded DMG, drag Stashpad Preview to Applications, and replace the existing app if prompted. Your app data is stored separately from the app.
+3. Open Stashpad Preview from Applications. This alpha is ad-hoc signed, but is not Developer ID signed or notarized. macOS may block its first launch; use Apple's [per-app Open Anyway instructions](https://support.apple.com/en-us/102445) if needed. A managed Mac may restrict this option.
+
+## Get started
+
+- Type a note in the bottom composer and press Enter to save. Markdown markers stay visible while emphasis, lists, and code are styled.
+- Select a note and press E or double-click to edit it. Press Enter outside fenced code or Escape to finish editing and keep changes.
+- Press Command+N to create a child stash, or Enter/Right on a selected item to open it. Use the breadcrumb, Back/Forward controls, or mouse side buttons to navigate.
+- Press Command+F to search, X to toggle completion, and Command+Up/Down to reorder a selected item among its siblings. You can also drag its reorder handle.
+- Export backups from the app to keep a separate copy of your library. Trash retains deleted items and supports restoring them.
+
+The sections below describe editing, navigation, persistence, and development in more detail. The desktop stack is SvelteKit static output, Svelte, CodeMirror, Tauri, and native SQLite.
 
 ## Capture and edit
 
@@ -74,6 +98,6 @@ For debug-only native failure checks, set `STASHPAD_ALPHA_TEST_FAILURE_FILE` to 
 
 ## Boundaries
 
-Domain/search/backup/rendering policy is in `src/lib/domain`; the framework-neutral controller owns keyed edit buffers, draft revisions, and serialized persistence in `src/lib/workspace`; capture acknowledgments clear only the acknowledged source revision; promotion, soft deletion, and restoration preserve buffers, while successful backup replacement replaces all buffers; the typed command boundary is in `src/lib/platform`; Svelte components own view/CodeMirror lifecycle. Rust model, store, backup, and narrow commands live in `src-tauri/src`. Later sync can operate behind the repository boundary, but revisions, ordering, conflicts, authentication, and recovery require a separate design. Mobile platform integration and editor/keyboard acceptance are also separate work. Accounts, network sync, phones, attachments, signing, distribution, and original-app import are outside this alpha.
+Domain/search/backup/rendering policy is in `src/lib/domain`; the framework-neutral controller owns keyed edit buffers, draft revisions, and serialized persistence in `src/lib/workspace`; capture acknowledgments clear only the acknowledged source revision; promotion, soft deletion, and restoration preserve buffers, while successful backup replacement replaces all buffers; the typed command boundary is in `src/lib/platform`; Svelte components own view/CodeMirror lifecycle. Rust model, store, backup, and narrow commands live in `src-tauri/src`. Later sync can operate behind the repository boundary, but revisions, ordering, conflicts, authentication, and recovery require a separate design. Mobile platform integration and editor/keyboard acceptance are also separate work. Accounts, network sync, phones, attachments, production signing and notarization, and original-app import remain future work or outside this alpha. An ad-hoc signed Apple Silicon prerelease is available above.
 
 See [AGENTS.md](AGENTS.md) for repository responsibilities and [.projects/README.md](.projects/README.md) for evidence retention. No public license is selected; the project is independent of the original Stashpad team.
