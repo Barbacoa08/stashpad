@@ -68,7 +68,7 @@ test('X leaves typing, IME, DOM ranges, and modifiers alone, and toggles selecte
   await page.keyboard.press('Meta+n');
   // A saved child keeps this destination a stash when it is exited.
   await capture(page, 'container child');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const stash = page.locator('.note-card[data-kind="stash"]');
   await stash.locator('.note-body').click();
   await page.keyboard.press('x');

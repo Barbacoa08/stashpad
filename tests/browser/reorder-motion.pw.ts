@@ -304,7 +304,7 @@ for (const interruption of [
       );
     await settled(page);
     if (interruption === 'navigate') {
-      await page.getByRole('button', { name: 'Home', exact: true }).click();
+      await page.getByRole('button', { name: 'Root', exact: true }).click();
       await settled(page);
     }
     expect(errors).toEqual([]);

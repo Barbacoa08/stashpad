@@ -34,7 +34,7 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
     .getByRole('button', { name: 'Open stash Projects', exact: true })
     .click();
   await expect(capture(page)).toHaveText('Parent draft');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(capture(page)).toHaveText('Home draft');
   const stash = page.getByRole('article', { name: 'Stash Projects' });
   await stash.click();
@@ -43,10 +43,10 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await page.getByRole('article', { name: 'Stash Ideas' }).click();
   await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('Next nested capture');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await page.getByRole('searchbox').fill('Nested **source**');
   const note = page.getByRole('article', { name: 'Saved note' });
-  await expect(note).toContainText('Home / Projects / Ideas');
+  await expect(note).toContainText('Root / Projects / Ideas');
   await note.click();
   await page.keyboard.press('e');
   await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
@@ -78,7 +78,7 @@ test('instant creation preserves drafts and stash source edits have ordinary sou
   // Keep a saved child so this test continues to exercise stash actions.
   await capture(page).fill('Named child');
   await capture(page).press('Enter');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(capture(page)).toHaveText('Retained');
   const stash = page.getByRole('article', { name: 'Stash Named' });
   await stash.click();
@@ -112,7 +112,7 @@ test('per-location capture caret and undo survive navigation', async ({
   );
   await capture(page).focus();
   await page.keyboard.insertText('Away draft');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await page.keyboard.press('Space');
   await expect(capture(page)).toBeFocused();
   await page.keyboard.insertText('X');
@@ -137,7 +137,7 @@ test('search location stays inside its note card and cancellation restores edito
   await capture(page).press('ArrowRight');
   await capture(page).press('ArrowRight');
   await create(page, 'Temporary');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await page.keyboard.press('Space');
   await page.keyboard.insertText('X');
   await expect(capture(page)).toHaveText('ReXtained');
@@ -145,7 +145,7 @@ test('search location stays inside its note card and cancellation restores edito
   await create(page, 'Child with another descriptive name');
   await capture(page).fill('Nested source');
   await capture(page).press('Enter');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await page.getByRole('searchbox').fill('Nested');
   const note = page.getByRole('article', { name: 'Saved note' });
   expect(
@@ -173,9 +173,9 @@ test('sidebar expand state, parent keyboard navigation, and mixed stream orderin
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('.app-header h1')).toHaveText(
-    /Home\s*\/\s*Parent\s*$/,
+    /Root\s*\/\s*Parent\s*$/,
   );
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   const toggle = page.getByRole('button', { name: 'Collapse stash Parent' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await toggle.click();

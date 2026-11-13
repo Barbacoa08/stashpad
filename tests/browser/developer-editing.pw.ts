@@ -141,10 +141,10 @@ test('capture Up at zero selects last visible note, skips child stash, and retai
   await capture(page).press('Meta+Home');
   await capture(page).press('ArrowUp');
   await expect(capture(page)).toBeFocused();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await page.keyboard.press('Meta+n');
   await capture(page).fill('child draft');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await page.keyboard.press('Space');
   await expect(capture(page)).toHaveText('draft');
   await page.keyboard.insertText('Q');

@@ -103,7 +103,7 @@ test('E always places caret at source end while cached Undo and autosave caret s
   await inline(page).press('Meta+z');
   await expect(inline(page)).toHaveText('firstlast!');
 });
-test('Command slash searches and Command 1 goes Home from an editor without losing drafts or edits', async ({
+test('Command slash searches and Command 1 goes Root from an editor without losing drafts or edits', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -130,7 +130,7 @@ test('Command slash searches and Command 1 goes Home from an editor without losi
   await expect(capture(page)).toBeFocused();
   await capture(page).fill('stash draft');
   await capture(page).press('Meta+1');
-  await expect(page.locator('h1')).toHaveText('Home');
+  await expect(page.locator('h1')).toHaveText('Root');
   await expect(stream(page)).toBeFocused();
   // Exiting the empty container demotes it, but its exact composer survives.
   await expect(cards(page)).toHaveCount(2);

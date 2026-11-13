@@ -59,7 +59,7 @@ test('Trash Delete permanently removes exactly the captured tree, leaves detache
     .toEqual([ids[1], ids[2], ids[4]].sort());
   await expect(card(page, ids[4])).toHaveClass(/selected/);
   expect((await snapshot(page)).undoDeleteIds).toEqual([]);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[1]).click();
   await page.keyboard.press('Meta+Backspace');
   await page.keyboard.press('Meta+z');
@@ -118,10 +118,10 @@ for (const exit of [
         .press('Escape')
         .then(() => page.keyboard.press('ArrowLeft'));
     else if (exit === 'sidebar')
-      await page.getByRole('button', { name: 'Home', exact: true }).click();
+      await page.getByRole('button', { name: 'Root', exact: true }).click();
     else if (exit === 'breadcrumb')
       await page
-        .getByRole('button', { name: 'Go to Home', exact: true })
+        .getByRole('button', { name: 'Go to Root', exact: true })
         .click();
     else if (exit === 'history')
       await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -214,12 +214,12 @@ test('queued empty A to B to C exits demote actual origins and transient B never
       .filter((item: any) => ids.slice(0, 2).includes(item.id))
       .map((item: any) => item.kind),
   ).toEqual(['note', 'note']);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[1]).click();
   await page.keyboard.press('ArrowRight');
   await capture(page).fill('keep B available for history');
   await capture(page).press('Enter');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const back = page.getByRole('button', { name: 'Back', exact: true });
   await back.click();
   await expect

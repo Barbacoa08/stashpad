@@ -118,7 +118,7 @@ for (const scale of [100, 150]) {
     });
     await page.screenshot({ path: testInfo.outputPath(`slot-${scale}.png`) });
   });
-  test(`sidebar centers and flat Home surface share one scroll container at ${scale}%`, async ({
+  test(`sidebar centers and flat Root surface share one scroll container at ${scale}%`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize({
@@ -141,7 +141,7 @@ for (const scale of [100, 150]) {
     expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(
       0.1,
     );
-    const home = page.getByRole('button', { name: 'Home', exact: true });
+    const home = page.getByRole('button', { name: 'Root', exact: true });
     expect(await home.evaluate((el) => getComputedStyle(el).borderColor)).toBe(
       'rgba(0, 0, 0, 0)',
     );
@@ -320,7 +320,7 @@ test('view cancellation keeps owned rejection feedback until dragend without rev
     effect: 'none',
     prevented: true,
   });
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   expect(await over(card(page, ids[2]))).toEqual({
     effect: 'none',
     prevented: true,

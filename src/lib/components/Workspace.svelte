@@ -222,7 +222,7 @@
         (x) =>
           x.kind === 'stash' && scopes.get(x.id) === viewState.location.scope,
       ),
-      viewState.location.scope === 'trash' ? 'Trash' : 'Home',
+      viewState.location.scope === 'trash' ? 'Trash' : 'Root',
     ),
   );
   let deletionRoot = $derived.by(() => {
@@ -1178,7 +1178,7 @@
       const stashes = snapshot.items.filter(
         (item) => item.kind === 'stash' && scopes.get(item.id) === scope,
       );
-      const rootLabel = scope === 'live' ? 'Home' : 'Trash';
+      const rootLabel = scope === 'live' ? 'Root' : 'Trash';
       const presentation = createHierarchyPresentation(stashes, rootLabel);
       destinations.push(
         {
@@ -1934,8 +1934,8 @@
                 >
                 <p>
                   {selectedNote.deletedAt === null
-                    ? 'Restore this item and its children to Home.'
-                    : 'Restore to its remembered live parent, or Home if unavailable.'}
+                    ? 'Restore this item and its children to Root.'
+                    : 'Restore to its remembered live parent, or Root if unavailable.'}
                 </p>
               {/if}
             </section>
@@ -1947,7 +1947,7 @@
               >
             </div>
             <div>
-              <span>Home</span><span class="shortcut-keys"
+              <span>Root</span><span class="shortcut-keys"
                 ><kbd>⌘</kbd><kbd>1</kbd></span
               >
             </div>

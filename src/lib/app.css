@@ -1334,7 +1334,7 @@ kbd {
   color: white;
 }
 
-/* Search, Home, top-level stacks, and footer actions share icon columns. */
+/* Search, Root, top-level stacks, and footer actions share icon columns. */
 main:has(.workspace) .sidebar {
   padding-inline: 6px;
 }
@@ -1344,20 +1344,26 @@ main:has(.workspace) .sidebar {
   gap: 0.3rem;
 }
 .sidebar-search .icon,
-.stash-navigation .home-link .icon,
+.stash-navigation .root-link .icon,
 .backup-actions .icon {
   width: 1.125rem;
   height: 1.125rem;
 }
-.sidebar .stash-navigation .home-link,
+.sidebar .stash-navigation .root-link,
 .sidebar .backup-actions button {
   padding-left: calc(24px + 2px);
   gap: 0.3rem;
   border-color: transparent;
   border-radius: 0;
 }
-.sidebar .stash-navigation .home-link.current,
-.sidebar .stash-navigation .home-link:hover:enabled {
+.sidebar .stash-navigation .root-link.current,
+.sidebar .stash-navigation .root-link:hover:enabled {
   background: #303b4f;
   color: #fff;
+}
+
+.stash-navigation .root-separator {
+  border: 0;
+  border-top: 1px solid #414141;
+  margin: 0.35rem 0;
 }

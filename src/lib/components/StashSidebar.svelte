@@ -3,6 +3,7 @@
   import { itemLabel, type HierarchyPresentation } from '../domain/hierarchy';
   import Icon from './Icon.svelte';
   import StashIcon from './StashIcon.svelte';
+  import RootIcon from './RootIcon.svelte';
   let {
     presentation,
     currentId,
@@ -28,12 +29,13 @@
 
 <nav aria-label="Stashes" class="stash-navigation">
   <button
-    class="home-link"
+    class="root-link"
     class:current={live && currentId === null}
     aria-current={live && currentId === null ? 'page' : undefined}
     onclick={() => onopen(null)}
-    {disabled}><Icon name="home" /> Home</button
+    {disabled}><RootIcon /> Root</button
   >
+  <hr class="root-separator" />
   {#each rows as row (row.stash.id)}
     <div
       class="stash-row"

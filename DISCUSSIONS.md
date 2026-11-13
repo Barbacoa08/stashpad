@@ -6,7 +6,7 @@ When a topic becomes actionable, link its individual GitHub issue here. Record a
 
 ## Branding, terminology, and identity
 
-The app is independent of the original product and currently uses the Preview name and “stash” terminology. Decide its durable name, terms, icon, and logo after core interactions mature. Evaluate original, independently usable identity options.
+The app remains Stashpad Preview with “stash” terminology; Scratchtree is the working future name. The selected reference family is preserved in the [branding record](docs/branding/README.md). Root and its small tree replace the former Home destination, with a separator above child navigation; the selected family also supplies the Dock icon. Other functional icons retain their existing appearance. Finalize the app name, remaining hierarchy terms, and future artwork refinements separately; current Preview identifiers and note locations remain stable.
 
 ## Styling experiment
 
@@ -22,7 +22,7 @@ Mouse Shift-range and Command-toggle selection are accepted. Research keyboard r
 
 ## Tabs
 
-Home and Search have keyboard navigation hints; tabs and Command-number switching beyond Home are deferred. Decide whether tabs improve navigation and how their state and shortcuts should work.
+Root and Search have keyboard navigation hints; tabs and Command-number switching beyond Root are deferred. Decide whether tabs improve navigation and how their state and shortcuts should work.
 
 ## Pinning
 

@@ -73,7 +73,7 @@ test('Details defaults respond until choice; collapse frees width and keeps erro
     (window as any).__test.repo.fail = 'checkpoint';
   });
   await capture(page).fill('retained');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(page.getByRole('alert')).toContainText('failure');
   await expect(
     page.getByRole('button', { name: 'Retry action' }),
@@ -155,7 +155,7 @@ test('new navigation supersedes delayed Back without moving its pointer or takin
   await back(page).click();
   await page
     .getByRole('navigation', { name: 'Breadcrumbs' })
-    .getByRole('button', { name: 'Go to Home', exact: true })
+    .getByRole('button', { name: 'Go to Root', exact: true })
     .click();
   await page.getByRole('searchbox').fill('newer');
   await page.evaluate(() => (window as any).__test.releaseCheckpoint());
@@ -174,7 +174,7 @@ test('history skips deleted recorded live scope without promoting or retargeting
   await child(page, 'Nested');
   await page
     .getByRole('navigation', { name: 'Breadcrumbs' })
-    .getByRole('button', { name: 'Go to Home', exact: true })
+    .getByRole('button', { name: 'Go to Root', exact: true })
     .click();
   await page.evaluate(async (parent) => {
     const t = (window as any).__test;
@@ -326,10 +326,10 @@ test('bounded deep breadcrumbs and controls fit 800 by 600 at 150 percent; brows
   await page.getByRole('button', { name: 'Show Details', exact: true }).click();
   await page.screenshot({ path: 'captures/task4-narrow-150.png' });
   await page.getByRole('button', { name: 'Hide Details', exact: true }).click();
-  await crumb.getByRole('button', { name: 'Go to Home', exact: true }).click();
+  await crumb.getByRole('button', { name: 'Go to Root', exact: true }).click();
   await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: null });
 });
-test('Home and Trash roots are distinct successful visits', async ({
+test('Root and Trash roots are distinct successful visits', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -358,7 +358,7 @@ test('right-side status retains explanation when expanded; collapsed retry remai
   const rect = await page.locator('.notes-column').boundingBox();
   await failCheckpoint(page);
   await capture(page).fill('source retained');
-  await page.getByRole('button', { name: 'Home', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(page.getByRole('alert')).toContainText('failure');
   const retry = page.getByRole('button', { name: 'Retry action', exact: true });
   await expect(retry).toBeVisible();
@@ -438,7 +438,7 @@ test('collapsed session preference retains visible Retry focus across breakpoint
   await page.getByRole('button', { name: 'Hide Details', exact: true }).click();
   await failCheckpoint(page);
   await capture(page).fill('retained');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const retry = page.getByRole('button', { name: 'Retry action', exact: true });
   await retry.focus();
   await page.setViewportSize({ width: 800, height: 600 });
@@ -460,7 +460,7 @@ test('failed Back is superseded by a newer visit before its captured Retry', asy
   await allowCheckpoint(page);
   await page
     .getByRole('navigation', { name: 'Breadcrumbs' })
-    .getByRole('button', { name: 'Go to Home', exact: true })
+    .getByRole('button', { name: 'Go to Root', exact: true })
     .click();
   await page.getByRole('button', { name: 'Retry action', exact: true }).click();
   await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: parent });
@@ -578,7 +578,7 @@ test('expanded recovery Retry retains focus through automatic collapse and reope
   await expect(rail).toBeVisible();
   await failCheckpoint(page);
   await capture(page).fill('exact retained recovery draft');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const retry = page.getByRole('button', { name: 'Retry action', exact: true });
   await retry.focus();
   await page.setViewportSize({ width: 800, height: 600 });

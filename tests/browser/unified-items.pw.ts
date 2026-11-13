@@ -170,7 +170,7 @@ test('selected global result becomes Command-N parent instead of the current ope
   );
   expect(await page.getByRole('searchbox').inputValue()).toBe('');
 });
-test('deleting the open container through global search returns Home and retains its scoped draft for Undo', async ({
+test('deleting the open container through global search returns Root and retains its scoped draft for Undo', async ({
   page,
 }) => {
   const [id] = await seed(page, ['current owner']);
@@ -180,7 +180,7 @@ test('deleting the open container through global search returns Home and retains
   await page.getByRole('searchbox').fill('current owner');
   await page.locator(`[data-entry-id="${id}"]`).click();
   await page.keyboard.press('Meta+Backspace');
-  await expect(page.locator('h1')).toHaveText('Home');
+  await expect(page.locator('h1')).toHaveText('Root');
   await expect(capture(page)).toBeFocused();
   await page.getByRole('button', { name: 'Undo delete', exact: true }).click();
   await page.getByRole('searchbox').press('Escape');
