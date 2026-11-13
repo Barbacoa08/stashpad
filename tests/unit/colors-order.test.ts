@@ -90,7 +90,7 @@ it('color and order retain drafts, descendants, completion, and metadata through
   expect(r.snapshot.items.find((x) => x.id === b)).toMatchObject({
     color: 'teal',
     done: true,
-    kind: 'stash',
+    kind: 'note',
     position: 0,
   });
   expect(r.snapshot.drafts.some((x) => x.markdown === 'pending capture')).toBe(
@@ -136,7 +136,7 @@ for (const [source, target, edge, want] of [
       token,
     );
     expect(r).toEqual(
-      want === null ? null : { id: source, group: home, toIndex: want },
+      want === null ? null : { ids: [source], group: home, toIndex: want },
     );
     expect(
       drag.preview(dragSnapshot, home, '', target, edge, [siblingDragType]),

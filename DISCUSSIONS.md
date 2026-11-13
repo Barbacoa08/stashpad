@@ -14,7 +14,11 @@ The current interface uses locally authored CSS; no styling library is selected.
 
 ## Cross-parent movement
 
-Items can currently reorder among siblings, but cannot move across parents or be reparented. Decide the interaction and recovery rules for moving notes and containers between locations.
+The accepted first increment uses M for a staged destination dialog and moves selected siblings together; dragging and Command-Up/Down rearrange siblings. Moves stay within the current live-library or Trash area, and Restore remains the way out of Trash. Revisit cross-area movement and cross-owner selection only after evaluating this bounded workflow.
+
+## Keyboard selection and batch actions
+
+Mouse Shift-range and Command-toggle selection are accepted. Research keyboard range expansion, contraction, anchor/focus behavior, and selection clearing before adding Shift-arrow selection. Decide batch edit/color/completion/copy/delete behavior separately; those actions currently use one primary item. Current selection conventions draw on [Apple’s selection guidance](https://support.apple.com/guide/mac-help/select-items-mchlp1378/mac) and [WAI-ARIA guidance distinguishing focus and selection](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/#kbd_focus_vs_selection). Interactive note cards retain their content/button semantics rather than becoming listbox options.
 
 ## Tabs
 
@@ -34,7 +38,7 @@ The current picker offers nine fixed colors and Reset. Decide whether arbitrary 
 
 ## Trash purge
 
-Trash retains items for at least 90 days; automatic permanent cleanup is not enabled, and no permanent purge exists. Decide eventual purge, retention, and recovery behavior before implementing deletion of retained data.
+Manual Delete inside Trash permanently removes the selected item and its children, without Undo. Automatic permanent cleanup is not enabled. Decide any future 90-day cleanup schedule, retention exceptions, and recovery behavior separately; existing backups are not securely erased by logical item deletion.
 
 ## Accounts and synchronization
 

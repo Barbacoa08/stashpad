@@ -51,7 +51,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
     ] {
         let mut v = valid.clone();
         match case {
-            "future" => v["version"] = 5.into(),
+            "future" => v["version"] = 6.into(),
             "duplicate" => {
                 let n = v["workspace"]["items"][0].clone();
                 v["workspace"]["items"].as_array_mut().unwrap().push(n)
@@ -296,7 +296,7 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             "empty" => v["workspace"]["stashes"][0]["name"] = "  ".into(),
             "extra" => v["workspace"]["stashes"][0]["unknown"] = true.into(),
             "orphanUndo" => v["workspace"]["undoDeleteId"] = b.into(),
-            "future" => v["version"] = 5.into(),
+            "future" => v["version"] = 6.into(),
             _ => {}
         }
         assert_eq!(

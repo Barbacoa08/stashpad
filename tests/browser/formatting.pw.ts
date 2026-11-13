@@ -49,6 +49,11 @@ for (const mode of ['capture', 'inline'] as const) {
       isComposing: true,
     });
     await editor.dispatchEvent('compositionend');
+    // CodeMirror view 6.43.15 intentionally ignores Safari's first key for
+    // 100 ms after compositionend (ignoreDuringComposition), covering reversed
+    // IME confirmation-event order. These synthetic Enter/Escape commands are
+    // a later user action, so let that real guard expire before sending them.
+    await page.waitForTimeout(120);
     await expect(editor).toHaveText('`code`');
     if (mode === 'inline') {
       await editor.press('Escape');
@@ -127,12 +132,19 @@ test('Command slash searches and Command 1 goes Home from an editor without losi
   await capture(page).press('Meta+1');
   await expect(page.locator('h1')).toHaveText('Home');
   await expect(stream(page)).toBeFocused();
-  await expect(cards(page)).toHaveCount(1);
-  await page
-    .getByRole('button', { name: 'Open stash Untitled', exact: true })
-    .first()
-    .click();
+  // Exiting the empty container demotes it, but its exact composer survives.
+  await expect(cards(page)).toHaveCount(2);
+  const demoted = cards(page).filter({ hasText: 'Untitled' });
+  const id = await demoted.getAttribute('data-entry-id');
+  await expect(demoted).toHaveAttribute('data-kind', 'note');
+  await demoted.click();
+  await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('stash draft');
+  expect(
+    await page.evaluate(
+      () => (window as any).__test.controller.state.location.itemId,
+    ),
+  ).toBe(id);
   expect(
     await page.evaluate(
       () =>

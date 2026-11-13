@@ -66,7 +66,7 @@ fn actual_legacy_migrations_are_transactional_and_preserve_all_metadata() {
         assert_eq!(
             c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            5
         );
         assert_eq!(
             c.query_row(
@@ -105,7 +105,7 @@ fn strict_legacy_and_current_wire_parity() {
             }
         }
         let normalized = backup::validate(&serde_json::to_vec(&b).unwrap()).unwrap();
-        assert_eq!(normalized.version, 4);
+        assert_eq!(normalized.version, 5);
         assert_eq!(normalized.workspace.items[0].done, version == 3);
         for value in [
             serde_json::Value::Null,

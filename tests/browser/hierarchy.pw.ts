@@ -75,6 +75,9 @@ test('instant creation preserves drafts and stash source edits have ordinary sou
   await page.goto('/?fixture');
   await capture(page).fill('Retained');
   await create(page, 'Named');
+  // Keep a saved child so this test continues to exercise stash actions.
+  await capture(page).fill('Named child');
+  await capture(page).press('Enter');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
   await expect(capture(page)).toHaveText('Retained');
   const stash = page.getByRole('article', { name: 'Stash Named' });
@@ -104,6 +107,9 @@ test('per-location capture caret and undo survive navigation', async ({
   await page.keyboard.insertText('Home');
   await page.keyboard.press('ArrowLeft');
   await create(page, 'Away');
+  const awayId = await page.evaluate(
+    () => (window as any).__test.controller.state.location.itemId,
+  );
   await capture(page).focus();
   await page.keyboard.insertText('Away draft');
   await page.getByRole('button', { name: 'Home', exact: true }).first().click();
@@ -113,10 +119,13 @@ test('per-location capture caret and undo survive navigation', async ({
   await expect(capture(page)).toHaveText('HomXe');
   await page.keyboard.press('Meta+z');
   await expect(capture(page)).toHaveText('Home');
-  await page
-    .getByRole('button', { name: 'Open stash Away', exact: true })
-    .click();
+  const away = page.locator(`[data-entry-id="${awayId}"]`);
+  await expect(away).toHaveAttribute('data-kind', 'note');
+  await away.click();
+  await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('Away draft');
+  await capture(page).press('Meta+z');
+  await expect(capture(page)).toHaveText('');
 });
 
 test('search location stays inside its note card and cancellation restores editor selection', async ({

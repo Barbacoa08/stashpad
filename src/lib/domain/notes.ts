@@ -105,9 +105,45 @@ export interface WorkspaceSnapshot {
   drafts: Draft[];
   undoDeleteId: string | null;
 }
+// Frozen V4 wire fields and semantic validation must remain independent of current Item.
+export interface V4Item {
+  id: string;
+  parentId: string | null;
+  kind: 'note' | 'stash';
+  markdown: string;
+  done: boolean;
+  color:
+    | 'red'
+    | 'orange'
+    | 'yellow'
+    | 'green'
+    | 'teal'
+    | 'blue'
+    | 'purple'
+    | 'pink'
+    | 'gray'
+    | null;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+  restoreParentId: string | null;
+  restoreIndex: number | null;
+}
+export interface V4Workspace {
+  items: V4Item[];
+  drafts: Draft[];
+  undoDeleteId: string | null;
+}
 export interface BackupV4 {
   format: 'stashpad-alpha';
   version: 4;
+  exportedAt: string;
+  workspace: V4Workspace;
+}
+export interface BackupV5 {
+  format: 'stashpad-alpha';
+  version: 5;
   exportedAt: string;
   workspace: WorkspaceSnapshot;
 }

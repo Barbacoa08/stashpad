@@ -9,6 +9,8 @@
   let {
     item,
     selected,
+    primary,
+    permanent,
     editing,
     source,
     baseline,
@@ -21,6 +23,8 @@
     onselect,
     ondoubleclick,
     onselectbutton,
+    onhandleselect,
+    onselectionpointer,
     onedit,
     ondelete,
     oncopy,
@@ -44,6 +48,8 @@
   }: {
     item: Item;
     selected: boolean;
+    primary: boolean;
+    permanent: boolean;
     editing: boolean;
     source: string;
     baseline?: number;
@@ -55,7 +61,9 @@
     location: string;
     onselect: (event: MouseEvent) => void;
     ondoubleclick: (event: MouseEvent) => void;
-    onselectbutton: () => void;
+    onselectbutton: (event: MouseEvent) => void;
+    onhandleselect: (event: MouseEvent) => void;
+    onselectionpointer: (event: PointerEvent) => void;
     onedit: () => void;
     ondelete: () => void;
     oncopy: () => void;
@@ -102,6 +110,7 @@
   data-kind={item.kind}
   data-entry-id={item.id}
   onclick={onselect}
+  onpointerdown={onselectionpointer}
   ondblclick={ondoubleclick}
 >
   <div class="item-slot">
@@ -126,7 +135,7 @@
         {disabled}
         aria-label="Reorder item"
         title="Drag to reorder · Command Up/Down"
-        onclick={onselectbutton}
+        onclick={onhandleselect}
         {ondragstart}
         {ondragend}
         onkeydown={onmovekey}
@@ -142,7 +151,7 @@
   {#if item.done}<span class="sr-only">Done</span>{/if}
   <div class="note-meta">
     <time datetime={updated.datetime}>{updated.label}</time>
-    {#if selected && !editing}<div class="card-actions">
+    {#if primary && !editing}<div class="card-actions">
         {#if !editing}<button
             {disabled}
             onclick={onedit}
@@ -178,8 +187,18 @@
         <button
           {disabled}
           onclick={ondelete}
-          aria-label={item.kind === 'stash' ? 'Delete stash' : 'Delete note'}
-          title={item.kind === 'stash' ? 'Delete stash' : 'Delete note'}
+          aria-label={permanent
+            ? item.kind === 'stash'
+              ? 'Permanently delete stash'
+              : 'Permanently delete note'
+            : item.kind === 'stash'
+              ? 'Delete stash'
+              : 'Delete note'}
+          title={permanent
+            ? 'Permanently delete this item and its children'
+            : item.kind === 'stash'
+              ? 'Delete stash'
+              : 'Delete note'}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true"
             ><path d="M3 4h10M6 4V2h4v2M4 4l1 10h6l1-10M7 6v6M9 6v6" /></svg

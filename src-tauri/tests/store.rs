@@ -346,7 +346,7 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     drop(db);
     let path = dir.path().join("notes.sqlite3");
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("PRAGMA user_version=5;").unwrap();
+    c.execute_batch("PRAGMA user_version=6;").unwrap();
     drop(c);
     let before = std::fs::read(&path).unwrap();
     assert!(Store::open(&path).is_err());

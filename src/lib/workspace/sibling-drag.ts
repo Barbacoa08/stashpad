@@ -1,20 +1,29 @@
 import type { Location, WorkspaceSnapshot } from '../domain/notes';
-import type { ReorderItem } from '../platform/workspace';
 import { directEntries, itemLocation } from '../domain/hierarchy';
+export interface SiblingDrop {
+  ids: string[];
+  group: Location;
+  toIndex: number;
+}
 export const siblingDragType = 'application/x-stashpad-sibling';
 const sameGroup = (a: Location, b: Location) =>
   a.scope === b.scope && a.itemId === b.itemId;
 /** A transfer string alone never grants movement: this workspace must own the drag. */
 export class SiblingDrag {
   private owned: {
-    id: string;
+    ids: string[];
     group: Location;
     token: string;
     valid: boolean;
   } | null = null;
-  begin(id: string, group: Location) {
+  begin(ids: string | readonly string[], group: Location) {
     const token = crypto.randomUUID();
-    this.owned = { id, group: { ...group }, token, valid: true };
+    this.owned = {
+      ids: typeof ids === 'string' ? [ids] : [...ids],
+      group: { ...group },
+      token,
+      valid: true,
+    };
     return token;
   }
   clear() {
@@ -34,7 +43,7 @@ export class SiblingDrag {
     target: string,
     edge: 'before' | 'after',
     types: readonly string[],
-  ): ReorderItem | null {
+  ): SiblingDrop | null {
     const owned = this.owned;
     if (
       !owned?.valid ||
@@ -43,24 +52,28 @@ export class SiblingDrag {
       !sameGroup(owned.group, group)
     )
       return null;
-    const source = snapshot.items.find((x) => x.id === owned.id),
-      destination = snapshot.items.find((x) => x.id === target);
+    const selected = new Set(owned.ids);
+    const siblings = directEntries(snapshot, group);
+    const ordered = siblings.filter((item) => selected.has(item.id));
     if (
-      !source ||
-      !destination ||
-      source.id === target ||
-      !sameGroup(itemLocation(snapshot.items, source.id), group) ||
+      !owned.ids.length ||
+      selected.size !== owned.ids.length ||
+      ordered.length !== owned.ids.length ||
+      ordered.some((item, index) => item.id !== owned.ids[index]) ||
+      selected.has(target) ||
+      !siblings.some((item) => item.id === target) ||
       !sameGroup(itemLocation(snapshot.items, target), group)
     )
       return null;
-    const siblings = directEntries(snapshot, group),
-      from = siblings.findIndex((x) => x.id === source.id);
-    const remaining = siblings.filter((x) => x.id !== source.id);
+    const remaining = siblings.filter((item) => !selected.has(item.id));
     const toIndex =
-      remaining.findIndex((x) => x.id === target) + (edge === 'after' ? 1 : 0);
-    return toIndex === from
+      remaining.findIndex((item) => item.id === target) +
+      (edge === 'after' ? 1 : 0);
+    const after = remaining.map((item) => item.id);
+    after.splice(toIndex, 0, ...owned.ids);
+    return after.every((id, index) => id === siblings[index].id)
       ? null
-      : { id: source.id, group: { ...owned.group }, toIndex };
+      : { ids: [...owned.ids], group: { ...owned.group }, toIndex };
   }
   drop(
     snapshot: WorkspaceSnapshot,

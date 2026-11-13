@@ -1,0 +1,91 @@
+/** Mouse-only sibling selection. Editor ownership is deliberately independent. */
+export type MouseSelection = {
+  ids: string[];
+  primary: string;
+  anchor: string;
+};
+export const emptyMouseSelection = (): MouseSelection => ({
+  ids: [],
+  primary: '',
+  anchor: '',
+});
+export function mouseSelect(
+  state: MouseSelection,
+  displayed: readonly string[],
+  target: string,
+  modifiers: { metaKey?: boolean; shiftKey?: boolean },
+): MouseSelection {
+  const index = displayed.indexOf(target);
+  if (index < 0) return state;
+  const anchor = displayed.indexOf(state.anchor);
+  if (modifiers.shiftKey && anchor >= 0) {
+    return {
+      ids: displayed.slice(
+        Math.min(index, anchor),
+        Math.max(index, anchor) + 1,
+      ),
+      primary: target,
+      anchor: state.anchor,
+    };
+  }
+  if (modifiers.metaKey && !modifiers.shiftKey) {
+    const selected = new Set(state.ids);
+    const removing = selected.has(target);
+    const ids = displayed.filter((id) =>
+      id === target ? !removing : selected.has(id),
+    );
+    const primary = removing
+      ? ids.includes(state.primary)
+        ? state.primary
+        : (ids.at(-1) ?? '')
+      : target;
+    return {
+      ids,
+      primary,
+      anchor: removing
+        ? ids.includes(state.anchor)
+          ? state.anchor
+          : primary
+        : target,
+    };
+  }
+  return { ids: [target], primary: target, anchor: target };
+}
+export function reconcileMouseSelection(
+  state: MouseSelection,
+  displayed: readonly string[],
+): MouseSelection {
+  const selected = new Set(state.ids);
+  const ids = displayed.filter((id) => selected.has(id));
+  if (!ids.length) return emptyMouseSelection();
+  return {
+    ids,
+    primary: ids.includes(state.primary) ? state.primary : ids.at(-1)!,
+    anchor: displayed.includes(state.anchor) ? state.anchor : '',
+  };
+}
+
+/** Move each selected run one sibling step, retaining both relative orders. */
+export function reorderSelected(
+  displayed: readonly string[],
+  ids: readonly string[],
+  direction: -1 | 1,
+): string[] {
+  const order = [...displayed],
+    selected = new Set(ids);
+  const positions =
+    direction === -1
+      ? order.map((_, index) => index)
+      : order.map((_, index) => index).reverse();
+  for (const index of positions) {
+    const neighbor = index + direction;
+    if (
+      selected.has(order[index]) &&
+      neighbor >= 0 &&
+      neighbor < order.length &&
+      !selected.has(order[neighbor])
+    )
+      [order[index], order[neighbor]] = [order[neighbor], order[index]];
+  }
+  return order;
+}

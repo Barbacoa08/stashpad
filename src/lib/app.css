@@ -419,8 +419,36 @@ kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #61d5eb;
 }
-.cm-heading {
+.markdown-view h1,
+.cm-heading-1 {
+  font-size: 1.25rem;
+  font-weight: 750;
+}
+.markdown-view h2,
+.cm-heading-2 {
+  font-size: 1.125rem;
   font-weight: 700;
+}
+.markdown-view h3,
+.cm-heading-3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.markdown-view h4,
+.cm-heading-4 {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.markdown-view h5,
+.cm-heading-5 {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.markdown-view h6,
+.cm-heading-6 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-style: italic;
 }
 .cm-marker {
   color: #aaa;
@@ -893,10 +921,27 @@ kbd {
   overflow: hidden;
 }
 .note-expand {
-  display: block;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  gap: 0.375rem;
   margin-top: 0.3rem;
+  border: 1px solid #393939;
+  background: #1d1d1d;
   font-size: 0.7rem;
-  padding: 0.15rem 0.35rem;
+  padding: 0.25rem 0.5rem;
+}
+.note-expand-chevron {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+.note-expand-chevron.up {
+  transform: rotate(225deg) translate(-1px, -1px);
 }
 .inline-hint {
   margin-top: 0.8rem;

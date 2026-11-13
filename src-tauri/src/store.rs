@@ -14,7 +14,7 @@ impl Store {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(storage_error)?;
-        if !(0..=4).contains(&version) {
+        if !(0..=5).contains(&version) {
             return Err(error(
                 "schema_version",
                 "This workspace needs a newer app. No data were replaced.",
@@ -48,8 +48,27 @@ impl Store {
                 store
                     .connection
                     .execute_batch(
-                        "DROP TABLE notes;DROP TABLE stashes;PRAGMA user_version=4;COMMIT;",
+                        "DROP TABLE notes;DROP TABLE stashes;PRAGMA user_version=5;COMMIT;",
                     )
+                    .map_err(storage_error)
+            })();
+            if let Err(e) = result {
+                let _ = store.connection.execute_batch("ROLLBACK;");
+                return Err(e);
+            }
+        }
+        if version == 4 {
+            store
+                .connection
+                .execute_batch("BEGIN IMMEDIATE;")
+                .map_err(storage_error)?;
+            let result = (|| {
+                let current = store.load()?;
+                backup::validate_v4_snapshot(&current)?;
+                backup::encode(&current)?;
+                store
+                    .connection
+                    .execute_batch("PRAGMA user_version=5;COMMIT;")
                     .map_err(storage_error)
             })();
             if let Err(e) = result {
@@ -308,7 +327,7 @@ impl Store {
     }
     pub fn capture(&mut self, r: &CaptureItem) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
-        validate_location(&s, &r.location, false)?;
+        validate_location(&s, &r.location, true)?;
         if ecma_trim(&r.markdown).is_empty() {
             return Err(error(
                 "empty_note",
@@ -322,6 +341,20 @@ impl Store {
     pub fn create_child_stash(&mut self, r: &CreateChildStash) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
         create(&mut s, &r.id, &r.parent, Kind::Stash, "Untitled")?;
+        if let Some(from) = &r.leave {
+            let to = Location {
+                scope: r.parent.scope.clone(),
+                item_id: Some(r.id.clone()),
+            };
+            transition_snapshot(
+                &mut s,
+                &TransitionLocation {
+                    from: from.clone(),
+                    to,
+                    promote_destination: false,
+                },
+            )?;
+        }
         self.replace(&s)
     }
     pub fn promote(&mut self, id: &str) -> Result<WorkspaceSnapshot> {
@@ -352,10 +385,27 @@ impl Store {
         self.replace(&s)
     }
     pub fn delete(&mut self, id: &str) -> Result<WorkspaceSnapshot> {
+        self.delete_leaving(id, None)
+    }
+    pub fn delete_leaving(
+        &mut self,
+        id: &str,
+        leave: Option<&Location>,
+    ) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
         let x = find(&s, id)?;
         if x.deleted_at.is_some() {
             return Ok(s);
+        }
+        if let Some(from) = leave {
+            validate_location(&s, from, true)?;
+            if from
+                .item_id
+                .as_ref()
+                .is_none_or(|owner| !subtree(&s, id).contains(owner))
+            {
+                return Err(stale());
+            }
         }
         let old = group(&s, &item_location(&s, id)?);
         let ordinal = old.iter().position(|key| key == id).expect("item in group") as i64;
@@ -377,6 +427,15 @@ impl Store {
             &old.into_iter().filter(|key| key != id).collect::<Vec<_>>(),
         );
         s.undo_delete_id = Some(id.into());
+        if let Some(owner) = leave.and_then(|at| at.item_id.as_deref()) {
+            if !s
+                .items
+                .iter()
+                .any(|x| x.parent_id.as_deref() == Some(owner))
+            {
+                find_mut(&mut s, owner)?.kind = Kind::Note;
+            }
+        }
         self.replace(&s)
     }
     pub fn restore(&mut self, id: &str) -> Result<WorkspaceSnapshot> {
@@ -417,6 +476,206 @@ impl Store {
         touch(find_mut(&mut s, &r.id)?);
         self.replace(&s)
     }
+    pub fn purge(&mut self, r: &PurgeItem) -> Result<PurgeResult> {
+        let mut s = self.load()?;
+        let expected = unique_ids(&r.expected_subtree_ids)?;
+        if !expected.contains(r.id.as_str()) {
+            return Err(stale());
+        }
+        if !s.items.iter().any(|x| x.id == r.id) {
+            let folded: std::collections::HashSet<String> =
+                expected.iter().map(|id| id.to_lowercase()).collect();
+            if s.items
+                .iter()
+                .any(|x| folded.contains(&x.id.to_lowercase()))
+            {
+                return Err(stale());
+            }
+            let mut removed_ids = r.expected_subtree_ids.clone();
+            removed_ids.sort();
+            return Ok(PurgeResult {
+                workspace: s,
+                removed_ids,
+            });
+        }
+        if effective_scope(&s, &r.id)? != Scope::Trash || item_location(&s, &r.id)? != r.location {
+            return Err(stale());
+        }
+        let removed = subtree(&s, &r.id);
+        if removed != expected.into_iter().map(str::to_owned).collect() {
+            return Err(stale());
+        }
+        let old = group(&s, &r.location);
+        s.items.retain(|x| !removed.contains(&x.id));
+        for x in &mut s.items {
+            if x.restore_parent_id
+                .as_ref()
+                .is_some_and(|id| removed.contains(id))
+            {
+                x.restore_parent_id = None;
+            }
+        }
+        s.drafts.retain(|d| {
+            !removed.contains(&d.key)
+                && !d
+                    .key
+                    .strip_prefix("compose:")
+                    .is_some_and(|id| removed.contains(id))
+        });
+        if s.undo_delete_id
+            .as_ref()
+            .is_some_and(|id| removed.contains(id))
+        {
+            s.undo_delete_id = None;
+        }
+        normalize(
+            &mut s,
+            &old.into_iter()
+                .filter(|id| !removed.contains(id))
+                .collect::<Vec<_>>(),
+        );
+        let workspace = self.replace(&s)?;
+        let mut removed_ids: Vec<_> = removed.into_iter().collect();
+        removed_ids.sort();
+        Ok(PurgeResult {
+            workspace,
+            removed_ids,
+        })
+    }
+    pub fn transition(&mut self, r: &TransitionLocation) -> Result<WorkspaceSnapshot> {
+        let mut s = self.load()?;
+        transition_snapshot(&mut s, r)?;
+        self.replace(&s)
+    }
+    pub fn move_items(&mut self, r: &MoveItems) -> Result<WorkspaceSnapshot> {
+        let mut s = self.load()?;
+        validate_location(&s, &r.from, false)?;
+        validate_location(&s, &r.to, false)?;
+        if r.from.scope != r.to.scope {
+            return Err(stale());
+        }
+        if r.ids.is_empty() {
+            return Err(stale());
+        }
+        let selected = unique_ids(&r.ids)?;
+        unique_ids(&r.before_from)?;
+        unique_ids(&r.before_to)?;
+        unique_ids(&r.after_from)?;
+        unique_ids(&r.after_to)?;
+        if r.before_from
+            .iter()
+            .filter(|id| selected.contains(id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>()
+            != r.ids
+        {
+            return Err(stale());
+        }
+        let without = |xs: &[String]| {
+            xs.iter()
+                .filter(|id| !selected.contains(id.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        if r.from == r.to {
+            if r.before_from != r.before_to
+                || r.after_from != r.after_to
+                || r.before_from.len() != r.after_from.len()
+                || without(&r.before_from) != without(&r.after_from)
+                || r.after_from
+                    .iter()
+                    .filter(|id| selected.contains(id.as_str()))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    != r.ids
+            {
+                return Err(stale());
+            }
+        } else {
+            if r.before_to.iter().any(|id| selected.contains(id.as_str()))
+                || r.after_from != without(&r.before_from)
+                || without(&r.after_to) != r.before_to
+                || r.after_to.len() != r.before_to.len() + r.ids.len()
+            {
+                return Err(stale());
+            }
+            let Some(start) = r.after_to.iter().position(|id| id == &r.ids[0]) else {
+                return Err(stale());
+            };
+            if r.after_to.get(start..start + r.ids.len()) != Some(r.ids.as_slice()) {
+                return Err(stale());
+            }
+        }
+        let index: std::collections::HashMap<&str, &Item> =
+            s.items.iter().map(|x| (x.id.as_str(), x)).collect();
+        let mut parent = r.to.item_id.as_deref();
+        while let Some(id) = parent {
+            if selected.contains(id) {
+                return Err(stale());
+            }
+            parent = index.get(id).and_then(|x| x.parent_id.as_deref());
+        }
+        let actual_from = group(&s, &r.from);
+        let actual_to = group(&s, &r.to);
+        if actual_from == r.after_from && actual_to == r.after_to {
+            return Ok(s);
+        }
+        if actual_from != r.before_from || actual_to != r.before_to {
+            return Err(stale());
+        }
+        let all_dates = deletion_dates(&s);
+        let dates: Vec<_> = r
+            .ids
+            .iter()
+            .map(|id| all_dates.get(id.as_str()).copied().flatten())
+            .collect();
+        let destination_date =
+            r.to.item_id
+                .as_deref()
+                .and_then(|id| all_dates.get(id).copied().flatten());
+        let old_positions: std::collections::HashMap<&str, usize> = r
+            .before_from
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.as_str(), i))
+            .collect();
+        let new_positions: std::collections::HashMap<&str, usize> = r
+            .after_to
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.as_str(), i))
+            .collect();
+        let selected_dates: std::collections::HashMap<&str, Option<i64>> = r
+            .ids
+            .iter()
+            .zip(dates)
+            .map(|(id, date)| (id.as_str(), date))
+            .collect();
+        for x in &mut s.items {
+            if !selected.contains(x.id.as_str()) {
+                continue;
+            }
+            let old_index = old_positions[x.id.as_str()];
+            let new_index = new_positions[x.id.as_str()];
+            if r.from == r.to && old_index == new_index {
+                continue;
+            }
+            let date = selected_dates[x.id.as_str()];
+            if r.to.scope == Scope::Trash
+                && x.deleted_at.is_none()
+                && (r.to.item_id.is_none() || date != destination_date)
+            {
+                x.deleted_at = date;
+                x.restore_parent_id = x.parent_id.clone();
+                x.restore_index = Some(old_index as i64);
+            }
+            x.parent_id = r.to.item_id.clone();
+            touch(x);
+        }
+        normalize(&mut s, &r.after_from);
+        normalize(&mut s, &r.after_to);
+        self.replace(&s)
+    }
     pub fn restore_with_safety(
         &mut self,
         s: &WorkspaceSnapshot,
@@ -449,14 +708,22 @@ fn touch(x: &mut Item) {
     x.updated_at = now().max(x.updated_at.saturating_add(1));
 }
 pub fn effective_scope(s: &WorkspaceSnapshot, id: &str) -> Result<Scope> {
-    let mut x = find(s, id)?;
+    let index: std::collections::HashMap<&str, &Item> =
+        s.items.iter().map(|x| (x.id.as_str(), x)).collect();
+    let mut key = id;
     loop {
+        let x = index.get(key).ok_or_else(|| {
+            error(
+                "not_found",
+                "This item is unavailable. Your input is retained.",
+            )
+        })?;
         if x.deleted_at.is_some() {
             return Ok(Scope::Trash);
         }
         match x.parent_id.as_deref() {
             None => return Ok(Scope::Live),
-            Some(id) => x = find(s, id)?,
+            Some(parent) => key = parent,
         }
     }
 }
@@ -521,7 +788,7 @@ fn create(
     kind: Kind,
     markdown: &str,
 ) -> Result<()> {
-    validate_location(s, at, kind == Kind::Stash)?;
+    validate_location(s, at, true)?;
     if let Some(prior) = s
         .items
         .iter()
@@ -581,13 +848,24 @@ fn restore(s: &mut WorkspaceSnapshot, id: &str) -> Result<()> {
     let parent = x
         .restore_parent_id
         .as_ref()
-        .filter(|parent| {
-            find(s, parent).is_ok_and(|x| x.kind == Kind::Stash)
-                && effective_scope(s, parent).is_ok_and(|scope| scope == Scope::Live)
-        })
+        .filter(|parent| effective_scope(s, parent).is_ok_and(|scope| scope == Scope::Live))
         .cloned();
     let index = x.restore_index;
-    let old = group(s, &item_location(s, id)?);
+    let old_location = item_location(s, id)?;
+    let roots = detach_deleted_descendants(s, id);
+    let old = if old_location.item_id.is_none() {
+        roots
+    } else {
+        normalize(s, &roots);
+        group(s, &old_location)
+    };
+    if let Some(parent) = parent.as_deref() {
+        let owner = find_mut(s, parent)?;
+        if owner.kind == Kind::Note {
+            owner.kind = Kind::Stash;
+            touch(owner);
+        }
+    }
     let mut target = group(
         s,
         &Location {
@@ -609,4 +887,132 @@ fn restore(s: &mut WorkspaceSnapshot, id: &str) -> Result<()> {
         s.undo_delete_id = None;
     }
     Ok(())
+}
+
+fn stale() -> AppError {
+    error("stale_structure", "The captured items or destination changed. Review the action again; your content is retained.")
+}
+fn unique_ids(ids: &[String]) -> Result<std::collections::HashSet<&str>> {
+    let mut seen = std::collections::HashSet::new();
+    for id in ids {
+        if id.len() != 36 || uuid::Uuid::parse_str(id).is_err() || !seen.insert(id.as_str()) {
+            return Err(stale());
+        }
+    }
+    Ok(seen)
+}
+fn subtree(s: &WorkspaceSnapshot, id: &str) -> std::collections::HashSet<String> {
+    let mut children: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for x in &s.items {
+        if let Some(parent) = x.parent_id.as_deref() {
+            children.entry(parent).or_default().push(&x.id);
+        }
+    }
+    let mut result = std::collections::HashSet::new();
+    let mut pending = vec![id];
+    while let Some(id) = pending.pop() {
+        if result.insert(id.to_owned()) {
+            if let Some(xs) = children.get(id) {
+                pending.extend(xs);
+            }
+        }
+    }
+    result
+}
+fn deletion_dates(s: &WorkspaceSnapshot) -> std::collections::HashMap<&str, Option<i64>> {
+    let index: std::collections::HashMap<&str, &Item> =
+        s.items.iter().map(|x| (x.id.as_str(), x)).collect();
+    let mut dates = std::collections::HashMap::new();
+    for x in &s.items {
+        let mut current = Some(x.id.as_str());
+        let mut pending = Vec::new();
+        while let Some(id) = current {
+            if dates.contains_key(id) {
+                break;
+            }
+            let node = index[id];
+            pending.push(id);
+            if node.deleted_at.is_some() {
+                dates.insert(id, node.deleted_at);
+                break;
+            }
+            current = node.parent_id.as_deref();
+        }
+        let date = current.and_then(|id| dates.get(id).copied().flatten());
+        for id in pending {
+            dates.insert(id, date);
+        }
+    }
+    dates
+}
+fn transition_snapshot(s: &mut WorkspaceSnapshot, r: &TransitionLocation) -> Result<()> {
+    // A prior acknowledged exit may have already demoted the origin.
+    validate_location(s, &r.from, true)?;
+    validate_location(s, &r.to, r.promote_destination)?;
+    if r.promote_destination {
+        if let Some(id) = r.to.item_id.as_deref() {
+            let x = find_mut(s, id)?;
+            if x.kind == Kind::Note {
+                x.kind = Kind::Stash;
+                touch(x);
+            }
+        }
+    }
+    if r.from == r.to {
+        return Ok(());
+    }
+    if let Some(id) = r.from.item_id.as_deref() {
+        if !s.items.iter().any(|x| x.parent_id.as_deref() == Some(id)) {
+            find_mut(s, id)?.kind = Kind::Note;
+        }
+    }
+    Ok(())
+}
+fn detach_deleted_descendants(s: &mut WorkspaceSnapshot, id: &str) -> Vec<String> {
+    // Item indices remain stable: only parent edges and ranks change in this pass.
+    let mut children: std::collections::HashMap<String, Vec<usize>> =
+        std::collections::HashMap::new();
+    let mut roots: Vec<usize> = Vec::new();
+    for (index, x) in s.items.iter().enumerate() {
+        if let Some(parent) = &x.parent_id {
+            children.entry(parent.clone()).or_default().push(index);
+        } else if x.deleted_at.is_some() {
+            roots.push(index);
+        }
+    }
+    roots.sort_by_key(|index| s.items[*index].position);
+    let mut pending = children.get(id).cloned().unwrap_or_default();
+    let mut detached = std::collections::HashSet::new();
+    let mut affected = std::collections::HashSet::new();
+    while let Some(index) = pending.pop() {
+        let x = &s.items[index];
+        if x.deleted_at.is_some() {
+            affected.insert(x.parent_id.clone().expect("descendant has parent"));
+            detached.insert(index);
+            roots.push(index);
+        } else if let Some(xs) = children.get(&x.id) {
+            pending.extend(xs.iter().copied());
+        }
+    }
+    for index in &detached {
+        s.items[*index].parent_id = None;
+    }
+    // Stop at nearest explicit deletion roots, and normalize each affected group
+    // once without repeatedly scanning the workspace or rebuilding its scope index.
+    for parent in affected {
+        let mut remaining: Vec<usize> = children[&parent]
+            .iter()
+            .copied()
+            .filter(|index| !detached.contains(index))
+            .collect();
+        remaining.sort_by_key(|index| s.items[*index].position);
+        for (position, index) in remaining.into_iter().enumerate() {
+            s.items[index].position = position as i64;
+        }
+    }
+    // Restore removes its root before ranking the final Trash-root group once.
+    roots
+        .into_iter()
+        .map(|index| s.items[index].id.clone())
+        .collect()
 }

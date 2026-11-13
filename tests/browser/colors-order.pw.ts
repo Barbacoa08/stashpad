@@ -102,7 +102,7 @@ test('Command arrows move mixed siblings and preserve selection, children, sourc
     before.items.filter((x: any) => x.parentId === ids[1]),
   );
   await page.evaluate(() => {
-    (window as any).__test.repo.fail = 'reorder';
+    (window as any).__test.repo.fail = 'move';
   });
   await page.keyboard.press('Meta+ArrowUp');
   expect(await snapshot(page)).toEqual(moved);
@@ -376,7 +376,7 @@ test('move failure retries original destination after selection changes, without
   await capture(page).fill('pending capture');
   await card(page, ids[0]).click();
   await page.evaluate(() => {
-    (window as any).__test.repo.fail = 'reorder';
+    (window as any).__test.repo.fail = 'move';
   });
   await page.keyboard.press('Meta+ArrowDown');
   await expect(
@@ -465,15 +465,17 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   await page.keyboard.press('x');
   await page.keyboard.press('ArrowRight');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
-  await expect(card(page, ids[0]).locator('.stash-icon')).toHaveCSS(
-    'color',
+  await expect(card(page, ids[0])).toHaveAttribute('data-kind', 'note');
+  await expect(card(page, ids[0]).locator('.note-color')).toHaveCSS(
+    'background-color',
     'rgb(216, 148, 189)',
   );
   await expect(
-    page
-      .getByRole('button', { name: 'Open stash first **source**', exact: true })
-      .locator('.stash-icon'),
-  ).toHaveCSS('color', 'rgb(216, 148, 189)');
+    page.getByRole('button', {
+      name: 'Open stash first **source**',
+      exact: true,
+    }),
+  ).toHaveCount(0);
   await card(page, ids[0]).click();
   await page.keyboard.press('Meta+Backspace');
   await page.getByRole('button', { name: 'Trash', exact: true }).click();
@@ -496,8 +498,9 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
     .getByRole('button', { name: 'Replace workspace', exact: true })
     .click();
   expect(await snapshot(page)).toEqual(before);
-  await expect(card(page, ids[0]).locator('.stash-icon')).toHaveCSS(
-    'color',
+  await expect(card(page, ids[0])).toHaveAttribute('data-kind', 'note');
+  await expect(card(page, ids[0]).locator('.note-color')).toHaveCSS(
+    'background-color',
     'rgb(216, 148, 189)',
   );
 });

@@ -8,6 +8,11 @@ async function child(p: Page) {
   await expect(capture(p)).toBeFocused();
   return (await at(p)).itemId as string;
 }
+async function saveChild(p: Page) {
+  await capture(p).fill('inline source');
+  await capture(p).press('Enter');
+  await expect(p.locator('.note-card')).toHaveCount(1);
+}
 // Wry dispatches these cancelable, untrusted MouseEvents at elementFromPoint.
 async function phase(target: Locator, type: string, button: number) {
   return target.evaluate(
@@ -48,6 +53,8 @@ test('Wry side-button release makes exactly one app visit over capture and inlin
   await expect(capture(page)).toBeVisible();
   const parent = await child(page),
     nested = await child(page);
+  // History only opens valid stashes; a saved child keeps nested available.
+  await saveChild(page);
   await capture(page).fill('nested **draft**');
   expect(await phase(capture(page), 'mousedown', 3)).toEqual({
     prevented: true,
@@ -67,8 +74,6 @@ test('Wry side-button release makes exactly one app visit over capture and inlin
   await side(capture(page), 4);
   await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: nested });
   await expect(capture(page)).toHaveText('nested **draft**');
-  await capture(page).fill('inline source');
-  await page.keyboard.press('Enter');
   await page.locator('.note-card').dblclick();
   const editor = page.getByRole('textbox', { name: 'Edit Markdown' });
   await editor.fill('inline **exact**');
@@ -105,6 +110,8 @@ test('side events consume URL fallback at boundaries, blocked state, and before 
       ).toBe(false);
   const parent = await child(page),
     nested = await child(page);
+  // History only opens valid stashes; a saved child keeps nested available.
+  await saveChild(page);
   await page.evaluate((id) => {
     const t = (window as any).__test,
       setColor = t.repo.setItemColor.bind(t.repo);
@@ -142,6 +149,8 @@ test('failed side Back retains exact draft and captured Retry without reclaiming
   await expect(capture(page)).toBeVisible();
   const parent = await child(page),
     nested = await child(page);
+  // History only opens valid stashes; a saved child keeps nested available.
+  await saveChild(page);
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'checkpoint';
   });
@@ -163,6 +172,63 @@ test('failed side Back retains exact draft and captured Retry without reclaiming
   await side(capture(page), 4);
   await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: nested });
   await expect(capture(page)).toHaveText('failed exact **draft**');
+});
+test('side Back skips a demoted history entry without promoting it and explicit enter restores its exact draft', async ({
+  page,
+}) => {
+  await page.goto('/?fixture');
+  await expect(capture(page)).toBeVisible();
+  const [empty, destination] = await page.evaluate(async () => {
+    const t = (window as any).__test;
+    const empty = crypto.randomUUID(),
+      id = crypto.randomUUID();
+    await t.repo.createChildStash({
+      id: empty,
+      parent: { scope: 'live', itemId: null },
+    });
+    await t.repo.createChildStash({
+      id,
+      parent: { scope: 'live', itemId: null },
+    });
+    await t.repo.saveItemSource(id, 'Nonempty destination', {
+      key: id,
+      revision: 1,
+    });
+    await t.repo.captureItem({
+      id: crypto.randomUUID(),
+      location: { scope: 'live', itemId: id },
+      markdown: 'saved child',
+      draft: { key: `compose:${id}`, revision: 0 },
+    });
+    await t.controller.start();
+    return [empty, id];
+  });
+  await page.locator(`[data-entry-id="${empty}"]`).click();
+  await page.keyboard.press('ArrowRight');
+  await capture(page).fill('empty owner exact **draft**');
+  await page
+    .getByRole('button', {
+      name: 'Open stash Nonempty destination',
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(() => at(page))
+    .toEqual({ scope: 'live', itemId: destination });
+  await side(capture(page), 3);
+  await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: null });
+  const demoted = page.locator(`[data-entry-id="${empty}"]`);
+  await expect(demoted).toHaveAttribute('data-kind', 'note');
+  await side(capture(page), 4);
+  await expect
+    .poll(() => at(page))
+    .toEqual({ scope: 'live', itemId: destination });
+  await side(capture(page), 3);
+  await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: null });
+  await demoted.click();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: empty });
+  await expect(capture(page)).toHaveText('empty owner exact **draft**');
 });
 test('detaching the mouse adapter removes its release routing and default interception', async ({
   page,

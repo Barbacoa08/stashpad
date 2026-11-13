@@ -77,6 +77,14 @@ pub fn iso_now() -> String {
     )
 }
 pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
+    validate_version_snapshot(s, true)
+}
+pub fn validate_v4_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
+    let _: V4Workspace = serde_json::from_value(serde_json::to_value(s).map_err(|_| invalid())?)
+        .map_err(|_| invalid())?;
+    validate_version_snapshot(s, false)
+}
+fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()> {
     if s.items.len() > 20000 || s.drafts.len() > 40002 {
         return Err(invalid());
     }
@@ -118,17 +126,44 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
         }
         done.extend(pending);
     }
+    let mut scopes: HashMap<&str, bool> = HashMap::new();
+    for x in &s.items {
+        let mut current = Some(x.id.as_str());
+        let mut pending = Vec::new();
+        while let Some(id) = current {
+            if scopes.contains_key(id) {
+                break;
+            }
+            let node = index[id];
+            pending.push(id);
+            if node.deleted_at.is_some() {
+                scopes.insert(id, true);
+                break;
+            }
+            current = node.parent_id.as_deref();
+        }
+        let trash = current.is_some_and(|id| scopes.get(id).copied().unwrap_or(false));
+        for id in pending {
+            scopes.insert(id, trash);
+        }
+    }
     let mut ranks = HashSet::new();
     for x in &s.items {
         if x.deleted_at.is_some() {
-            if x.parent_id.is_some() {
+            if x.parent_id
+                .as_deref()
+                .is_some_and(|parent| !current || !scopes[parent])
+            {
                 return Err(invalid());
             }
         } else if x.restore_parent_id.is_some() || x.restore_index.is_some() {
             return Err(invalid());
         }
         if let Some(parent) = x.restore_parent_id.as_deref() {
-            if x.restore_index.is_none() || index.get(parent).is_none_or(|p| p.kind != Kind::Stash)
+            if x.restore_index.is_none()
+                || index
+                    .get(parent)
+                    .is_none_or(|p| !current && p.kind != Kind::Stash)
             {
                 return Err(invalid());
             }
@@ -146,7 +181,9 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
         let valid_key = if d.key == "compose" || d.key == "compose:trash" {
             true
         } else if let Some(id) = d.key.strip_prefix("compose:") {
-            index.get(id).is_some_and(|x| x.kind == Kind::Stash)
+            index
+                .get(id)
+                .is_some_and(|x| current || x.kind == Kind::Stash)
         } else {
             uuid(&d.key) && index.contains_key(d.key.as_str())
         };
@@ -250,9 +287,9 @@ pub fn convert_legacy(s: V3Workspace) -> WorkspaceSnapshot {
 }
 pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     validate_snapshot(s)?;
-    let b = BackupV4 {
+    let b = BackupV5 {
         format: "stashpad-alpha".into(),
-        version: 4,
+        version: 5,
         exported_at: iso_now(),
         workspace: s.clone(),
     };
@@ -265,23 +302,38 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub fn validate(bytes: &[u8]) -> Result<BackupV4> {
+pub fn validate(bytes: &[u8]) -> Result<BackupV5> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    let b: BackupV4 = if value.get("version").and_then(|x| x.as_i64()) == Some(4) {
-        serde_json::from_value(value).map_err(|_| invalid())?
-    } else {
-        let old = crate::legacy_backup::validate(bytes)?;
-        BackupV4 {
-            format: old.format,
-            version: 4,
-            exported_at: old.exported_at,
-            workspace: convert_legacy(old.workspace),
+    let b: BackupV5 = match value.get("version").and_then(|x| x.as_i64()) {
+        Some(5) => serde_json::from_value(value).map_err(|_| invalid())?,
+        Some(4) => {
+            let old: BackupV4 = serde_json::from_value(value).map_err(|_| invalid())?;
+            if old.format != "stashpad-alpha" || !timestamp(&old.exported_at) {
+                return Err(invalid());
+            }
+            let workspace: WorkspaceSnapshot = old.workspace.into();
+            validate_v4_snapshot(&workspace)?;
+            BackupV5 {
+                format: old.format,
+                version: 5,
+                exported_at: old.exported_at,
+                workspace,
+            }
+        }
+        _ => {
+            let old = crate::legacy_backup::validate(bytes)?;
+            BackupV5 {
+                format: old.format,
+                version: 5,
+                exported_at: old.exported_at,
+                workspace: convert_legacy(old.workspace),
+            }
         }
     };
-    if b.format != "stashpad-alpha" || b.version != 4 || !timestamp(&b.exported_at) {
+    if b.format != "stashpad-alpha" || b.version != 5 || !timestamp(&b.exported_at) {
         return Err(invalid());
     }
     validate_snapshot(&b.workspace)?;

@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use stashpad_alpha_kit::{model::*, store::Store};
 const A: &str = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
 #[test]
-fn empty_profile_is_schema_four() {
+fn empty_profile_is_schema_five() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
@@ -14,7 +14,7 @@ fn empty_profile_is_schema_four() {
     assert_eq!(
         c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
 }
 #[test]
@@ -69,7 +69,7 @@ fn actual_all_legacy_schemas_preserve_bytes_settings_drafts_and_undo() {
 }
 #[test]
 fn invalid_and_future_migrations_leave_file_identical() {
-    for v in [0, 1, 2, 3, 5] {
+    for v in [0, 1, 2, 3, 6] {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("bad.sqlite3");
         let c = Connection::open(&p).unwrap();
@@ -113,8 +113,12 @@ fn capture(db: &mut Store, n: u128, parent: Location, source: &str) -> Workspace
     .unwrap()
 }
 fn child(db: &mut Store, n: u128, parent: Location) -> WorkspaceSnapshot {
-    db.create_child_stash(&CreateChildStash { id: id(n), parent })
-        .unwrap()
+    db.create_child_stash(&CreateChildStash {
+        id: id(n),
+        parent,
+        leave: None,
+    })
+    .unwrap()
 }
 fn at(n: u128, scope: Scope) -> Location {
     Location {
@@ -130,6 +134,7 @@ fn fixed_identity_replay_conflicts_and_atomic_failed_parent_promotion() {
     let r = CreateChildStash {
         id: id(2),
         parent: at(1, Scope::Live),
+        leave: None,
     };
     let made = db.create_child_stash(&r).unwrap();
     assert_eq!(db.create_child_stash(&r).unwrap(), made);
@@ -140,7 +145,8 @@ fn fixed_identity_replay_conflicts_and_atomic_failed_parent_promotion() {
     assert!(db
         .create_child_stash(&CreateChildStash {
             id: id(2),
-            parent: home()
+            parent: home(),
+            leave: None,
         })
         .is_err());
     assert_eq!(db.load().unwrap(), made);
@@ -149,7 +155,8 @@ fn fixed_identity_replay_conflicts_and_atomic_failed_parent_promotion() {
     assert!(db
         .create_child_stash(&CreateChildStash {
             id: "invalid".into(),
-            parent: at(3, Scope::Live)
+            parent: at(3, Scope::Live),
+            leave: None,
         })
         .is_err());
     assert_eq!(db.load().unwrap(), before);
@@ -444,7 +451,8 @@ fn failed_capacity_creation_leaves_note_kind_and_every_prior_field_unchanged() {
     assert!(db
         .create_child_stash(&CreateChildStash {
             id: id(20001),
-            parent: at(1, Scope::Live)
+            parent: at(1, Scope::Live),
+            leave: None,
         })
         .is_err());
     assert_eq!(db.load().unwrap(), before);
@@ -475,10 +483,9 @@ fn capture_whitespace_matches_javascript_without_rewriting_source() {
 fn shared_current_fixture_roundtrips_exactly_including_trash_drafts() {
     let bytes = include_bytes!("../../tests/fixtures/valid-v4.json");
     let b = stashpad_alpha_kit::backup::validate(bytes).unwrap();
-    assert_eq!(
-        serde_json::to_value(b).unwrap(),
-        serde_json::from_slice::<serde_json::Value>(bytes).unwrap()
-    );
+    let mut expected = serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
+    expected["version"] = 5.into();
+    assert_eq!(serde_json::to_value(b).unwrap(), expected);
 }
 #[test]
 fn legacy_mixed_order_and_deleted_restore_index_use_exact_created_time_id_comparator() {

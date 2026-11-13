@@ -9,6 +9,9 @@ async function child(p: Page, label: string) {
     const id = c.state.stashId;
     c.editContext(id, label);
     await c.flush();
+    // History tests revisit saved containers; empty-container exits are covered separately.
+    c.editSource('saved child for history');
+    await c.save();
     return id;
   }, label);
 }
@@ -477,6 +480,8 @@ test('Right promotion records one visit and history never promotes on traversal'
   await note.click();
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => at(page)).toEqual({ scope: 'live', itemId: id });
+  await capture(page).fill('saved child for history');
+  await capture(page).press('Enter');
   await capture(page).fill('owned draft');
   await page.evaluate(() => {
     (window as any).__test.repo.promoteItem = () => {

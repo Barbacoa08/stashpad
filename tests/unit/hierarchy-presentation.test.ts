@@ -34,7 +34,7 @@ it('bounds one deep displayed source location instead of emitting its complete a
   const s = acceptedDeepWorkspace();
   const text = encodeBackup(s);
   expect(new TextEncoder().encode(text).length).toBeLessThan(6 * 1024 * 1024);
-  expect(validateBackup(text)).toHaveProperty('version', 4);
+  expect(validateBackup(text)).toHaveProperty('version', 5);
   expect(
     Array.from(
       hierarchy.locationLabel(

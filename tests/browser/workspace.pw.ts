@@ -63,8 +63,23 @@ test('delayed save keeps later typing and failed navigation has retry', async ({
   await page.evaluate(() => {
     (window as any).__test.repo.fail = null;
   });
-  await page.getByRole('button', { name: 'Retry checkpoint' }).click();
-  await expect(page.getByRole('status')).toHaveText('Draft checkpointed');
+  await page.getByRole('button', { name: 'Retry action', exact: true }).click();
+  await expect(editor).toHaveText('newer input');
+  expect(
+    await page.evaluate(
+      () => (window as any).__test.controller.state.activeKey,
+    ),
+  ).toBe('compose');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__test.repo.snapshot.drafts.find(
+            (d: any) => d.key === 'compose',
+          )?.markdown,
+      ),
+    )
+    .toBe('newer input');
 });
 test('explicit delete after finish saves latest edit and Undo restores it', async ({
   page,
@@ -147,11 +162,32 @@ test('failed finish retains note source and prevents navigation until retry', as
   await expect(page.getByRole('textbox', { name: 'Edit Markdown' })).toHaveText(
     'retained',
   );
+  const beforeRetry = await page.evaluate(() => ({
+    location: (window as any).__test.controller.state.location,
+    id: (window as any).__test.controller.state.activeKey,
+  }));
   await page.evaluate(() => ((window as any).__test.repo.fail = null));
-  await page.getByRole('button', { name: 'Retry save', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry action', exact: true }).click();
   await expect(
     page.getByRole('textbox', { name: 'Edit Markdown' }),
   ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => (window as any).__test.controller.state.location),
+  ).toEqual(beforeRetry.location);
+  expect(
+    await page.evaluate(
+      (id) =>
+        (window as any).__test.repo.snapshot.items.find(
+          (item: any) => item.id === id,
+        )?.markdown,
+      beforeRetry.id,
+    ),
+  ).toBe('retained');
+  expect(
+    await page.evaluate(
+      () => (window as any).__test.controller.state.activeKey,
+    ),
+  ).toBe('compose');
 });
 for (const failFollowup of [false, true])
   test(`pending navigation checkpoint preserves later typing; follow-up failure=${failFollowup}`, async ({
@@ -183,7 +219,9 @@ for (const failFollowup of [false, true])
       await page.evaluate(
         () => ((window as any).__test.repo.failCheckpointCall = null),
       );
-      await page.getByRole('button', { name: 'Retry checkpoint' }).click();
+      await page
+        .getByRole('button', { name: 'Retry action', exact: true })
+        .click();
     }
     await expect
       .poll(() =>

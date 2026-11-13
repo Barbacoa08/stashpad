@@ -44,11 +44,11 @@ describe('unified source-bearing items', () => {
     expect(r.snapshot.items.find((x) => x.id === b)?.parentId).toBe(a);
     expect(r.snapshot.drafts[0].markdown).toBe('retained');
   });
-  it('exports strict version 4 and rejects duplicate sibling ranks', async () => {
+  it('exports strict version 5 and rejects duplicate sibling ranks', async () => {
     const r = new MemoryRepository();
     await r.createChildStash({ id: a, parent: home });
     await r.createChildStash({ id: b, parent: home });
-    expect(JSON.parse(encodeBackup(r.snapshot)).version).toBe(4);
+    expect(JSON.parse(encodeBackup(r.snapshot)).version).toBe(5);
     r.snapshot.items[1].position = 0;
     expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('code');
   });
@@ -133,7 +133,7 @@ it('converts frozen legacy fixtures only after strict old validation, retaining 
   for (const version of [1, 2, 3]) {
     const text = readFileSync(`tests/fixtures/valid-v${version}.json`, 'utf8');
     const b = validateBackup(text);
-    expect(b).toHaveProperty('version', 4);
+    expect(b).toHaveProperty('version', 5);
     if ('code' in b) throw b;
     const old = JSON.parse(text).workspace;
     for (const n of old.notes) {
@@ -159,7 +159,7 @@ it('validates current graph, exact case references, metadata, duplicate position
     drafts: [],
     undoDeleteId: null,
   };
-  expect(validateBackup(encodeBackup(valid))).toHaveProperty('version', 4);
+  expect(validateBackup(encodeBackup(valid))).toHaveProperty('version', 5);
   for (const mutate of [
     (s: any) => (s.items[0].parentId = b),
     (s: any) => (s.items[1].parentId = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'),
@@ -169,7 +169,7 @@ it('validates current graph, exact case references, metadata, duplicate position
     (s: any) => (s.items[1].id = a.toUpperCase()),
     (s: any) =>
       s.drafts.push({
-        key: `compose:${b}`,
+        key: 'compose:00000000-0000-4000-8000-999999999999',
         markdown: '',
         revision: 0,
         updatedAt: 0,
@@ -231,7 +231,7 @@ it('bounds current source previews and handles a deep 20000-item tree without re
   ).toBeLessThanOrEqual(96);
   expect(
     validateBackup(encodeBackup({ items, drafts: [], undoDeleteId: null })),
-  ).toHaveProperty('version', 4);
+  ).toHaveProperty('version', 5);
 });
 it('keeps a failed capacity-limited atomic promotion/create unchanged, including drafts and metadata', async () => {
   const r = new MemoryRepository();
@@ -354,7 +354,9 @@ it('deleting an ancestor from global search returns to the surviving parent and 
   expect(c.sourceFor(`compose:${child}`)).toBe('child draft');
   expect(r.snapshot.items.find((x) => x.id === child)?.parentId).toBe(parent);
   await c.undoRemove();
-  await c.openStash(child);
+  // Deleting its ancestor exited this childless stash; explicitly reopening the
+  // retained note promotes the same owner and restores its independent composer.
+  await c.enterItem(child);
   expect(c.state.source).toBe('child draft');
   c.dispose();
 });
@@ -405,7 +407,7 @@ it('capture whitespace agrees with native ECMAScript trimming and preserves nonb
 });
 it('accepts the shared synthetic V4 fixture exactly, including color and Trash draft scopes', () => {
   const text = readFileSync('tests/fixtures/valid-v4.json', 'utf8');
-  expect(validateBackup(text)).toEqual(JSON.parse(text));
+  expect(validateBackup(text)).toEqual({ ...JSON.parse(text), version: 5 });
 });
 
 for (const later of ['single intent!', 'single intent', ''])
@@ -528,7 +530,7 @@ it('recovers from definitively rejected complete-envelope capacity after reducin
       2048 -
       new TextEncoder().encode(encodeBackup(r.snapshot)).length,
   );
-  expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('version', 4);
+  expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('version', 5);
   const before = structuredClone(r.snapshot),
     c = new WorkspaceController(r);
   try {

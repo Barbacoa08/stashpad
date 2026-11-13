@@ -7,9 +7,10 @@
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ItemCard from './ItemCard.svelte';
   import ColorPalette from './ColorPalette.svelte';
+  import MoveDialog, { type MoveDestination } from './MoveDialog.svelte';
   import { SiblingDrag, siblingDragType } from '../workspace/sibling-drag';
   import { createReorderMotion } from '../workspace/reorder-motion';
-  import type { ReorderItem } from '../platform/workspace';
+  import type { MoveItems } from '../platform/workspace';
   import Icon from './Icon.svelte';
   import StashSidebar from './StashSidebar.svelte';
   import {
@@ -27,6 +28,13 @@
     historyLocationValidator,
   } from '../workspace/navigation-history';
   import { LocationSelection } from '../workspace/selection';
+  import {
+    emptyMouseSelection,
+    mouseSelect,
+    reconcileMouseSelection,
+    reorderSelected,
+    type MouseSelection,
+  } from '../workspace/mouse-selection';
   import { WorkspaceController, type ViewState } from '../workspace/controller';
   import { nativeRepository, type Repository } from '../platform/workspace';
   import { copyMarkdown, openExternal } from '../platform/actions';
@@ -43,7 +51,14 @@
   } = $props();
   const controller = new WorkspaceController(untrack(() => repository));
   let viewState: ViewState = $state(controller.state);
-  let selected = $state('');
+  let mouseSelection = $state<MouseSelection>(emptyMouseSelection());
+  let selected = $derived(mouseSelection.primary);
+  let selectedIds = $derived(new Set(mouseSelection.ids));
+  function setSelected(id: string) {
+    mouseSelection = id
+      ? { ids: [id], primary: id, anchor: id }
+      : emptyMouseSelection();
+  }
   let undoPending = $state(false);
   const selection = new LocationSelection();
   let editHeights = $state<Record<string, number>>({});
@@ -64,6 +79,18 @@
     error: string;
   };
   let palette = $state<PaletteSession | null>(null);
+  type MoveSession = {
+    session: number;
+    ids: string[];
+    primary: string;
+    returnTo: HTMLElement | null;
+    destinations: MoveDestination[];
+    pending: boolean;
+    error: string;
+    request: MoveItems | null;
+  };
+  let moveSession = $state<MoveSession | null>(null);
+  let moveSequence = 0;
   let paletteSequence = 0;
   let paletteRetry = $state.raw<{
     session: number;
@@ -229,9 +256,28 @@
       ? [activeNote, ...entries]
       : entries;
   });
-  let modal = $derived(!!viewState.preview || closeFailed);
+  $effect(() => {
+    void metadataView;
+    untrack(() => {
+      if (mouseSelection.ids.length > 1) setSelected(selected);
+    });
+  });
+  $effect(() => {
+    const valid = shownEntries.map((entry) => entry.id);
+    untrack(() => {
+      const next = reconcileMouseSelection(mouseSelection, valid);
+      if (JSON.stringify(next) !== JSON.stringify(mouseSelection))
+        mouseSelection = next;
+    });
+  });
+  let modal = $derived(!!viewState.preview || closeFailed || !!moveSession);
   let blocked = $derived(
     (viewState.operation !== null && viewState.operation !== 'save') || modal,
+  );
+  let navigationBlocked = $derived(
+    modal ||
+      (viewState.operation !== null &&
+        !['save', 'navigate', 'promote'].includes(viewState.operation)),
   );
   let editorReadOnly = $derived(
     modal || (viewState.operation !== null && viewState.operation !== 'save'),
@@ -255,14 +301,27 @@
     if (!hintTextSelected && !viewState.query.trim()) {
       const id = handleId ?? (!typing && selectedVisible ? selected : null);
       const siblings = directEntries(viewState.snapshot, viewState.location);
-      const index = siblings.findIndex((x) => x.id === id);
-      const up = index > 0;
-      const down = index >= 0 && index < siblings.length - 1;
+      const before = siblings.map((item) => item.id);
+      const ids = id
+        ? selectedIds.has(id)
+          ? before.filter((entry) => selectedIds.has(entry))
+          : [id]
+        : [];
+      const up = reorderSelected(before, ids, -1).some(
+        (entry, index) => entry !== before[index],
+      );
+      const down = reorderSelected(before, ids, 1).some(
+        (entry, index) => entry !== before[index],
+      );
       if (up || down)
         hints.push(`⌘${up && down ? '↑/↓' : up ? '↑' : '↓'} Reorder`);
     }
     if (selectedVisible && !typing && !hintTextSelected)
-      hints.push('⌘⌫ Delete');
+      hints.push(
+        viewState.location.scope === 'trash'
+          ? '⌘⌫ Permanently delete'
+          : '⌘⌫ Delete',
+      );
     return hints.join(' · ');
   });
   function updateHintContext() {
@@ -286,7 +345,7 @@
     exact = false,
     traversing = false,
   ) {
-    if (blocked) return;
+    if (navigationBlocked) return;
     if (!traversing) navigation.cancel();
     const request = ++interaction,
       focus = observeSubmissionFocus();
@@ -298,13 +357,18 @@
           : controller.enterItem(id))
       ) {
         if (request !== interaction) return;
-        selected = selection.open(
-          controller.state.location,
-          directEntries(
-            controller.state.snapshot,
+        // A successful visit to an equal-valued root has no location-change patch.
+        if (traversing && navigation.acknowledge(controller.state.location))
+          historyRevision++;
+        setSelected(
+          selection.open(
             controller.state.location,
-          ).map((e) => e.id),
-          preferred,
+            directEntries(
+              controller.state.snapshot,
+              controller.state.location,
+            ).map((e) => e.id),
+            preferred,
+          ),
         );
         await tick();
         scrollSelection();
@@ -331,7 +395,7 @@
         )
       ) {
         if (request !== interaction) return;
-        selected = '';
+        setSelected('');
         await tick();
         if (focus.mayRestore()) composer?.focus();
       }
@@ -349,10 +413,13 @@
     let previous = controller.state;
     navigation.reset(previous.location);
     const unsubscribe = controller.subscribe((next) => {
+      const locationChanged =
+        next.location.scope !== previous.location.scope ||
+        next.location.itemId !== previous.location.itemId;
       // Capture only acknowledged sibling-order changes before Svelte moves the
       // existing keyed cards. Source saves and other snapshot changes only settle.
       if (
-        next.location !== previous.location ||
+        locationChanged ||
         next.query !== previous.query ||
         next.activeKey !== previous.activeKey ||
         next.buffers !== previous.buffers
@@ -363,9 +430,9 @@
         const after = directEntries(next.snapshot, next.location);
         const old = new Map(before.map((item) => [item.id, item]));
         const siblingReorder =
-          next.operation === 'reorder' &&
+          (next.operation === 'reorder' || next.operation === 'move') &&
           !next.query.trim() &&
-          next.location === previous.location &&
+          !locationChanged &&
           before.length === after.length &&
           after.every((item) => {
             const prior = old.get(item.id);
@@ -385,9 +452,11 @@
       }
       // Subscribe sees each patch synchronously; Svelte effects can coalesce the
       // operation/location/finally patches and lose the structural cause.
-      if (next.location !== previous.location) {
+      if (locationChanged && next.operation !== 'navigation-reconcile') {
         const structural =
           next.operation === 'delete' ||
+          next.operation === 'purge' ||
+          next.operation === 'move' ||
           next.operation === 'restore-item' ||
           (next.location.itemId !== null &&
             next.location.itemId === previous.location.itemId &&
@@ -395,6 +464,30 @@
         if (structural) navigation.reconcile(next.location);
         else if (!navigation.acknowledge(next.location))
           navigation.visit(next.location);
+      }
+      if (
+        next.purgedItemIds !== previous.purgedItemIds &&
+        next.purgedItemIds.length
+      ) {
+        const removed = new Set(next.purgedItemIds);
+        for (const id of removed) {
+          editorStates.delete(id);
+          editorStates.delete(`compose:${id}`);
+        }
+        editHeights = Object.fromEntries(
+          Object.entries(editHeights).filter(([id]) => !removed.has(id)),
+        );
+        expandedNotes = Object.fromEntries(
+          Object.entries(expandedNotes).filter(([id]) => !removed.has(id)),
+        );
+        composerEpochs = Object.fromEntries(
+          Object.entries(composerEpochs).filter(
+            ([key]) =>
+              !removed.has(key.startsWith('compose:') ? key.slice(8) : key),
+          ),
+        );
+        if (selectedEditingContext && removed.has(selectedEditingContext.id))
+          selectedEditingContext = null;
       }
       previous = next;
       viewState = next;
@@ -521,7 +614,7 @@
     try {
       if (await controller.selectNote(id)) {
         if (request !== interaction) return;
-        selected = id;
+        setSelected(id);
         await tick();
         if (focus.mayRestore()) focusInline({ end });
       }
@@ -568,9 +661,10 @@
             ...composerEpochs,
             [key]: (composerEpochs[key] ?? 0) + 1,
           };
-        selected =
+        setSelected(
           controller.state.snapshot.items.find((n) => !known.has(n.id))?.id ??
-          selected;
+            selected,
+        );
       }
       await tick();
       if (composeOwner(key)) {
@@ -633,9 +727,32 @@
       window.getSelection()?.toString()
     )
       return;
+    selectCard(event, id);
+  }
+  function selectionPointer(event: PointerEvent) {
+    if (
+      (event.metaKey || event.shiftKey) &&
+      !blocked &&
+      (!(event.target as Element).closest('button') ||
+        !!(event.target as Element).closest('.note-select,.drag-handle')) &&
+      !(event.target as Element).closest(
+        'a,input,textarea,[contenteditable="true"]',
+      ) &&
+      !window.getSelection()?.toString()
+    )
+      event.preventDefault();
+  }
+  function selectCard(event: MouseEvent, id: string) {
+    if (blocked) return;
     ++interaction;
-    selected = id;
-    selection.remember(viewState.location, id);
+    const siblings = directEntries(viewState.snapshot, viewState.location).map(
+      (entry) => entry.id,
+    );
+    mouseSelection =
+      viewState.query.trim() || !siblings.includes(id)
+        ? { ids: [id], primary: id, anchor: id }
+        : mouseSelect(mouseSelection, siblings, id, event);
+    selection.remember(viewState.location, selected);
     if (activeNote && activeNote.id !== id) leaveEdit(activeNote.id);
     stream?.focus();
   }
@@ -654,17 +771,25 @@
       ? filterNotes(state.snapshot.items, state.query, state.location.scope)
       : directEntries(state.snapshot, state.location);
   }
-  async function remove() {
-    if (!selectedNote || blocked) return;
-    const id = selected,
-      ordinal = shownEntries.findIndex((x) => x.id === id),
+  async function remove(id = selected) {
+    if (!id || blocked) return;
+    const ordinal = shownEntries.findIndex((x) => x.id === id),
       request = ++interaction,
       focus = observeSubmissionFocus();
     try {
-      if (!(await controller.remove(id)) || request !== interaction) return;
+      const purge =
+        scopes.get(id) === 'trash' ? controller.capturePurge(id) : null;
+      if (
+        !(await (purge
+          ? controller.purgeItem(purge)
+          : controller.remove(id))) ||
+        request !== interaction
+      )
+        return;
       const entries = currentEntries();
-      selected =
-        entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+      setSelected(
+        entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
+      );
       selection.remember(controller.state.location, selected);
       await tick();
       if (focus.mayRestore()) {
@@ -687,7 +812,7 @@
       focus = observeSubmissionFocus();
     try {
       if (!(await controller.finishEdit()) || request !== interaction) return;
-      selected = '';
+      setSelected('');
       await tick();
       if (focus.mayRestore()) stream?.focus();
     } finally {
@@ -731,17 +856,22 @@
         return;
       }
       if (!ok || request !== interaction) return;
+      if (navigation.acknowledge(controller.state.location)) historyRevision++;
       const entries = currentEntries();
       if (before !== JSON.stringify(controller.state.location))
-        selected = selection.open(
-          controller.state.location,
-          entries.map((x) => x.id),
+        setSelected(
+          selection.open(
+            controller.state.location,
+            entries.map((x) => x.id),
+          ),
         );
       else if (!entries.some((x) => x.id === selected))
-        selected =
-          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+        setSelected(
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
+        );
       await tick();
-      if (focus.mayRestore()) {
+      // An unrelated retry must not dismiss the open palette by moving focus.
+      if (focus.mayRestore() && !palette) {
         if (selected) stream?.focus();
         else composer?.focus();
       }
@@ -762,8 +892,9 @@
         return;
       const entries = currentEntries();
       if (!entries.some((x) => x.id === selected))
-        selected =
-          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+        setSelected(
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
+        );
       selection.remember(controller.state.location, selected);
       await tick();
       if (focus.mayRestore()) {
@@ -787,10 +918,11 @@
     try {
       if (!(await controller.undoRemove()) || request !== interaction) return;
       const entries = currentEntries();
-      if (id && entries.some((x) => x.id === id)) selected = id;
+      if (id && entries.some((x) => x.id === id)) setSelected(id);
       else if (!entries.some((x) => x.id === selected))
-        selected =
-          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '';
+        setSelected(
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
+        );
       selection.remember(controller.state.location, selected);
       await tick();
       scrollSelection();
@@ -856,13 +988,13 @@
           closePalette(focus.mayRestore(), session);
         }
       } else {
-        if (controller.mutationRetryIdentity)
+        if (controller.commandRetryIdentity)
           paletteRetry = {
             session,
             id: current.id,
             label,
             color,
-            identity: controller.mutationRetryIdentity,
+            identity: controller.commandRetryIdentity,
             epoch,
           };
         if (palette?.session === session) {
@@ -874,37 +1006,200 @@
       focus.stop();
     }
   }
-  async function moveItem(request: ReorderItem) {
-    if (blocked || viewState.query.trim()) return;
-    const intent = ++interaction,
-      before = JSON.stringify(controller.state.location),
-      query = controller.state.query;
-    const original = document.activeElement,
-      focus = observeSubmissionFocus();
+  function selectedGroup(id: string) {
+    return selectedIds.has(id)
+      ? directEntries(controller.state.snapshot, controller.state.location)
+          .filter((item) => selectedIds.has(item.id))
+          .map((item) => item.id)
+      : [id];
+  }
+  function captureMove(ids: string[], to: Location, toIndex: number) {
     try {
+      return controller.captureMove(ids, to, toIndex);
+    } catch {
+      controller.feedback(
+        '',
+        'These items can no longer move to that destination.',
+      );
+      return null;
+    }
+  }
+  async function executeMove(
+    request: MoveItems,
+    primary = selected,
+    session?: MoveSession,
+  ) {
+    if ((blocked && moveSession !== session) || viewState.query.trim()) return;
+    const intent = ++interaction,
+      epoch = workspaceEpoch,
+      before = JSON.stringify(controller.state.location),
+      query = controller.state.query,
+      ordinal = shownEntries.findIndex((item) => item.id === primary),
+      original = document.activeElement,
+      focus = observeSubmissionFocus();
+    if (session) {
+      session.pending = true;
+      session.error = '';
+    }
+    try {
+      const ok = await controller.moveItems($state.snapshot(request));
+      if (epoch !== workspaceEpoch) return;
+      if (!ok) {
+        if (session && moveSession?.session === session.session) {
+          session.pending = false;
+          session.error = controller.state.error;
+        }
+        return;
+      }
+      if (session && moveSession?.session === session.session) {
+        session.pending = false;
+        moveSession = null;
+      }
       if (
-        !(await controller.reorderItem(request)) ||
         intent !== interaction ||
         before !== JSON.stringify(controller.state.location) ||
         query !== controller.state.query
       )
         return;
-      selected = request.id;
+      const entries = currentEntries(),
+        valid = entries.map((item) => item.id),
+        moving = new Set(request.ids),
+        ids = valid.filter((id) => moving.has(id));
+      if (ids.length)
+        mouseSelection = {
+          ids,
+          primary: ids.includes(primary) ? primary : ids[0],
+          anchor: ids.includes(mouseSelection.anchor)
+            ? mouseSelection.anchor
+            : ids[0],
+        };
+      else
+        setSelected(
+          entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
+        );
       selection.remember(controller.state.location, selected);
       await tick();
       scrollSelection();
       if (focus.mayRestore()) {
         if (
+          session?.returnTo?.isConnected &&
+          session.returnTo.getClientRects().length
+        )
+          session.returnTo.focus();
+        else if (
           original instanceof HTMLButtonElement &&
           original.classList.contains('drag-handle') &&
           original.isConnected
         )
           original.focus();
-        else stream?.focus();
+        else if (selected) stream?.focus();
+        else composer?.focus();
       }
     } finally {
       focus.stop();
     }
+  }
+  function openMove() {
+    if (blocked || !selected || viewState.query.trim()) {
+      if (viewState.query.trim())
+        controller.feedback(
+          'Open the containing stash to move search results.',
+        );
+      return;
+    }
+    const ids = selectedGroup(selected),
+      excluded = new Set(ids),
+      snapshot = viewState.snapshot;
+    if (!ids.length) {
+      controller.feedback('Open the containing stash to move this item.');
+      return;
+    }
+    const children = new Map<string, string[]>();
+    for (const item of snapshot.items)
+      if (item.parentId) {
+        const group = children.get(item.parentId);
+        if (group) group.push(item.id);
+        else children.set(item.parentId, [item.id]);
+      }
+    const pending = [...ids];
+    for (let index = 0; index < pending.length; index++)
+      for (const id of children.get(pending[index]) ?? [])
+        if (!excluded.has(id)) {
+          excluded.add(id);
+          pending.push(id);
+        }
+    const scope = viewState.location.scope;
+    const destinations: MoveDestination[] = [
+      {
+        key: 'root',
+        label: scope === 'trash' ? 'Trash' : 'Home',
+        path: '',
+        location: { scope, itemId: null },
+      },
+      ...snapshot.items
+        .filter(
+          (item) =>
+            item.kind === 'stash' &&
+            scopes.get(item.id) === scope &&
+            !excluded.has(item.id),
+        )
+        .map((item) => ({
+          key: item.id,
+          label: itemLabel(item),
+          path: locationHierarchy.label(item.parentId).text,
+          location: { scope, itemId: item.id },
+        })),
+    ];
+    palette = null;
+    moveSession = {
+      session: ++moveSequence,
+      ids,
+      primary: selected,
+      destinations,
+      pending: false,
+      error: '',
+      request: null,
+      returnTo:
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null,
+    };
+  }
+  function cancelMove() {
+    const session = moveSession;
+    if (!session || session.pending) return;
+    const focus = observeSubmissionFocus();
+    moveSession = null;
+    void tick().then(() => {
+      try {
+        if (moveSession || !focus.mayRestore()) return;
+        if (
+          session.returnTo?.isConnected &&
+          session.returnTo.getClientRects().length
+        )
+          session.returnTo.focus();
+        else stream?.focus();
+      } finally {
+        focus.stop();
+      }
+    });
+  }
+  function confirmMove(to: Location) {
+    const session = moveSession;
+    if (!session || session.pending) return;
+    const moving = new Set(session.ids);
+    const remaining = directEntries(viewState.snapshot, to).filter(
+      (item) => !moving.has(item.id),
+    );
+    const request =
+      session.request ?? captureMove(session.ids, to, remaining.length);
+    if (!request) {
+      session.error =
+        'This destination is no longer available. Choose another destination or cancel.';
+      return;
+    }
+    session.request = request;
+    void executeMove(request, session.primary, session);
   }
   function moveKey(event: KeyboardEvent, id: string) {
     if (
@@ -932,10 +1227,25 @@
       controller.state.snapshot,
       controller.state.location,
     );
-    const from = siblings.findIndex((x) => x.id === id),
-      toIndex = from + (event.key === 'ArrowUp' ? -1 : 1);
-    if (from < 0 || toIndex < 0 || toIndex >= siblings.length) return;
-    void moveItem({ id, group: { ...controller.state.location }, toIndex });
+    const ids = selectedGroup(id),
+      before = siblings.map((item) => item.id);
+    const after = reorderSelected(
+      before,
+      ids,
+      event.key === 'ArrowUp' ? -1 : 1,
+    );
+    if (after.every((item, index) => item === before[index])) return;
+    try {
+      void executeMove(
+        controller.captureReorder(ids, after),
+        selectedIds.has(id) ? selected : id,
+      );
+    } catch {
+      controller.feedback(
+        '',
+        'These items can no longer be reordered together.',
+      );
+    }
   }
   function startDrag(event: DragEvent, id: string) {
     reorderMotion?.cancel();
@@ -944,9 +1254,12 @@
       return;
     }
     ++interaction;
-    selected = id;
-    selection.remember(viewState.location, id);
-    const token = siblingDrag.begin(id, controller.state.location);
+    if (!selectedIds.has(id)) setSelected(id);
+    selection.remember(viewState.location, selected);
+    const token = siblingDrag.begin(
+      selectedGroup(id),
+      controller.state.location,
+    );
     event.dataTransfer.clearData();
     event.dataTransfer.setData(siblingDragType, token);
     event.dataTransfer.effectAllowed = 'move';
@@ -996,7 +1309,10 @@
     // Never let files, URLs, or foreign HTML replace the workspace document.
     event.preventDefault();
     event.stopPropagation();
-    if (request) void moveItem(request);
+    if (request) {
+      const captured = captureMove(request.ids, request.group, request.toIndex);
+      if (captured) void executeMove(captured);
+    }
   }
   function focusInline(options?: { end?: boolean }) {
     noteBodies[controller.state.activeKey]?.focus(options);
@@ -1006,7 +1322,7 @@
     const note = shownEntries.filter((x) => x.kind === 'note').at(-1);
     if (!note) return false;
     ++interaction;
-    selected = note.id;
+    setSelected(note.id);
     selection.remember(viewState.location, selected);
     stream?.focus();
     scrollSelection();
@@ -1024,7 +1340,7 @@
       event.defaultPrevented ||
       event.isComposing ||
       !viewState.loaded ||
-      blocked ||
+      (blocked && !(event.key === '1' && !navigationBlocked)) ||
       palette ||
       !event.metaKey ||
       event.altKey ||
@@ -1049,7 +1365,11 @@
       palette ||
       event.defaultPrevented ||
       !viewState.loaded ||
-      blocked ||
+      (blocked &&
+        (navigationBlocked ||
+          !['arrowleft', 'arrowright', 'enter'].includes(
+            event.key.toLowerCase(),
+          ))) ||
       event.altKey ||
       event.ctrlKey ||
       event.shiftKey
@@ -1089,7 +1409,13 @@
       }
       return;
     }
-    if (isTyping(event.target) || blocked || window.getSelection()?.toString())
+    if (
+      isTyping(event.target) ||
+      (blocked &&
+        (navigationBlocked ||
+          !['arrowleft', 'arrowright', 'enter'].includes(key))) ||
+      window.getSelection()?.toString()
+    )
       return;
     if (key === ' ') {
       event.preventDefault();
@@ -1100,6 +1426,9 @@
     } else if (key === 'e' && selectedNote) {
       event.preventDefault();
       void edit(selected, true);
+    } else if (key === 'm' && selectedNote && !event.repeat) {
+      event.preventDefault();
+      openMove();
     } else if (key === 'l' && selectedNote && !event.repeat) {
       event.preventDefault();
       openPalette();
@@ -1134,7 +1463,7 @@
         ];
       if (next) {
         ++interaction;
-        selected = next.id;
+        setSelected(next.id);
         selection.remember(viewState.location, selected);
         stream
           ?.querySelector(`[data-entry-id="${next.id}"]`)
@@ -1164,7 +1493,7 @@
     detailsOpen = detailsChoice;
   }
   function traverseHistory(direction: -1 | 1) {
-    if (blocked) return;
+    if (navigationBlocked) return;
     const visit = navigation.begin(direction, validVisit);
     if (visit)
       void openStash(
@@ -1231,14 +1560,14 @@
       class="toolbar-button"
       aria-label="Back"
       title="Back"
-      disabled={blocked || !backVisit}
+      disabled={navigationBlocked || !backVisit}
       onclick={() => traverseHistory(-1)}><Icon name="back" /></button
     >
     <button
       class="toolbar-button"
       aria-label="Forward"
       title="Forward"
-      disabled={blocked || !forwardVisit}
+      disabled={navigationBlocked || !forwardVisit}
       onclick={() => traverseHistory(1)}><Icon name="chevron" /></button
     >
     <h1 class="sr-only" title={destination}>{destination}</h1>
@@ -1250,7 +1579,7 @@
           <button
             aria-label={'Go to ' + crumb.label}
             aria-current={crumb.current ? 'page' : undefined}
-            disabled={blocked}
+            disabled={navigationBlocked}
             title={crumb.label}
             onclick={() =>
               void openStash(
@@ -1311,7 +1640,7 @@
             presentation={hierarchy}
             currentId={viewState.stashId}
             live={viewState.location.scope === 'live'}
-            disabled={blocked}
+            disabled={navigationBlocked}
             onopen={(id) => void openStash(id)}
           />
           {#if showCommandHints}<span
@@ -1325,7 +1654,7 @@
             aria-current={viewState.location.scope === 'trash'
               ? 'page'
               : undefined}
-            disabled={blocked}><Icon name="trash" /> Trash</button
+            disabled={navigationBlocked}><Icon name="trash" /> Trash</button
           >
           <button onclick={() => controller.export()} disabled={blocked}
             ><Icon name="download" /> Export backup</button
@@ -1351,6 +1680,10 @@
             {visibleNotes.length === 1 ? 'note' : 'notes'}</span
           >
         </div>
+        <p class="sr-only" aria-live="polite">
+          {mouseSelection.ids.length}
+          {mouseSelection.ids.length === 1 ? 'item selected' : 'items selected'}
+        </p>
         <!-- The focusable region is the keyboard navigation surface; card selection has named controls. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
         <section
@@ -1380,7 +1713,9 @@
               }}
               ondrop={(event) => dropItem(event, entry.id)}
               onmovekey={(event) => moveKey(event, entry.id)}
-              selected={selected === entry.id}
+              selected={selectedIds.has(entry.id)}
+              primary={selected === entry.id}
+              permanent={scopes.get(entry.id) === 'trash'}
               editing={viewState.activeKey === entry.id}
               source={viewState.buffers[entry.id]?.source ?? entry.markdown}
               baseline={editHeights[entry.id]}
@@ -1395,16 +1730,18 @@
                 : ''}
               onselect={(event) => cardClick(event, entry.id)}
               ondoubleclick={(event) => cardDoubleClick(event, entry.id)}
-              onselectbutton={() => {
-                ++interaction;
-                selected = entry.id;
-                selection.remember(viewState.location, selected);
-                if (activeNote && activeNote.id !== entry.id)
-                  leaveEdit(activeNote.id);
-                stream?.focus();
+              onselectbutton={(event) => selectCard(event, entry.id)}
+              onhandleselect={(event) => {
+                if (
+                  event.metaKey ||
+                  event.shiftKey ||
+                  !selectedIds.has(entry.id)
+                )
+                  selectCard(event, entry.id);
               }}
+              onselectionpointer={selectionPointer}
               onedit={() => void edit(entry.id)}
-              ondelete={() => void remove()}
+              ondelete={() => void remove(entry.id)}
               oncopy={() => void copy(entry.id)}
               ondone={() => void controller.setNoteDone(entry.id, !entry.done)}
               onsource={(source) => controller.editContext(entry.id, source)}
@@ -1521,8 +1858,10 @@
             <section aria-label="Trash details">
               <h2>Trash</h2>
               <p>
-                Items are retained for at least 90 days. Automatic permanent
-                cleanup is not enabled yet.
+                Items are retained for at least 90 days unless you permanently
+                delete them. Delete here permanently removes the item and its
+                children, with no Undo. Automatic permanent cleanup is not
+                enabled yet.
               </p>
               {#if deletionRoot}{@const deleted = timestampPresentation(
                   deletionRoot.deletedAt!,
@@ -1591,6 +1930,7 @@
             </div>
             <div><span>Mark done / not done</span><kbd>X</kbd></div>
             <div><span>Assign color</span><kbd>L</kbd></div>
+            <div><span>Move selected items</span><kbd>M</kbd></div>
             <div>
               <span aria-hidden="true">Reorder siblings</span><span
                 class="sr-only"
@@ -1600,8 +1940,14 @@
               >
             </div>
             <div>
-              <span aria-hidden="true">Delete selected</span><span
-                class="sr-only">Delete selected: Command Backspace</span
+              <span aria-hidden="true"
+                >{viewState.location.scope === 'trash'
+                  ? 'Permanently delete selected'
+                  : 'Delete selected'}</span
+              ><span class="sr-only"
+                >{viewState.location.scope === 'trash'
+                  ? 'Permanently delete selected: Command Backspace'
+                  : 'Delete selected: Command Backspace'}</span
               ><span class="shortcut-keys" aria-hidden="true"
                 ><kbd>⌘</kbd><kbd>⌫</kbd></span
               >
@@ -1659,7 +2005,7 @@
               navigation.reset(controller.state.location);
               historyRevision++;
               composerEpochs = {};
-              selected = '';
+              setSelected('');
               await tick();
               editorStates.clear();
               selection.clear();
@@ -1698,3 +2044,15 @@
       </section>{/if}
   {/if}
 </main>
+
+{#if moveSession}
+  <MoveDialog
+    destinations={moveSession.destinations}
+    count={moveSession.ids.length}
+    pending={moveSession.pending}
+    error={moveSession.error}
+    locked={!!moveSession.request}
+    onconfirm={confirmMove}
+    oncancel={cancelMove}
+  />
+{/if}
