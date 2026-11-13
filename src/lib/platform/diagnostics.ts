@@ -1,5 +1,5 @@
 /** Local diagnostics exclude messages and arbitrary stack text. */
-const storageKey = 'stashpad.preview.client-errors.v1';
+const storageKey = 'scratchtree.preview.client-errors.v1';
 const names = new Set([
   'Error',
   'TypeError',
@@ -105,7 +105,7 @@ function previous(
   if (
     record.version !== '0.1.0' ||
     typeof record.reference !== 'string' ||
-    !/^SP-[A-F0-9]{16}$/.test(record.reference) ||
+    !/^ST-[A-F0-9]{16}$/.test(record.reference) ||
     typeof record.time !== 'string' ||
     !/^(?:\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z|unavailable)$/.test(
       record.time,
@@ -162,11 +162,11 @@ export function captureDiagnostic(
   error: unknown,
   status: number,
 ): ClientDiagnostic {
-  let reference = 'SP-0000000000000000';
+  let reference = 'ST-0000000000000000';
   let time = 'unavailable';
   try {
     reference =
-      'SP-' +
+      'ST-' +
       Array.from(crypto.getRandomValues(new Uint32Array(2)), (value) =>
         value.toString(16).padStart(8, '0').toUpperCase(),
       ).join('');

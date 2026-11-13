@@ -21,7 +21,7 @@ for (name, expected) in sources {
     precondition(hash == expected, "Unexpected source hash: \(name)")
 }
 let temporaryDirectory = FileManager.default.temporaryDirectory
-    .appendingPathComponent("stashpad-icon-" + UUID().uuidString, isDirectory: true)
+    .appendingPathComponent("scratchtree-icon-" + UUID().uuidString, isDirectory: true)
 try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: false)
 do {
     defer { try? FileManager.default.removeItem(at: temporaryDirectory) }

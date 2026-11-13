@@ -10,7 +10,7 @@ import * as items from '../../src/lib/domain/items';
 import type {
   DraftAck,
   CaptureItem,
-  CreateChildStash,
+  CreateChildTree,
   ReorderItem,
   PurgeItem,
   MoveItems,
@@ -86,10 +86,10 @@ export class MemoryRepository implements Repository {
     this.check('save');
     return this.mutate((s) => items.captureItem(s, request));
   }
-  async createChildStash(request: CreateChildStash) {
+  async createChildTree(request: CreateChildTree) {
     await this.delayCreate;
     this.check('create');
-    return this.mutate((s) => items.createChildStash(s, request));
+    return this.mutate((s) => items.createChildTree(s, request));
   }
   async promoteItem(id: string) {
     this.check('promote');
@@ -150,12 +150,12 @@ export class MemoryRepository implements Repository {
     if (this.cancelRestore || !this.restoreText) return null;
     const b = validateBackup(this.restoreText);
     if ('code' in b) throw b;
-    this.staged = b.workspace;
+    this.staged = b.library;
     return {
       token: 'synthetic-token',
-      notes: b.workspace.items.filter((x) => x.kind === 'note').length,
-      drafts: b.workspace.drafts.length,
-      stashes: b.workspace.items.filter((x) => x.kind === 'stash').length,
+      notes: b.library.items.filter((x) => x.kind === 'note').length,
+      drafts: b.library.drafts.length,
+      trees: b.library.items.filter((x) => x.kind === 'tree').length,
       warning:
         'Replace the entire local workspace. A safety backup is required.',
     };

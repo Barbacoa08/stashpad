@@ -1,9 +1,7 @@
 pub mod backup;
 mod external;
-pub mod legacy_backup;
 pub mod model;
 pub mod store;
-pub mod v5_backup;
 mod window_geometry;
 use model::*;
 use std::{
@@ -39,7 +37,7 @@ impl NativeState {
 fn fail_operation(operation: &str) -> Result<()> {
     #[cfg(debug_assertions)]
     {
-        if let Ok(path) = std::env::var("STASHPAD_ALPHA_TEST_FAILURE_FILE") {
+        if let Ok(path) = std::env::var("SCRATCHTREE_ALPHA_TEST_FAILURE_FILE") {
             if std::fs::read_to_string(path).is_ok_and(|value| value.trim() == operation) {
                 return Err(error(
                     "synthetic_failure",
@@ -100,11 +98,11 @@ async fn item_capture(
     mutate(state, move |s| s.capture(&request)).await
 }
 #[tauri::command]
-async fn item_create_child_stash(
+async fn item_create_child_tree(
     state: State<'_, NativeState>,
-    request: CreateChildStash,
+    request: CreateChildTree,
 ) -> Result<WorkspaceSnapshot> {
-    mutate(state, move |s| s.create_child_stash(&request)).await
+    mutate(state, move |s| s.create_child_tree(&request)).await
 }
 #[tauri::command]
 async fn item_promote(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
@@ -194,7 +192,7 @@ struct Preview {
     token: String,
     notes: usize,
     drafts: usize,
-    stashes: usize,
+    trees: usize,
     warning: String,
 }
 #[tauri::command]
@@ -210,8 +208,8 @@ async fn backup_export(
         let path = app
             .dialog()
             .file()
-            .add_filter("Stashpad backup", &["json"])
-            .set_file_name("stashpad-backup.json")
+            .add_filter("Scratchtree backup", &["json"])
+            .set_file_name("scratchtree-backup.json")
             .blocking_save_file();
         let Some(path) = path else { return Ok(None) };
         let path = path.into_path().map_err(storage_error)?;
@@ -231,7 +229,7 @@ async fn backup_preview_restore(
         let path = app
             .dialog()
             .file()
-            .add_filter("Stashpad backup", &["json"])
+            .add_filter("Scratchtree backup", &["json"])
             .blocking_pick_file();
         let Some(path) = path else { return Ok(None) };
         let path = path.into_path().map_err(storage_error)?;
@@ -245,13 +243,24 @@ async fn backup_preview_restore(
         let token = uuid::Uuid::new_v4().to_string();
         let result = Preview {
             token: token.clone(),
-            notes: b.workspace.items.iter().filter(|x|x.kind==Kind::Note).count(),
-            drafts: b.workspace.drafts.len(),
-            stashes: b.workspace.items.iter().filter(|x|x.kind==Kind::Stash).count(),
-            warning: "Replace all local notes, stashes, and drafts. A safety backup will be written first."
-                .into(),
+            notes: b
+                .library
+                .items
+                .iter()
+                .filter(|x| x.kind == Kind::Note)
+                .count(),
+            drafts: b.library.drafts.len(),
+            trees: b
+                .library
+                .items
+                .iter()
+                .filter(|x| x.kind == Kind::Tree)
+                .count(),
+            warning:
+                "Replace all local notes, trees, and drafts. A safety backup will be written first."
+                    .into(),
         };
-        inner.lock().map_err(storage_error)?.preview = Some((token, b.workspace));
+        inner.lock().map_err(storage_error)?.preview = Some((token, b.library));
         Ok(Some(result))
     })
     .await
@@ -338,7 +347,7 @@ pub fn run() {
             clipboard_write_text,
             item_save_source,
             item_capture,
-            item_create_child_stash,
+            item_create_child_tree,
             item_promote,
             item_set_done,
             item_set_color,

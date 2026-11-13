@@ -128,7 +128,7 @@ for (const deniedStorage of [false, true])
     const diagnostic = page.getByRole('textbox', {
       name: 'Diagnostic details',
     });
-    await expect(diagnostic).toHaveValue(/SP-/);
+    await expect(diagnostic).toHaveValue(/ST-/);
     await expect(diagnostic).toHaveValue(/TypeError/);
     const safeDetails = await diagnostic.inputValue();
     expect(safeDetails).not.toContain('PRIVATE_');

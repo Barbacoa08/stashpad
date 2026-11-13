@@ -16,20 +16,20 @@ for (const constrained of [false, true]) {
     await capture.waitFor();
     await page.evaluate(async () => {
       const t = (window as any).__test;
-      t.seedLegacy({
-        stashes: [
+      t.seed({
+        items: [
           {
             id: '00000000-0000-4000-8000-000000000001',
-            name: '<Plain stash>',
+            kind: 'tree',
+            markdown: '<Plain tree>',
             parentId: null,
             createdAt: 1,
             updatedAt: 1,
           },
-        ],
-        notes: [
+
           {
             id: '00000000-0000-4000-8000-000000000002',
-            stashId: null,
+            parentId: null,
             markdown: 'Plain note',
             createdAt: 2,
             updatedAt: 2,
@@ -38,7 +38,7 @@ for (const constrained of [false, true]) {
           },
         ],
         drafts: [],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       });
       await t.controller.start();
     });
@@ -68,13 +68,13 @@ for (const constrained of [false, true]) {
         });
       }),
     ).toBe(true);
-    const stash = page.getByRole('article', { name: 'Stash <Plain stash>' });
+    const tree = page.getByRole('article', { name: 'Tree <Plain tree>' });
     const note = page.getByRole('article', { name: 'Saved note' });
-    const stashBox = (await stash.boundingBox())!;
+    const treeBox = (await tree.boundingBox())!;
     const noteBox = (await note.boundingBox())!;
-    expect(Math.abs(stashBox.height - noteBox.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(treeBox.height - noteBox.height)).toBeLessThanOrEqual(1);
     const baselines = await Promise.all([
-      stash
+      tree
         .locator('.markdown-view p')
         .evaluate((el) => el.getBoundingClientRect().top),
       note
@@ -82,14 +82,14 @@ for (const constrained of [false, true]) {
         .evaluate((el) => el.getBoundingClientRect().top),
     ]);
     expect(
-      Math.abs(baselines[0] - stashBox.y - (baselines[1] - noteBox.y)),
+      Math.abs(baselines[0] - treeBox.y - (baselines[1] - noteBox.y)),
     ).toBeLessThanOrEqual(1);
-    await stash.click();
-    await expect(stash).toHaveCSS('border-top-width', '2px');
-    expect(await stash.boundingBox()).toEqual(stashBox);
+    await tree.click();
+    await expect(tree).toHaveCSS('border-top-width', '2px');
+    expect(await tree.boundingBox()).toEqual(treeBox);
     expect(await note.boundingBox()).toEqual(noteBox);
     expect(
-      await stash.getByRole('button', { name: 'Edit stash' }).evaluate((el) => {
+      await tree.getByRole('button', { name: 'Edit tree' }).evaluate((el) => {
         const r = el.getBoundingClientRect(),
           card = el.closest('article')!.getBoundingClientRect();
         return (
@@ -100,8 +100,8 @@ for (const constrained of [false, true]) {
         );
       }),
     ).toBe(true);
-    await expect(stash.locator('.stash-icon')).toHaveCount(1);
-    await expect(stash.locator('.markdown-view p')).toHaveText('<Plain stash>');
+    await expect(tree.locator('.tree-icon')).toHaveCount(1);
+    await expect(tree.locator('.markdown-view p')).toHaveText('<Plain tree>');
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
     ).toBeVisible();

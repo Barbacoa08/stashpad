@@ -1,0 +1,104 @@
+{
+  "format": "scratchtree-alpha",
+  "version": 7,
+  "exportedAt": "2026-11-13T00:00:00.000Z",
+  "library": {
+    "items": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "parentId": null,
+        "kind": "tree",
+        "markdown": "**note 1**\r\nline\n",
+        "done": false,
+        "color": "blue",
+        "position": 0,
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": null,
+        "restoreParentId": null,
+        "restoreIndex": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "parentId": "00000000-0000-4000-8000-000000000001",
+        "kind": "note",
+        "markdown": "**note 2**\r\nline\n",
+        "done": true,
+        "color": null,
+        "position": 0,
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": null,
+        "restoreParentId": null,
+        "restoreIndex": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "parentId": null,
+        "kind": "tree",
+        "markdown": "**note 3**\r\nline\n",
+        "done": false,
+        "color": null,
+        "position": 0,
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": 3,
+        "restoreParentId": null,
+        "restoreIndex": 1
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "parentId": "00000000-0000-4000-8000-000000000003",
+        "kind": "note",
+        "markdown": "**note 4**\r\nline\n",
+        "done": true,
+        "color": null,
+        "position": 0,
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": 4,
+        "restoreParentId": null,
+        "restoreIndex": 0
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "parentId": null,
+        "kind": "note",
+        "markdown": "**note 5**\r\nline\n",
+        "done": false,
+        "color": null,
+        "position": 1,
+        "createdAt": 1,
+        "updatedAt": 2,
+        "deletedAt": 3,
+        "restoreParentId": null,
+        "restoreIndex": 2
+      }
+    ],
+    "drafts": [
+      {
+        "key": "00000000-0000-4000-8000-000000000002",
+        "markdown": "unsaved\r\n",
+        "revision": 4,
+        "updatedAt": 5
+      },
+      {
+        "key": "compose:00000000-0000-4000-8000-000000000001",
+        "markdown": "capture\r\n",
+        "revision": 6,
+        "updatedAt": 7
+      },
+      {
+        "key": "compose:trash",
+        "markdown": "trash draft",
+        "revision": 1,
+        "updatedAt": 2
+      }
+    ],
+    "undoDeleteIds": [
+      "00000000-0000-4000-8000-000000000003",
+      "00000000-0000-4000-8000-000000000004",
+      "00000000-0000-4000-8000-000000000005"
+    ]
+  }
+}

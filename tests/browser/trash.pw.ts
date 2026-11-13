@@ -25,11 +25,11 @@ async function seed(p: Page) {
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[1] },
     });
-    await t.repo.saveItemSource(ids[3], 'nested stash', {
+    await t.repo.saveItemSource(ids[3], 'nested tree', {
       key: ids[3],
       revision: 0,
     });
@@ -65,7 +65,7 @@ test('Trash opens retained trees with ordinary editing, capture, keyboard comman
   await deleteParent(page, ids);
   await expect(
     page.getByRole('button', {
-      name: 'Open stash parent **source** appended',
+      name: 'Open tree parent **source** appended',
       exact: true,
     }),
   ).toHaveCount(0);
@@ -298,7 +298,7 @@ test('Trash Command-N uses selected note parent, promotes atomically, and Back r
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
   const s = await page.evaluate(() => (window as any).__test.repo.snapshot);
-  expect(s.items.find((x: any) => x.id === ids[4]).kind).toBe('stash');
+  expect(s.items.find((x: any) => x.id === ids[4]).kind).toBe('tree');
   expect(s.items.filter((x: any) => x.parentId === ids[4])).toHaveLength(1);
   await capture(page).press('Escape');
   await stream(page).press('ArrowLeft');
@@ -388,11 +388,11 @@ for (const large of [false, true])
       const t = (window as any).__test;
       for (let i = 0; i < 30; i++) {
         const id = crypto.randomUUID();
-        await t.repo.createChildStash({
+        await t.repo.createChildTree({
           id,
           parent: { scope: 'live', itemId: null },
         });
-        await t.repo.saveItemSource(id, `Synthetic stash ${i}`, {
+        await t.repo.saveItemSource(id, `Synthetic tree ${i}`, {
           key: id,
           revision: 0,
         });

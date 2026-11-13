@@ -290,17 +290,17 @@ it('nested captures retain independent drafts, checkpoint failures block navigat
   try {
     await c.start();
     c.editSource('Home draft');
-    expect(await c.createStash()).toBe(true);
-    const parent = c.state.stashId!;
+    expect(await c.createTree()).toBe(true);
+    const parent = c.state.ownerId!;
     expect(
-      repo.snapshot.items.filter((x) => x.kind === 'stash')[0].parentId,
+      repo.snapshot.items.filter((x) => x.kind === 'tree')[0].parentId,
     ).toBeNull();
     c.editSource('Parent draft');
-    expect(await c.createStash()).toBe(true);
-    const child = c.state.stashId!;
+    expect(await c.createTree()).toBe(true);
+    const child = c.state.ownerId!;
     expect(
       repo.snapshot.items
-        .filter((x) => x.kind === 'stash')
+        .filter((x) => x.kind === 'tree')
         .find((s) => s.id === child)?.parentId,
     ).toBe(parent);
     c.editSource('nested source');
@@ -309,26 +309,26 @@ it('nested captures retain independent drafts, checkpoint failures block navigat
       repo.snapshot.items.filter((x) => x.kind === 'note')[0].parentId,
     ).toBe(child);
     const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
-    await c.openStash(null);
+    await c.openTree(null);
     expect(c.state.source).toBe('Home draft');
-    await c.openStash(parent);
+    await c.openTree(parent);
     expect(c.state.source).toBe('Parent draft');
     repo.fail = 'checkpoint';
     c.editSource('retained parent');
-    expect(await c.openStash(child)).toBe(false);
-    expect(c.state.stashId).toBe(parent);
+    expect(await c.openTree(child)).toBe(false);
+    expect(c.state.ownerId).toBe(parent);
     expect(c.state.source).toBe('retained parent');
     repo.fail = null;
     await c.selectNote(id);
-    expect(c.state.stashId).toBe(child);
+    expect(c.state.ownerId).toBe(child);
     c.editSource('edited nested');
     await c.save();
     expect(
       repo.snapshot.items.filter((x) => x.kind === 'note')[0].parentId,
     ).toBe(child);
     expect(c.state.activeKey).toBe(`compose:${child}`);
-    expect(await c.openStash('missing')).toBe(false);
-    expect(c.state.stashId).toBe(child);
+    expect(await c.openTree('missing')).toBe(false);
+    expect(c.state.ownerId).toBe(child);
   } finally {
     c.dispose();
   }
@@ -338,15 +338,15 @@ it('delayed nested save captures its destination and later typing before queued 
     c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash();
-    const id = c.state.stashId!;
+    await c.createTree();
+    const id = c.state.ownerId!;
     c.editSource('submitted');
     let release!: () => void;
     repo.delaySave = new Promise<void>((r) => (release = r));
     const save = c.save();
     await tick();
     c.editSource('later');
-    const navigation = c.openStash(null);
+    const navigation = c.openTree(null);
     release();
     expect(await save).toBe(true);
     expect(await navigation).toBe(true);
@@ -359,21 +359,21 @@ it('delayed nested save captures its destination and later typing before queued 
     expect(
       repo.snapshot.drafts.find((d) => d.key === `compose:${id}`)?.markdown,
     ).toBe('later');
-    await c.openStash(id);
+    await c.openTree(id);
     expect(c.state.source).toBe('later');
   } finally {
     c.dispose();
   }
 });
-it('create captures parent before queueing and stash source edits preserve current context', async () => {
+it('create captures parent before queueing and tree source edits preserve current context', async () => {
   const repo = new MemoryRepository(),
     c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash();
-    const parent = c.state.stashId!;
-    const navigation = c.openStash(null),
-      creation = c.createStash();
+    await c.createTree();
+    const parent = c.state.ownerId!;
+    const navigation = c.openTree(null),
+      creation = c.createTree();
     await navigation;
     await creation;
     expect(repo.snapshot.items.find((x) => x.id !== parent)?.parentId).toBe(
@@ -389,71 +389,71 @@ it('create captures parent before queueing and stash source edits preserve curre
     c.dispose();
   }
 });
-it('version2 restore replaces stale contexts and reopens scoped capture drafts at their exact destinations', async () => {
+it('library restore replaces stale contexts and reopens scoped capture drafts at their exact destinations', async () => {
   const repo = new MemoryRepository(),
     c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash();
-    const previousId = c.state.stashId;
+    await c.createTree();
+    const previousId = c.state.ownerId;
     c.editSource('stale');
     const restored = new MemoryRepository();
     const id = crypto.randomUUID();
-    await restored.createChildStash({
+    await restored.createChildTree({
       id,
       parent: { scope: 'live', itemId: null },
     });
     await restored.checkpointDraft(
       `compose:${id}`,
-      'restored stash source\r\n',
+      'restored tree source\r\n',
       9,
     );
     const { encodeBackup } = await import('../../src/lib/domain/backup');
     repo.restoreText = encodeBackup(restored.snapshot);
     await c.previewRestore();
-    expect(c.state.preview?.stashes).toBe(1);
+    expect(c.state.preview?.trees).toBe(1);
     expect(await c.restore()).toBe(true);
-    expect(c.state.stashId).toBeNull();
+    expect(c.state.ownerId).toBeNull();
     expect(c.state.buffers).not.toHaveProperty(`compose:${previousId}`);
-    await c.openStash(id);
-    expect(c.state.source).toBe('restored stash source\r\n');
+    await c.openTree(id);
+    expect(c.state.source).toBe('restored tree source\r\n');
     expect(c.state.revision).toBe(9);
   } finally {
     c.dispose();
   }
 });
 
-it('delayed stash creation opens only on success and retains later typing in the captured parent', async () => {
+it('delayed tree creation opens only on success and retains later typing in the captured parent', async () => {
   const repo = new MemoryRepository(),
     c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash();
-    const parent = c.state.stashId!;
+    await c.createTree();
+    const parent = c.state.ownerId!;
     c.editSource('before create');
     let release!: () => void;
     repo.delayCreate = new Promise<void>((resolve) => (release = resolve));
-    const creating = c.createStash();
+    const creating = c.createTree();
     await tick();
-    expect(c.state.stashId).toBe(parent);
+    expect(c.state.ownerId).toBe(parent);
     c.editSource('later parent input');
     release();
     expect(await creating).toBe(true);
-    const child = c.state.stashId!;
+    const child = c.state.ownerId!;
     expect(
       repo.snapshot.items
-        .filter((x) => x.kind === 'stash')
+        .filter((x) => x.kind === 'tree')
         .find((s) => s.id === child)?.parentId,
     ).toBe(parent);
     await c.flush();
     expect(
       repo.snapshot.drafts.find((d) => d.key === `compose:${parent}`)?.markdown,
     ).toBe('later parent input');
-    await c.openStash(parent);
+    await c.openTree(parent);
     expect(c.state.source).toBe('later parent input');
     repo.fail = 'create';
-    expect(await c.createStash()).toBe(false);
-    expect(c.state.stashId).toBe(parent);
+    expect(await c.createTree()).toBe(false);
+    expect(c.state.ownerId).toBe(parent);
   } finally {
     c.dispose();
   }

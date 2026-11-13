@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use stashpad_alpha_kit::{backup, model::*, store::Store};
+use scratchtree_lib::{backup, model::*, store::Store};
 fn id(n: u128) -> String {
     uuid::Uuid::from_u128(n).to_string()
 }
@@ -32,7 +32,7 @@ fn item(n: u128, parent: Option<u128>, kind: Kind, position: i64) -> Item {
     }
 }
 #[test]
-fn v5_preserves_note_owned_composer_and_restore_capability_but_v4_stays_frozen() {
+fn current_contract_preserves_note_owned_composer_and_restore_capability() {
     let mut deleted = item(2, None, Kind::Note, 0);
     deleted.deleted_at = Some(3);
     deleted.restore_parent_id = Some(id(1));
@@ -48,62 +48,19 @@ fn v5_preserves_note_owned_composer_and_restore_capability_but_v4_stays_frozen()
         undo_delete_ids: vec![id(2)],
     };
     let bytes = backup::encode(&s).expect("current format accepts preserved note-owner capability");
-    let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["version"], 6);
-    assert_eq!(backup::validate(&bytes).unwrap().workspace, s);
-    v["version"] = 4.into();
-    assert!(backup::validate(&serde_json::to_vec(&v).unwrap()).is_err());
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["version"], 7);
+    assert_eq!(backup::validate(&bytes).unwrap().library, s);
 }
-#[test]
-fn schema_four_upgrade_validates_frozen_rules_and_preserves_unknown_settings() {
-    let d = tempfile::tempdir().unwrap();
-    let p = d.path().join("test.sqlite3");
-    let mut db = Store::open(&p).unwrap();
-    let s = WorkspaceSnapshot {
-        items: vec![item(1, None, Kind::Note, 0)],
-        ..Default::default()
-    };
-    db.replace(&s).unwrap();
-    drop(db);
-    let c = Connection::open(&p).unwrap();
-    c.execute_batch("INSERT INTO settings VALUES ('unknown','exact');DELETE FROM settings WHERE key='undoDeleteId';PRAGMA user_version=4;")
-        .unwrap();
-    drop(c);
-    let mut db = Store::open(&p).unwrap();
-    assert_eq!(db.load().unwrap(), s);
-    drop(db);
-    let c = Connection::open(&p).unwrap();
-    assert_eq!(
-        c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        6
-    );
-    assert_eq!(
-        c.query_row("SELECT value FROM settings WHERE key='unknown'", [], |r| {
-            r.get::<_, String>(0)
-        })
-        .unwrap(),
-        "exact"
-    );
-    c.execute(
-        "INSERT INTO drafts VALUES (?1,'retained',1,1)",
-        [format!("compose:{}", id(1))],
-    )
-    .unwrap();
-    c.execute_batch("PRAGMA user_version=4").unwrap();
-    drop(c);
-    let before = std::fs::read(&p).unwrap();
-    assert!(Store::open(&p).is_err());
-    assert_eq!(std::fs::read(&p).unwrap(), before);
-}
+
 #[test]
 fn purge_removes_only_parent_edges_and_owned_drafts_and_replays_after_reopen() {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.deleted_at = Some(3);
-    let b = item(2, Some(1), Kind::Stash, 0);
+    let b = item(2, Some(1), Kind::Tree, 0);
     let c = item(3, Some(2), Kind::Note, 0);
     let mut independent = item(4, None, Kind::Note, 1);
     independent.deleted_at = Some(4);
@@ -178,7 +135,7 @@ fn purge_removes_only_parent_edges_and_owned_drafts_and_replays_after_reopen() {
 fn transition_demotes_only_empty_origin_preserving_every_independent_capability() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.done = false;
     let mut b = item(2, None, Kind::Note, 0);
     b.deleted_at = Some(3);
@@ -216,7 +173,7 @@ fn transition_demotes_only_empty_origin_preserving_every_independent_capability(
     let restored = db.restore(&id(2)).unwrap();
     assert_eq!(
         restored.items.iter().find(|x| x.id == id(1)).unwrap().kind,
-        Kind::Stash
+        Kind::Tree
     );
     assert_eq!(
         restored
@@ -235,10 +192,10 @@ fn group_moves_are_atomic_replayable_and_preserve_only_changed_roots_timestamps(
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
     let s = WorkspaceSnapshot {
         items: vec![
-            item(1, None, Kind::Stash, 0),
-            item(2, None, Kind::Stash, 1),
+            item(1, None, Kind::Tree, 0),
+            item(2, None, Kind::Tree, 1),
             item(3, Some(1), Kind::Note, 0),
-            item(4, Some(1), Kind::Stash, 1),
+            item(4, Some(1), Kind::Tree, 1),
             item(5, Some(1), Kind::Note, 2),
             item(6, Some(4), Kind::Note, 0),
         ],
@@ -276,9 +233,9 @@ fn group_moves_are_atomic_replayable_and_preserve_only_changed_roots_timestamps(
 fn trash_move_preserves_deletion_date_and_independently_deleted_nodes_on_restore() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.deleted_at = Some(3);
-    let mut b = item(2, None, Kind::Stash, 1);
+    let mut b = item(2, None, Kind::Tree, 1);
     b.deleted_at = Some(5);
     let s = WorkspaceSnapshot {
         items: vec![a, b, item(3, Some(1), Kind::Note, 0)],
@@ -310,25 +267,25 @@ fn child_creation_atomically_demotes_its_captured_empty_origin() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
     let s = WorkspaceSnapshot {
-        items: vec![item(1, None, Kind::Stash, 0), item(2, None, Kind::Note, 1)],
+        items: vec![item(1, None, Kind::Tree, 0), item(2, None, Kind::Note, 1)],
         ..Default::default()
     };
     db.replace(&s).unwrap();
-    let request: CreateChildStash = serde_json::from_value(
+    let request: CreateChildTree = serde_json::from_value(
         serde_json::json!({"id":id(3),"parent":at(2,Scope::Live),"leave":at(1,Scope::Live)}),
     )
     .expect("captured exit belongs to creation transaction");
-    let after = db.create_child_stash(&request).unwrap();
+    let after = db.create_child_tree(&request).unwrap();
     assert_eq!(after.items[0].kind, Kind::Note);
-    assert_eq!(after.items[1].kind, Kind::Stash);
-    assert_eq!(db.create_child_stash(&request).unwrap(), after);
+    assert_eq!(after.items[1].kind, Kind::Tree);
+    assert_eq!(db.create_child_tree(&request).unwrap(), after);
 }
 #[test]
 fn purge_sql_failure_rolls_back_rows_drafts_undo_and_unknown_settings() {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.deleted_at = Some(3);
     let s = WorkspaceSnapshot {
         items: vec![a, item(2, Some(1), Kind::Note, 0)],
@@ -373,7 +330,7 @@ fn purge_sql_failure_rolls_back_rows_drafts_undo_and_unknown_settings() {
 fn stale_purge_membership_and_move_groups_reject_without_changes() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.deleted_at = Some(3);
     let s = WorkspaceSnapshot {
         items: vec![a, item(2, Some(1), Kind::Note, 0)],
@@ -392,10 +349,10 @@ fn stale_purge_membership_and_move_groups_reject_without_changes() {
     }
     let s = WorkspaceSnapshot {
         items: vec![
-            item(1, None, Kind::Stash, 0),
+            item(1, None, Kind::Tree, 0),
             item(2, None, Kind::Note, 1),
             item(3, None, Kind::Note, 2),
-            item(4, Some(1), Kind::Stash, 0),
+            item(4, Some(1), Kind::Tree, 0),
         ],
         ..Default::default()
     };
@@ -466,7 +423,7 @@ fn whole_group_permutation_handles_noncontiguous_selection_and_exact_noop() {
     assert_eq!(db.move_items(&same).unwrap(), moved);
 }
 #[test]
-fn twenty_thousand_deep_purge_is_iterative_and_backup_five_roundtrips() {
+fn twenty_thousand_deep_purge_is_iterative_and_backup_seven_roundtrips() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
     let mut s = WorkspaceSnapshot::default();
@@ -474,7 +431,7 @@ fn twenty_thousand_deep_purge_is_iterative_and_backup_five_roundtrips() {
         s.items.push(item(
             n,
             if n == 1 { None } else { Some(n - 1) },
-            Kind::Stash,
+            Kind::Tree,
             0,
         ));
     }
@@ -491,7 +448,7 @@ fn twenty_thousand_deep_purge_is_iterative_and_backup_five_roundtrips() {
     assert_eq!(
         backup::validate(&backup::encode(&result.workspace).unwrap())
             .unwrap()
-            .workspace,
+            .library,
         WorkspaceSnapshot::default()
     );
 }
@@ -511,69 +468,16 @@ fn explicit_same_id_transition_promotes_without_demotion() {
             promote_destination: true,
         })
         .unwrap();
-    assert_eq!(after.items[0].kind, Kind::Stash);
+    assert_eq!(after.items[0].kind, Kind::Tree);
 }
-#[test]
-fn each_v4_frozen_owner_and_deleted_root_rule_remains_strict_independently() {
-    for mode in 0..3 {
-        let mut s = WorkspaceSnapshot {
-            items: vec![item(1, None, Kind::Note, 0)],
-            ..Default::default()
-        };
-        match mode {
-            0 => s.drafts.push(Draft {
-                key: format!("compose:{}", id(1)),
-                markdown: "retained".into(),
-                revision: 1,
-                updated_at: 2,
-            }),
-            1 => {
-                let mut deleted = item(2, None, Kind::Note, 0);
-                deleted.deleted_at = Some(3);
-                deleted.restore_parent_id = Some(id(1));
-                deleted.restore_index = Some(4);
-                s.items.push(deleted);
-            }
-            _ => {
-                s.items[0].kind = Kind::Stash;
-                s.items[0].deleted_at = Some(3);
-                let mut nested = item(2, Some(1), Kind::Note, 0);
-                nested.deleted_at = Some(4);
-                s.items.push(nested);
-            }
-        }
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&backup::encode(&s).unwrap()).unwrap();
-        assert!(backup::validate(&serde_json::to_vec(&value).unwrap()).is_ok());
-        value["version"] = 4.into();
-        assert!(backup::validate(&serde_json::to_vec(&value).unwrap()).is_err());
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("test.sqlite3");
-        let mut db = Store::open(&p).unwrap();
-        db.replace(&s).unwrap();
-        drop(db);
-        let c = Connection::open(&p).unwrap();
-        c.execute_batch(
-            "INSERT INTO settings VALUES ('unknown','retained');PRAGMA user_version=4;",
-        )
-        .unwrap();
-        drop(c);
-        let before = std::fs::read(&p).unwrap();
-        assert!(Store::open(&p).is_err());
-        assert_eq!(std::fs::read(&p).unwrap(), before);
-        if mode == 2 {
-            s.items[0].deleted_at = None;
-            assert!(backup::encode(&s).is_err());
-        }
-    }
-}
+
 #[test]
 fn move_capacity_failure_retains_both_groups_sources_drafts_and_settings() {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
     let mut s = WorkspaceSnapshot {
-        items: vec![item(1, None, Kind::Stash, 0)],
+        items: vec![item(1, None, Kind::Tree, 0)],
         drafts: vec![Draft {
             key: "compose".into(),
             markdown: String::new(),
@@ -626,7 +530,7 @@ fn move_sql_failure_rolls_back_both_groups_after_prospective_validation() {
     let p = d.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
     let s = WorkspaceSnapshot {
-        items: vec![item(1, None, Kind::Stash, 0), item(2, None, Kind::Note, 1)],
+        items: vec![item(1, None, Kind::Tree, 0), item(2, None, Kind::Note, 1)],
         ..Default::default()
     };
     db.replace(&s).unwrap();
@@ -654,7 +558,7 @@ fn soft_delete_and_empty_origin_demotion_share_one_commit() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("test.sqlite3")).unwrap();
     let s = WorkspaceSnapshot {
-        items: vec![item(1, None, Kind::Stash, 0)],
+        items: vec![item(1, None, Kind::Tree, 0)],
         drafts: vec![Draft {
             key: format!("compose:{}", id(1)),
             markdown: "separate".into(),
@@ -677,7 +581,7 @@ fn soft_delete_and_empty_origin_demotion_share_one_commit() {
     );
     assert_eq!(
         {
-            let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+            let r = scratchtree_lib::store::capture_undo(&db.load().unwrap()).unwrap();
             db.undo(&r)
         }
         .unwrap()
@@ -693,7 +597,7 @@ fn broad_restore_batches_independent_roots_and_preserves_nested_facts_after_reop
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("test.sqlite3");
         let mut db = Store::open(&p).unwrap();
-        let mut ancestor = item(1, None, Kind::Stash, 0);
+        let mut ancestor = item(1, None, Kind::Tree, 0);
         ancestor.deleted_at = Some(3);
         let mut existing = item(2, None, Kind::Note, 1);
         existing.deleted_at = Some(4);
@@ -709,8 +613,8 @@ fn broad_restore_batches_independent_roots_and_preserves_nested_facts_after_reop
         };
         for i in 0..width {
             let n = 3 + i * 4;
-            s.items.push(item(n, Some(1), Kind::Stash, i as i64));
-            let mut explicit = item(n + 1, Some(n), Kind::Stash, 0);
+            s.items.push(item(n, Some(1), Kind::Tree, i as i64));
+            let mut explicit = item(n + 1, Some(n), Kind::Tree, 0);
             explicit.deleted_at = Some(5);
             explicit.restore_parent_id = Some(id(n));
             explicit.restore_index = Some(0);

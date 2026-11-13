@@ -69,13 +69,13 @@ for (const large of [false, true]) {
     await search.blur();
     expect(await measure()).toEqual(before);
     await expect(
-      sidebar.getByRole('button', { name: 'New stash', exact: true }),
+      sidebar.getByRole('button', { name: 'New tree', exact: true }),
     ).toHaveCount(0);
     await expect(
       sidebar.getByRole('button', { name: 'New note', exact: true }),
     ).toHaveCount(0);
     await expect(page.getByLabel('Keyboard shortcuts')).toContainText(
-      'New stash',
+      'New tree',
     );
     await expect(page.getByLabel('Keyboard shortcuts')).toContainText('Space');
   });
@@ -97,8 +97,8 @@ for (const large of [false, true]) {
     await page.keyboard.press('Meta+n');
     await page.keyboard.press('Meta+n');
     const row = page
-      .locator('.stash-row')
-      .filter({ has: page.getByRole('button', { name: /Collapse stash/ }) })
+      .locator('.tree-row')
+      .filter({ has: page.getByRole('button', { name: /Collapse tree/ }) })
       .first();
     const dimensions = await row.evaluate((el) => {
       const box = (selector: string) => {
@@ -106,9 +106,9 @@ for (const large of [false, true]) {
         return { width: r.width, height: r.height, center: r.y + r.height / 2 };
       };
       return {
-        chevron: box('.stash-expand svg'),
-        stack: box('.stash-link svg'),
-        label: box('.stash-name'),
+        chevron: box('.tree-expand svg'),
+        stack: box('.tree-link svg'),
+        label: box('.tree-name'),
       };
     });
     expect(dimensions.chevron.width).toBe(dimensions.stack.width);
@@ -124,7 +124,7 @@ for (const large of [false, true]) {
     });
     for (const selector of [
       '.sidebar-search',
-      '.stash-navigation > button',
+      '.tree-navigation > button',
       '.backup-actions button:last-child',
     ]) {
       const centers = await sidebar.locator(selector).evaluate((el) => {
@@ -168,10 +168,10 @@ for (const large of [false, true]) {
       });
     for (let i = 0; i < 5; i++) await page.keyboard.press('Meta+n');
     const row = page
-      .locator('.stash-row')
-      .filter({ has: page.locator('.stash-level', { hasText: 'Level 4' }) });
+      .locator('.tree-row')
+      .filter({ has: page.locator('.tree-level', { hasText: 'Level 4' }) });
     await expect(
-      row.getByRole('button', { name: /Collapse stash/ }),
+      row.getByRole('button', { name: /Collapse tree/ }),
     ).toBeVisible();
     const centers = await row.evaluate((el) => {
       const center = (selector: string) => {
@@ -179,9 +179,9 @@ for (const large of [false, true]) {
         return r.y + r.height / 2;
       };
       return {
-        chevron: center('.stash-expand svg'),
-        stack: center('.stash-link svg'),
-        name: center('.stash-name'),
+        chevron: center('.tree-expand svg'),
+        stack: center('.tree-link svg'),
+        name: center('.tree-name'),
       };
     });
     expect(Math.abs(centers.chevron - centers.stack)).toBeLessThanOrEqual(1);

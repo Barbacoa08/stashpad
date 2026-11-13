@@ -8,27 +8,27 @@ export const composeKey = (location: Location | string | null): string => {
       : `compose:${location.itemId}`;
   return location === null ? 'compose' : `compose:${location}`;
 };
-export function composeOwner(key: string): { stashId: string | null } | null {
-  if (key === 'compose' || key === 'compose:trash') return { stashId: null };
-  if (key.startsWith('compose:')) return { stashId: key.slice(8) };
+export function composeOwner(key: string): { ownerId: string | null } | null {
+  if (key === 'compose' || key === 'compose:trash') return { ownerId: null };
+  if (key.startsWith('compose:')) return { ownerId: key.slice(8) };
   return null;
 }
 /** Exact IDs and an iterative, linear walk reject dangling parents and cycles. */
-export function hierarchyIndex(stashes: Item[]): Map<string, Item> {
-  const byId = new Map(stashes.map((s) => [s.id, s]));
-  if (byId.size !== stashes.length) throw new Error('Duplicate stash.');
+export function hierarchyIndex(items: Item[]): Map<string, Item> {
+  const byId = new Map(items.map((s) => [s.id, s]));
+  if (byId.size !== items.length) throw new Error('Duplicate item.');
   const done = new Set<string>();
-  for (const stash of stashes) {
-    let id: string | null = stash.id;
+  for (const item of items) {
+    let id: string | null = item.id;
     const pending = new Set<string>();
     while (id !== null && !done.has(id)) {
-      if (pending.has(id)) throw new Error('Stash cycle.');
+      if (pending.has(id)) throw new Error('Item cycle.');
       const current = byId.get(id);
-      if (!current) throw new Error('Missing parent stash.');
+      if (!current) throw new Error('Missing parent item.');
       pending.add(id);
       if (
         current.parentId !== null &&
-        byId.get(current.parentId)?.kind !== 'stash'
+        byId.get(current.parentId)?.kind !== 'tree'
       )
         throw new Error('Invalid parent item.');
       id = current.parentId;
@@ -37,20 +37,20 @@ export function hierarchyIndex(stashes: Item[]): Map<string, Item> {
   }
   return byId;
 }
-export function stashPath(stashes: Item[], id: string | null): Item[] {
-  const byId = hierarchyIndex(stashes),
+export function treePath(trees: Item[], id: string | null): Item[] {
+  const byId = hierarchyIndex(trees),
     path: Item[] = [];
   while (id !== null) {
-    const stash = byId.get(id);
-    if (!stash) throw new Error('Missing stash.');
-    path.push(stash);
-    id = stash.parentId;
+    const tree = byId.get(id);
+    if (!tree) throw new Error('Missing tree.');
+    path.push(tree);
+    id = tree.parentId;
   }
   return path.reverse();
 }
-/** Convenience for isolated calls; views reuse one presentation per stash snapshot. */
-export const locationLabel = (stashes: Item[], id: string | null): string =>
-  createHierarchyPresentation(stashes).label(id).text;
+/** Convenience for isolated calls; views reuse one presentation per tree snapshot. */
+export const locationLabel = (trees: Item[], id: string | null): string =>
+  createHierarchyPresentation(trees).label(id).text;
 export type StreamEntry = Item;
 export function itemLabel(item: Item): string {
   const line = item.markdown.split(/\r\n|\r|\n/, 1)[0].trim();
@@ -108,17 +108,17 @@ export function directEntries(
         a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
 }
-export interface StashRow {
-  stash: Item;
+export interface TreeRow {
+  tree: Item;
   depth: number;
   hasChildren: boolean;
 }
-function stashChildren(stashes: Item[]): Map<string | null, Item[]> {
+function treeChildren(trees: Item[]): Map<string | null, Item[]> {
   const children = new Map<string | null, Item[]>();
-  for (const stash of stashes) {
-    const list = children.get(stash.parentId) ?? [];
-    list.push(stash);
-    children.set(stash.parentId, list);
+  for (const tree of trees) {
+    const list = children.get(tree.parentId) ?? [];
+    list.push(tree);
+    children.set(tree.parentId, list);
   }
   for (const list of children.values())
     list.sort(
@@ -130,26 +130,23 @@ function stashChildren(stashes: Item[]): Map<string | null, Item[]> {
 function visibleRows(
   children: Map<string | null, Item[]>,
   expanded: Set<string>,
-): StashRow[] {
+): TreeRow[] {
   const pending = (children.get(null) ?? [])
-      .map((stash) => ({ stash, depth: 0 }))
+      .map((tree) => ({ tree, depth: 0 }))
       .reverse(),
-    rows: StashRow[] = [];
+    rows: TreeRow[] = [];
   while (pending.length) {
     const row = pending.pop()!;
-    rows.push({ ...row, hasChildren: children.has(row.stash.id) });
-    if (expanded.has(row.stash.id))
-      for (const stash of [...(children.get(row.stash.id) ?? [])].reverse())
-        pending.push({ stash, depth: row.depth + 1 });
+    rows.push({ ...row, hasChildren: children.has(row.tree.id) });
+    if (expanded.has(row.tree.id))
+      for (const tree of [...(children.get(row.tree.id) ?? [])].reverse())
+        pending.push({ tree, depth: row.depth + 1 });
   }
   return rows;
 }
-export function sidebarRows(
-  stashes: Item[],
-  expanded: Set<string>,
-): StashRow[] {
-  hierarchyIndex(stashes);
-  return visibleRows(stashChildren(stashes), expanded);
+export function sidebarRows(trees: Item[], expanded: Set<string>): TreeRow[] {
+  hierarchyIndex(trees);
+  return visibleRows(treeChildren(trees), expanded);
 }
 export interface LocationLabel {
   text: string;
@@ -160,19 +157,19 @@ export interface HierarchyPresentation {
   readonly index: ReadonlyMap<string, Item>;
   path(id: string | null): Item[];
   label(id: string | null): LocationLabel;
-  rows(expanded: Set<string>): StashRow[];
+  rows(expanded: Set<string>): TreeRow[];
 }
 /** Index once; cache only bounded labels, never every ancestor prefix/path string. */
 export function createHierarchyPresentation(
-  stashes: Item[],
+  trees: Item[],
   rootLabel = 'Root',
 ): HierarchyPresentation {
-  const index = hierarchyIndex(stashes),
-    children = stashChildren(stashes),
+  const index = hierarchyIndex(trees),
+    children = treeChildren(trees),
     depths = new Map<string, number>();
-  for (const stash of stashes) {
+  for (const tree of trees) {
     const pending: Item[] = [];
-    let current: Item | undefined = stash;
+    let current: Item | undefined = tree;
     while (current && !depths.has(current.id)) {
       pending.push(current);
       current =
@@ -186,29 +183,29 @@ export function createHierarchyPresentation(
     [null, { text: rootLabel, abbreviated: false, depth: 0 }],
   ]);
   function lookup(id: string): Item {
-    const stash = index.get(id);
-    if (!stash) throw new Error('Missing stash.');
-    return stash;
+    const tree = index.get(id);
+    if (!tree) throw new Error('Missing tree.');
+    return tree;
   }
   return {
     index,
     path(id) {
       const result: Item[] = [];
       while (id !== null) {
-        const stash = lookup(id);
-        result.push(stash);
-        id = stash.parentId;
+        const tree = lookup(id);
+        result.push(tree);
+        id = tree.parentId;
       }
       return result.reverse();
     },
     label(id) {
       const saved = labels.get(id);
       if (saved) return saved;
-      const stash = lookup(id!),
-        depth = depths.get(stash.id)!;
+      const tree = lookup(id!),
+        depth = depths.get(tree.id)!;
       let abbreviated = depth > 2;
       const tail =
-        stash.parentId === null ? [stash] : [lookup(stash.parentId), stash];
+        tree.parentId === null ? [tree] : [lookup(tree.parentId), tree];
       const names = tail.map((item) => {
         const name = itemLabel(item),
           points = Array.from(name);
@@ -229,7 +226,7 @@ export function createHierarchyPresentation(
     },
   };
 }
-/** One pass avoids rescanning the workspace for each visible stash card. */
+/** One pass avoids rescanning the workspace for each visible tree card. */
 export function entryCounts(s: WorkspaceSnapshot): Map<string | null, number> {
   const counts = new Map<string | null, number>();
   const scopes = scopeIndex(s.items);

@@ -66,13 +66,13 @@ test('X leaves typing, IME, DOM ranges, and modifiers alone, and toggles selecte
   await expect(page.getByRole('searchbox')).toHaveValue('x');
   await page.getByRole('searchbox').press('Escape');
   await page.keyboard.press('Meta+n');
-  // A saved child keeps this destination a stash when it is exited.
+  // A saved child keeps this destination a tree when it is exited.
   await capture(page, 'container child');
   await page.getByRole('button', { name: 'Root', exact: true }).click();
-  const stash = page.locator('.note-card[data-kind="stash"]');
-  await stash.locator('.note-body').click();
+  const tree = page.locator('.note-card[data-kind="tree"]');
+  await tree.locator('.note-body').click();
   await page.keyboard.press('x');
-  await expect(stash).toHaveClass(/done/);
+  await expect(tree).toHaveClass(/done/);
 });
 test('completion failure has its own narrow retry, preserving capture and latest source through delete/Undo/export/restore', async ({
   page,
@@ -123,7 +123,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await page.evaluate(() => {
     const t = (window as any).__test;
     const b = JSON.parse(t.repo.exported);
-    if (b.version !== 6 || b.workspace.items[0].done !== true)
+    if (b.version !== 7 || b.library.items[0].done !== true)
       throw Error('completion absent');
     t.repo.restoreText = t.repo.exported;
   });

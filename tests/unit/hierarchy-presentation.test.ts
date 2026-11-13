@@ -12,7 +12,7 @@ function acceptedDeepWorkspace(): WorkspaceSnapshot {
     s.items.push(
       item({
         id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-        kind: 'stash',
+        kind: 'tree',
         markdown: 'x'.repeat(200),
         parentId: s.items.at(-1)?.id ?? null,
       }),
@@ -34,11 +34,11 @@ it('bounds one deep displayed source location instead of emitting its complete a
   const s = acceptedDeepWorkspace();
   const text = encodeBackup(s);
   expect(new TextEncoder().encode(text).length).toBeLessThan(6 * 1024 * 1024);
-  expect(validateBackup(text)).toHaveProperty('version', 6);
+  expect(validateBackup(text)).toHaveProperty('version', 7);
   expect(
     Array.from(
       hierarchy.locationLabel(
-        s.items.filter((x) => x.kind === 'stash'),
+        s.items.filter((x) => x.kind === 'tree'),
         s.items.at(-1)!.parentId,
       ),
     ).length,
@@ -46,13 +46,13 @@ it('bounds one deep displayed source location instead of emitting its complete a
 });
 it('reuses bounded owner resolution for 10000 matches without building full prefix labels', () => {
   const s = acceptedDeepWorkspace(),
-    stashes = s.items.filter((x) => x.kind === 'stash'),
+    trees = s.items.filter((x) => x.kind === 'tree'),
     notes = s.items.filter((x) => x.kind === 'note'),
-    view = hierarchy.createHierarchyPresentation(stashes);
+    view = hierarchy.createHierarchyPresentation(trees);
   let sourceReads = 0;
-  for (const stash of stashes) {
-    const markdown = stash.markdown;
-    Object.defineProperty(stash, 'markdown', {
+  for (const tree of trees) {
+    const markdown = tree.markdown;
+    Object.defineProperty(tree, 'markdown', {
       get() {
         sourceReads++;
         return markdown;
@@ -73,35 +73,35 @@ it('reuses bounded owner resolution for 10000 matches without building full pref
   expect(sourceReads).toBeLessThanOrEqual(2);
   const path = view.path(notes[0].parentId);
   expect(path).toHaveLength(5000);
-  expect(path[0].id).toBe(stashes[0].id);
+  expect(path[0].id).toBe(trees[0].id);
   expect(path.at(-1)?.id).toBe(notes[0].parentId);
   expect(view.label(null).text).toBe('Root');
 });
 it('keeps ordinary labels exact, handles Unicode boundaries, and rejects missing locations', () => {
-  const stashes = [
+  const trees = [
     item({
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      kind: 'stash',
+      kind: 'tree',
       markdown: 'Projects',
     }),
     item({
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      kind: 'stash',
+      kind: 'tree',
       parentId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       markdown: 'Ideas',
     }),
   ];
-  let view = hierarchy.createHierarchyPresentation(stashes);
-  expect(view.label(stashes[1].id)).toMatchObject({
+  let view = hierarchy.createHierarchyPresentation(trees);
+  expect(view.label(trees[1].id)).toMatchObject({
     text: 'Root / Projects / Ideas',
     abbreviated: false,
     depth: 2,
   });
-  stashes[1] = { ...stashes[1], markdown: '😀'.repeat(200) };
-  view = hierarchy.createHierarchyPresentation(stashes);
-  expect(Array.from(view.label(stashes[1].id).text).length).toBeLessThanOrEqual(
+  trees[1] = { ...trees[1], markdown: '😀'.repeat(200) };
+  view = hierarchy.createHierarchyPresentation(trees);
+  expect(Array.from(view.label(trees[1].id).text).length).toBeLessThanOrEqual(
     96,
   );
-  expect(view.label(stashes[1].id).text).not.toContain('\uFFFD');
+  expect(view.label(trees[1].id).text).not.toContain('\uFFFD');
   expect(() => view.label('missing')).toThrow();
 });

@@ -20,7 +20,7 @@ async function seed(page: Page) {
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -341,7 +341,7 @@ test('duplicate destination names expose their ancestry, stage without writing, 
     const t = (window as any).__test;
     const duplicates = [crypto.randomUUID(), crypto.randomUUID()];
     for (const [index, id] of duplicates.entries()) {
-      await t.repo.createChildStash({
+      await t.repo.createChildTree({
         id,
         parent: { scope: 'live', itemId: ids[index + 1] },
       });
@@ -590,9 +590,9 @@ test('current backup round trip retains one persistent group Undo action', async
   const backup = await page.evaluate(() =>
     JSON.parse((window as any).__test.repo.exported),
   );
-  expect(backup.version).toBe(6);
-  expect(backup.workspace.undoDeleteIds).toEqual([ids[0], ids[2]]);
-  expect(backup.workspace).not.toHaveProperty('undoDeleteId');
+  expect(backup.version).toBe(7);
+  expect(backup.library.undoDeleteIds).toEqual([ids[0], ids[2]]);
+  expect(backup.library).not.toHaveProperty('undoDeleteId');
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = t.repo.exported;

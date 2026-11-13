@@ -18,21 +18,28 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   await expect(capture(page)).toBeVisible();
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 1,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-10T00:00:00.000Z',
-      workspace: {
-        notes: [
+      library: {
+        items: [
           {
             id: '00000000-0000-4000-8000-000000000001',
             markdown: '**boundary source**  ',
+            parentId: null,
+            kind: 'note',
+            done: false,
+            color: null,
+            position: 0,
+            restoreParentId: null,
+            restoreIndex: null,
             createdAt: Number.MAX_SAFE_INTEGER,
             updatedAt: Number.MAX_SAFE_INTEGER,
             deletedAt: null,
           },
         ],
         drafts: [],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       },
     });
   });

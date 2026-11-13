@@ -126,7 +126,7 @@ test('shortcut hints expose individual keys and plain notes have no marker', asy
     shortcuts.locator('div').filter({ hasText: 'Select note' }).locator('kbd'),
   ).toHaveText(['↑', '↓']);
   await expect(
-    shortcuts.locator('div').filter({ hasText: 'New stash' }).locator('kbd'),
+    shortcuts.locator('div').filter({ hasText: 'New tree' }).locator('kbd'),
   ).toHaveText(['⌘', 'N']);
 });
 

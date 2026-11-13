@@ -13,7 +13,7 @@ for (const large of [false, true]) {
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
-    const navigation = page.getByRole('navigation', { name: 'Stashes' });
+    const navigation = page.getByRole('navigation', { name: 'Trees' });
     const root = navigation.getByRole('button', { name: 'Root', exact: true });
     await expect(root).toHaveAttribute('aria-current', 'page');
     await expect(root).not.toHaveAttribute('aria-expanded');
@@ -46,7 +46,7 @@ for (const large of [false, true]) {
     await expect(separator).toBeVisible();
     await expect(
       navigation.getByRole('button', {
-        name: /^(Expand|Collapse) stash Root$/,
+        name: /^(Expand|Collapse) tree Root$/,
       }),
     ).toHaveCount(0);
     await root.click();
@@ -71,23 +71,23 @@ test('Root separator stays above child rows without intercepting keyboard naviga
   await page.keyboard.press('Meta+n');
   await page.evaluate(async () => {
     const t = (window as any).__test;
-    const id = t.controller.state.stashId;
+    const id = t.controller.state.ownerId;
     t.controller.editContext(id, 'Root child');
     await t.controller.flush();
     t.controller.editSource('saved child');
     await t.controller.save();
   });
-  const navigation = page.getByRole('navigation', { name: 'Stashes' });
+  const navigation = page.getByRole('navigation', { name: 'Trees' });
   const root = navigation.getByRole('button', { name: 'Root', exact: true });
   const child = navigation.getByRole('button', {
-    name: 'Open stash Root child',
+    name: 'Open tree Root child',
     exact: true,
   });
   await expect(navigation.getByRole('separator')).toBeVisible();
   expect(
     await navigation
       .getByRole('separator')
-      .evaluate((el) => el.nextElementSibling?.classList.contains('stash-row')),
+      .evaluate((el) => el.nextElementSibling?.classList.contains('tree-row')),
   ).toBe(true);
   await root.focus();
   await expect(root).toBeFocused();

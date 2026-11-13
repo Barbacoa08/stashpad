@@ -15,20 +15,20 @@ describe('unified source-bearing items', () => {
       draft: { key: 'compose', revision: 0 },
     });
     await r.checkpointDraft(a, 'buffer', 3);
-    await r.createChildStash({ id: b, parent: { scope: 'live', itemId: a } });
+    await r.createChildTree({ id: b, parent: { scope: 'live', itemId: a } });
     expect(r.snapshot.items.find((x) => x.id === a)).toMatchObject({
-      kind: 'stash',
+      kind: 'tree',
       markdown: '**source**\r\n',
       position: 0,
     });
     expect(r.snapshot.drafts[0]).toMatchObject({ key: a, markdown: 'buffer' });
     const before = structuredClone(r.snapshot);
-    await r.createChildStash({ id: b, parent: { scope: 'live', itemId: a } });
+    await r.createChildTree({ id: b, parent: { scope: 'live', itemId: a } });
     expect(r.snapshot).toEqual(before);
   });
   it('retains deleted trees, drafts, and one-step Undo across neutral deletion', async () => {
     const r = new MemoryRepository();
-    await r.createChildStash({ id: a, parent: home });
+    await r.createChildTree({ id: a, parent: home });
     await r.captureItem({
       id: b,
       location: { scope: 'live', itemId: a },
@@ -45,11 +45,11 @@ describe('unified source-bearing items', () => {
     expect(r.snapshot.items.find((x) => x.id === b)?.parentId).toBe(a);
     expect(r.snapshot.drafts[0].markdown).toBe('retained');
   });
-  it('exports strict version 6 and rejects duplicate sibling ranks', async () => {
+  it('exports strict version 7 and rejects duplicate sibling ranks', async () => {
     const r = new MemoryRepository();
-    await r.createChildStash({ id: a, parent: home });
-    await r.createChildStash({ id: b, parent: home });
-    expect(JSON.parse(encodeBackup(r.snapshot)).version).toBe(6);
+    await r.createChildTree({ id: a, parent: home });
+    await r.createChildTree({ id: b, parent: home });
+    expect(JSON.parse(encodeBackup(r.snapshot)).version).toBe(7);
     r.snapshot.items[1].position = 0;
     expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('code');
   });
@@ -66,27 +66,27 @@ it('controller Command-N captures selected note parent and retries its same crea
   await c.selectNote(id);
   c.editSource('latest\r\n');
   r.fail = 'create';
-  expect(await c.createStash(id)).toBe(false);
+  expect(await c.createTree(id)).toBe(false);
   expect(r.snapshot.items[0].kind).toBe('note');
   r.fail = null;
   expect(await c.retryMutation()).toBe(true);
   expect(r.snapshot.items).toHaveLength(2);
   expect(r.snapshot.items.find((x) => x.id === id)).toMatchObject({
-    kind: 'stash',
+    kind: 'tree',
     markdown: 'latest\r\n',
   });
-  expect(c.state.stashId).toBe(r.snapshot.items.find((x) => x.id !== id)?.id);
+  expect(c.state.ownerId).toBe(r.snapshot.items.find((x) => x.id !== id)?.id);
   c.dispose();
 });
 
 it('normalizes sparse imported ranks before insertion without changing sibling content times', async () => {
   const r = new MemoryRepository();
-  await r.createChildStash({ id: a, parent: home });
-  await r.createChildStash({ id: b, parent: home });
+  await r.createChildTree({ id: a, parent: home });
+  await r.createChildTree({ id: b, parent: home });
   r.snapshot.items[0].position = 2;
   r.snapshot.items[1].position = 9;
   const times = r.snapshot.items.map((x) => x.updatedAt);
-  await r.createChildStash({
+  await r.createChildTree({
     id: '00000000-0000-4000-8000-000000000003',
     parent: home,
   });
@@ -130,39 +130,13 @@ import {
 } from '../../src/lib/domain/hierarchy';
 import { filterNotes } from '../../src/lib/domain/search';
 import { readFileSync } from 'node:fs';
-it('converts frozen legacy fixtures only after strict old validation, retaining every source/draft field', () => {
-  for (const version of [1, 2, 3]) {
-    const text = readFileSync(`tests/fixtures/valid-v${version}.json`, 'utf8');
-    const b = validateBackup(text);
-    expect(b).toHaveProperty('version', 6);
-    if ('code' in b) throw b;
-    const old = JSON.parse(text).workspace;
-    for (const n of old.notes) {
-      expect(b.workspace.items.find((x) => x.id === n.id)).toMatchObject({
-        id: n.id,
-        markdown: n.markdown,
-        createdAt: n.createdAt,
-        updatedAt: n.updatedAt,
-        deletedAt: n.deletedAt,
-        done: n.done ?? false,
-      });
-    }
-    expect(b.workspace.drafts).toEqual(old.drafts);
-    expect(b.workspace.undoDeleteIds).toEqual(
-      old.undoDeleteId === null ? [] : [old.undoDeleteId],
-    );
-    const bad = JSON.parse(text);
-    bad.workspace.notes[0].color = null;
-    expect(validateBackup(JSON.stringify(bad))).toHaveProperty('code');
-  }
-});
 it('validates current graph, exact case references, metadata, duplicate positions, and draft keys strictly', () => {
   const valid = {
-    items: [item({ id: a, kind: 'stash' }), item({ id: b, parentId: a })],
+    items: [item({ id: a, kind: 'tree' }), item({ id: b, parentId: a })],
     drafts: [],
     undoDeleteIds: [],
   };
-  expect(validateBackup(encodeBackup(valid))).toHaveProperty('version', 6);
+  expect(validateBackup(encodeBackup(valid))).toHaveProperty('version', 7);
   for (const mutate of [
     (s: any) => (s.items[0].parentId = b),
     (s: any) => (s.items[1].parentId = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA'),
@@ -188,8 +162,8 @@ it('keeps global saved-source search separate from manual order and excludes inh
   const items = [
     item({
       id: a,
-      kind: 'stash',
-      markdown: 'shared stash',
+      kind: 'tree',
+      markdown: 'shared tree',
       position: 8,
       createdAt: 1,
       updatedAt: 1,
@@ -217,7 +191,7 @@ it('bounds current source previews and handles a deep 20000-item tree without re
   const items = Array.from({ length: 20000 }, (_, i) =>
     item({
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-      kind: 'stash',
+      kind: 'tree',
       markdown: '😀'.repeat(60),
       parentId:
         i === 0
@@ -234,7 +208,7 @@ it('bounds current source previews and handles a deep 20000-item tree without re
   ).toBeLessThanOrEqual(96);
   expect(
     validateBackup(encodeBackup({ items, drafts: [], undoDeleteIds: [] })),
-  ).toHaveProperty('version', 6);
+  ).toHaveProperty('version', 7);
 });
 it('keeps a failed capacity-limited atomic promotion/create unchanged, including drafts and metadata', async () => {
   const r = new MemoryRepository();
@@ -254,7 +228,7 @@ it('keeps a failed capacity-limited atomic promotion/create unchanged, including
   ];
   const before = structuredClone(r.snapshot);
   await expect(
-    r.createChildStash({
+    r.createChildTree({
       id: '00000000-0000-4001-8000-000000000000',
       parent: { scope: 'live', itemId: r.snapshot.items[0].id },
     }),
@@ -265,7 +239,7 @@ it('accepts the 20000-item and 40002 canonical draft ceilings when their complet
   const items = Array.from({ length: 20000 }, (_, i) =>
     item({
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-      kind: 'stash',
+      kind: 'tree',
       position: i,
     }),
   );
@@ -275,7 +249,7 @@ it('accepts the 20000-item and 40002 canonical draft ceilings when their complet
     .map((key) => ({ key, markdown: '', revision: 0, updatedAt: 0 }));
   const workspace = { items, drafts, undoDeleteIds: [] };
   expect(validateBackup(encodeBackup(workspace))).toHaveProperty(
-    'workspace.drafts.length',
+    'library.drafts.length',
     40002,
   );
   workspace.drafts.push({
@@ -317,10 +291,10 @@ it('capture retries a lost acknowledgment with the same identity instead of dupl
 it('child creation retries a lost acknowledgment without another promotion or child', async () => {
   class LostAck extends MemoryRepository {
     lost = true;
-    override async createChildStash(
-      request: Parameters<MemoryRepository['createChildStash']>[0],
+    override async createChildTree(
+      request: Parameters<MemoryRepository['createChildTree']>[0],
     ) {
-      const result = await super.createChildStash(request);
+      const result = await super.createChildTree(request);
       if (this.lost) {
         this.lost = false;
         throw new Error('Synthetic lost acknowledgment');
@@ -334,7 +308,7 @@ it('child creation retries a lost acknowledgment without another promotion or ch
   c.editSource('parent');
   await c.save();
   const id = r.snapshot.items[0].id;
-  expect(await c.createStash(id)).toBe(false);
+  expect(await c.createTree(id)).toBe(false);
   const before = structuredClone(r.snapshot);
   expect(await c.retryMutation()).toBe(true);
   expect(r.snapshot).toEqual(before);
@@ -345,10 +319,10 @@ it('deleting an ancestor from global search returns to the surviving parent and 
   const r = new MemoryRepository(),
     c = new WorkspaceController(r);
   await c.start();
-  await c.createStash();
-  const parent = c.state.stashId!;
-  await c.createStash();
-  const child = c.state.stashId!;
+  await c.createTree();
+  const parent = c.state.ownerId!;
+  await c.createTree();
+  const child = c.state.ownerId!;
   c.editSource('child draft');
   await c.flush();
   c.setQuery('Untitled');
@@ -357,7 +331,7 @@ it('deleting an ancestor from global search returns to the surviving parent and 
   expect(c.sourceFor(`compose:${child}`)).toBe('child draft');
   expect(r.snapshot.items.find((x) => x.id === child)?.parentId).toBe(parent);
   await c.undoRemove();
-  // Deleting its ancestor exited this childless stash; explicitly reopening the
+  // Deleting its ancestor exited this childless tree; explicitly reopening the
   // retained note promotes the same owner and restores its independent composer.
   await c.enterItem(child);
   expect(c.state.source).toBe('child draft');
@@ -367,8 +341,8 @@ it('newer navigation during delayed deletion retains its requested context', asy
   const r = new MemoryRepository(),
     c = new WorkspaceController(r);
   await c.start();
-  await c.createStash();
-  const parent = c.state.stashId!;
+  await c.createTree();
+  const parent = c.state.ownerId!;
   c.editSource('target');
   await c.save();
   const target = r.snapshot.items.find((x) => x.kind === 'note')!.id;
@@ -378,7 +352,7 @@ it('newer navigation during delayed deletion retains its requested context', asy
   r.delaySave = new Promise<void>((resolve) => (release = resolve));
   const deletion = c.remove(target);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  const navigation = c.openStash(null);
+  const navigation = c.openTree(null);
   release();
   expect(await deletion).toBe(true);
   expect(await navigation).toBe(true);
@@ -408,18 +382,9 @@ it('capture whitespace agrees with native ECMAScript trimming and preserves nonb
   });
   expect(r.snapshot.items[0].markdown).toBe('\u0085');
 });
-it('accepts the shared synthetic V4 fixture exactly, including color and Trash draft scopes', () => {
-  const text = readFileSync('tests/fixtures/valid-v4.json', 'utf8');
-  const old = JSON.parse(text);
-  const { undoDeleteId, ...workspace } = old.workspace;
-  expect(validateBackup(text)).toEqual({
-    ...old,
-    version: 6,
-    workspace: {
-      ...workspace,
-      undoDeleteIds: undoDeleteId === null ? [] : [undoDeleteId],
-    },
-  });
+it('accepts the shared synthetic version-7 library exactly', () => {
+  const text = readFileSync('tests/fixtures/valid-v7.json', 'utf8');
+  expect(validateBackup(text)).toEqual(JSON.parse(text));
 });
 
 for (const later of ['single intent!', 'single intent', ''])
@@ -483,11 +448,11 @@ it('retains an unresolved Home capture while another composer captures, then rec
     const original = structuredClone(r.snapshot.items[0]);
     c.editSource('Home later');
     const revision = c.state.revision;
-    await c.createStash();
-    const owner = c.state.stashId!;
+    await c.createTree();
+    const owner = c.state.ownerId!;
     c.editSource('Other capture');
     expect(await c.save()).toBe(true);
-    await c.openStash(null);
+    await c.openTree(null);
     expect(await c.save()).toBe(true);
     expect(r.snapshot.items.filter((x) => x.kind === 'note')).toHaveLength(2);
     expect(r.snapshot.items.find((x) => x.id === original.id)).toEqual(
@@ -542,7 +507,7 @@ it('recovers from definitively rejected complete-envelope capacity after reducin
       2048 -
       new TextEncoder().encode(encodeBackup(r.snapshot)).length,
   );
-  expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('version', 6);
+  expect(validateBackup(encodeBackup(r.snapshot))).toHaveProperty('version', 7);
   const before = structuredClone(r.snapshot),
     c = new WorkspaceController(r);
   try {

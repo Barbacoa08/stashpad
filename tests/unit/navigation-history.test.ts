@@ -26,7 +26,7 @@ it('commits only acknowledged visits, truncates branches, bounds, and resets', (
 it('skips missing and changed scopes, reconciles without appending, and supersedes pending traversal', () => {
   const home: Location = { scope: 'live', itemId: null },
     trash: Location = { scope: 'trash', itemId: null };
-  const a = item({ id: 'a', kind: 'stash' });
+  const a = item({ id: 'a', kind: 'tree' });
   const h = new api.NavigationHistory();
   h.visit(home);
   h.visit({ scope: 'live', itemId: a.id });
@@ -53,7 +53,7 @@ it('projects root and final two ancestors with explicit omitted depth, within re
     items.push(
       item({
         id: String(i),
-        kind: 'stash',
+        kind: 'tree',
         parentId: items.at(-1)?.id ?? null,
         markdown: 'x'.repeat(100),
       }),
@@ -77,7 +77,7 @@ it('projects root and final two ancestors with explicit omitted depth, within re
 it('matches exact identities/scopes and rejects missing or non-container visits', () => {
   const at: Location = { scope: 'live', itemId: 'A' };
   const valid = api.historyLocationValidator([
-    item({ id: 'A', kind: 'stash' }),
+    item({ id: 'A', kind: 'tree' }),
     item({ id: 'note' }),
   ]);
   expect(valid(at)).toBe(true);

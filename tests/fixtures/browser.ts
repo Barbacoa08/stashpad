@@ -1,7 +1,7 @@
 import type { CloseAdapter } from '../../src/lib/platform/lifecycle';
 import { MemoryRepository } from './memory';
-import { convertLegacy } from '../../src/lib/domain/backup';
-import type { V3Workspace } from '../../src/lib/domain/notes';
+import type { Item, WorkspaceSnapshot } from '../../src/lib/domain/notes';
+import { item } from './items';
 import { visualNotes } from './visual';
 import type { WorkspaceController } from '../../src/lib/workspace/controller';
 let closeHandler: Parameters<CloseAdapter['onCloseRequested']>[0] | undefined;
@@ -44,8 +44,24 @@ export function ready(controller: WorkspaceController) {
         },
       });
     },
-    seedLegacy(s: V3Workspace) {
-      repository.snapshot = convertLegacy(s);
+    seed(
+      s: Omit<WorkspaceSnapshot, 'items'> & {
+        items: (Partial<Item> & Pick<Item, 'id'>)[];
+      },
+    ) {
+      const ranks = new Map<string, number>();
+      repository.snapshot = {
+        ...s,
+        items: s.items.map((x) => {
+          const key = JSON.stringify([
+            x.parentId ?? null,
+            x.deletedAt == null ? 'live' : 'trash',
+          ]);
+          const position = ranks.get(key) ?? 0;
+          ranks.set(key, position + 1);
+          return item({ ...x, position: x.position ?? position });
+        }),
+      };
     },
     controller,
     delay() {

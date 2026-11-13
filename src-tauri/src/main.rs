@@ -1,3 +1,3 @@
 fn main() {
-    stashpad_alpha_kit::run();
+    scratchtree_lib::run();
 }

@@ -23,11 +23,11 @@ test('dialog cancellations are neutral, and restore confirmation resets state on
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 1,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-10T00:00:00.000Z',
-      workspace: {
-        notes: [],
+      library: {
+        items: [],
         drafts: [
           {
             key: 'compose',
@@ -36,7 +36,7 @@ test('dialog cancellations are neutral, and restore confirmation resets state on
             updatedAt: 0,
           },
         ],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       },
     });
   });
@@ -78,6 +78,6 @@ test('invalid backup reports a safe error before replacement', async ({
   await page
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
-  await expect(page.getByRole('alert')).toContainText('version 1');
+  await expect(page.getByRole('alert')).toContainText('Invalid');
   await expect(edit(page)).toHaveText('prior input');
 });

@@ -15,7 +15,7 @@ async function setup() {
       markdown: id === a ? 'first' : 'second',
       draft: { key: 'compose', revision: 0 },
     });
-  await r.createChildStash({ id: d, parent: { scope: 'live', itemId: a } });
+  await r.createChildTree({ id: d, parent: { scope: 'live', itemId: a } });
   const c = new WorkspaceController(r);
   await c.start();
   return { r, c };
@@ -76,7 +76,7 @@ it('color and order retain drafts, descendants, completion, and metadata through
   await c.setNoteDone(b, true);
   await c.setItemColor(b, 'pink');
   await c.enterItem(b);
-  await c.openStash(null);
+  await c.openTree(null);
   await c.reorderItem({ id: b, group: home, toIndex: 0 });
   await c.remove(b);
   await c.setItemColor(b, 'teal');
@@ -107,7 +107,7 @@ import { item } from '../fixtures/items';
 const e = '00000000-0000-4000-8000-000000000004';
 const dragSnapshot = {
   items: [
-    item({ id: a, kind: 'stash' }),
+    item({ id: a, kind: 'tree' }),
     item({ id: b, position: 1 }),
     item({ id: d, position: 2 }),
     item({ id: e, parentId: a }),

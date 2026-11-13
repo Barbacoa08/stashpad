@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use stashpad_alpha_kit::{model::*, store::Store};
+use scratchtree_lib::{model::*, store::Store};
 pub fn item() -> Item {
     Item {
         id: String::new(),
@@ -16,7 +16,7 @@ pub fn item() -> Item {
         restore_index: None,
     }
 }
-/** Legacy-shaped test calls allocate explicit creation identities; production exposes only Item APIs. */
+/** Convenience test calls allocate explicit creation identities; production exposes only Item APIs. */
 pub trait SeedStore {
     fn save(
         &mut self,
@@ -26,8 +26,8 @@ pub trait SeedStore {
         revision: i64,
         parent: Option<&str>,
     ) -> Result<WorkspaceSnapshot>;
-    fn create_stash(&mut self, source: &str, parent: Option<&str>) -> Result<WorkspaceSnapshot>;
-    fn rename_stash(&mut self, id: &str, source: &str) -> Result<WorkspaceSnapshot>;
+    fn create_tree(&mut self, source: &str, parent: Option<&str>) -> Result<WorkspaceSnapshot>;
+    fn rename_tree(&mut self, id: &str, source: &str) -> Result<WorkspaceSnapshot>;
 }
 impl SeedStore for Store {
     fn save(
@@ -56,9 +56,9 @@ impl SeedStore for Store {
             })
         }
     }
-    fn create_stash(&mut self, source: &str, parent: Option<&str>) -> Result<WorkspaceSnapshot> {
+    fn create_tree(&mut self, source: &str, parent: Option<&str>) -> Result<WorkspaceSnapshot> {
         let id = uuid::Uuid::new_v4().to_string();
-        self.create_child_stash(&CreateChildStash {
+        self.create_child_tree(&CreateChildTree {
             id: id.clone(),
             parent: Location {
                 scope: Scope::Live,
@@ -75,7 +75,7 @@ impl SeedStore for Store {
             },
         )
     }
-    fn rename_stash(&mut self, id: &str, source: &str) -> Result<WorkspaceSnapshot> {
+    fn rename_tree(&mut self, id: &str, source: &str) -> Result<WorkspaceSnapshot> {
         self.save_source(
             id,
             source,

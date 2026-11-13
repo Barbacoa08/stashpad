@@ -20,7 +20,7 @@ async function seed(page: Page) {
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[0] },
     });
@@ -50,7 +50,7 @@ test('Trash Delete permanently removes exactly the captured tree, leaves detache
   await page.getByRole('button', { name: 'Trash', exact: true }).click();
   await card(page, ids[0]).click();
   await card(page, ids[0])
-    .getByRole('button', { name: 'Permanently delete stash', exact: true })
+    .getByRole('button', { name: 'Permanently delete tree', exact: true })
     .click();
   await expect
     .poll(async () =>
@@ -99,7 +99,7 @@ for (const exit of [
   'history',
   'side-button',
 ] as const)
-  test(`empty stash demotes only after successful ${exit} exit and history never promotes it`, async ({
+  test(`empty tree demotes only after successful ${exit} exit and history never promotes it`, async ({
     page,
   }) => {
     const ids = await seed(page);
@@ -111,7 +111,7 @@ for (const exit of [
           (await snapshot(page)).items.find((item: any) => item.id === ids[2])
             .kind,
       )
-      .toBe('stash');
+      .toBe('tree');
     await capture(page).fill('owner draft survives demotion');
     if (exit === 'parent')
       await page.keyboard
@@ -145,7 +145,7 @@ for (const exit of [
     await expect(card(page, ids[2])).toBeVisible();
     await expect(
       page.getByRole('button', {
-        name: 'Open stash empty source',
+        name: 'Open tree empty source',
         exact: true,
       }),
     ).toHaveCount(0);
@@ -195,18 +195,18 @@ test('queued empty A to B to C exits demote actual origins and transient B never
   await card(page, ids[0]).click();
   await page.keyboard.press('ArrowRight');
   await page
-    .getByRole('button', { name: 'Open stash queued B', exact: true })
+    .getByRole('button', { name: 'Open tree queued B', exact: true })
     .click();
   await expect
     .poll(() => page.evaluate(() => !!(window as any).__test.releaseB))
     .toBe(true);
   await page
-    .getByRole('button', { name: 'Open stash queued C', exact: true })
+    .getByRole('button', { name: 'Open tree queued C', exact: true })
     .click();
   await page.evaluate(() => (window as any).__test.releaseB());
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBe(ids[2]);
   expect(
@@ -224,20 +224,20 @@ test('queued empty A to B to C exits demote actual origins and transient B never
   await back.click();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBe(ids[1]);
   await back.click();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBeNull();
   await back.click();
   await expect(back).toBeDisabled();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBeNull();
 });

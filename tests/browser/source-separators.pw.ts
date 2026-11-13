@@ -19,21 +19,20 @@ for (const [name, source] of [
     await expect(capture(page)).toBeVisible();
     await page.evaluate(async (markdown) => {
       const t = (window as any).__test;
-      t.seedLegacy({
-        stashes: [],
-        notes: [
+      t.seed({
+        items: [
           {
             id: '00000000-0000-4000-8000-000000000001',
             markdown,
             createdAt: 0,
             updatedAt: 0,
-            stashId: null,
+            parentId: null,
             done: false,
             deletedAt: null,
           },
         ],
         drafts: [],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       });
       await t.controller.start();
     }, source);

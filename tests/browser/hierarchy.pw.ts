@@ -5,16 +5,16 @@ async function create(page: Page, name: string) {
   await expect(capture(page)).toBeVisible();
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
-  await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'New tree' })).toHaveCount(0);
   // Named fixtures edit the source-bearing container through the current boundary.
   await page.evaluate(async (name) => {
     const c = (window as any).__test.controller;
-    const id = c.state.stashId;
+    const id = c.state.ownerId;
     c.editContext(id, name);
     await c.flush();
   }, name);
 }
-test('Command N preserves editor draft, creates nested stashes, captures there, and global search identifies ownership', async ({
+test('Command N preserves editor draft, creates nested trees, captures there, and global search identifies ownership', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -31,16 +31,16 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
   await expect(capture(page)).toHaveText('');
   await capture(page).fill('Next nested capture');
   await page
-    .getByRole('button', { name: 'Open stash Projects', exact: true })
+    .getByRole('button', { name: 'Open tree Projects', exact: true })
     .click();
   await expect(capture(page)).toHaveText('Parent draft');
   await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(capture(page)).toHaveText('Home draft');
-  const stash = page.getByRole('article', { name: 'Stash Projects' });
-  await stash.click();
+  const tree = page.getByRole('article', { name: 'Tree Projects' });
+  await tree.click();
   await page.keyboard.press('Enter');
   await expect(page.locator('.app-header h1')).toContainText('Projects');
-  await page.getByRole('article', { name: 'Stash Ideas' }).click();
+  await page.getByRole('article', { name: 'Tree Ideas' }).click();
   await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('Next nested capture');
   await page.getByRole('button', { name: 'Root', exact: true }).first().click();
@@ -64,39 +64,37 @@ test('Command N preserves editor draft, creates nested stashes, captures there, 
     await page.evaluate(
       () =>
         (window as any).__test.repo.snapshot.items.find(
-          (x: any) => x.kind === 'stash' && x.markdown === 'Ideas',
+          (x: any) => x.kind === 'tree' && x.markdown === 'Ideas',
         ).id,
     ),
   );
 });
-test('instant creation preserves drafts and stash source edits have ordinary source, copy, and deletion actions', async ({
+test('instant creation preserves drafts and tree source edits have ordinary source, copy, and deletion actions', async ({
   page,
 }) => {
   await page.goto('/?fixture');
   await capture(page).fill('Retained');
   await create(page, 'Named');
-  // Keep a saved child so this test continues to exercise stash actions.
+  // Keep a saved child so this test continues to exercise tree actions.
   await capture(page).fill('Named child');
   await capture(page).press('Enter');
   await page.getByRole('button', { name: 'Root', exact: true }).first().click();
   await expect(capture(page)).toHaveText('Retained');
-  const stash = page.getByRole('article', { name: 'Stash Named' });
-  await stash.click();
+  const tree = page.getByRole('article', { name: 'Tree Named' });
+  await tree.click();
+  await expect(tree.getByRole('button', { name: 'Delete tree' })).toBeVisible();
   await expect(
-    stash.getByRole('button', { name: 'Delete stash' }),
+    tree.getByRole('button', { name: 'Copy Markdown' }),
   ).toBeVisible();
-  await expect(
-    stash.getByRole('button', { name: 'Copy Markdown' }),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Rename stash' })).toHaveCount(
+  await expect(page.getByRole('button', { name: 'Rename tree' })).toHaveCount(
     0,
   );
-  await stash.dblclick();
+  await tree.dblclick();
   const editor = page.getByRole('textbox', { name: 'Edit Markdown' });
   await editor.fill('Renamed **source**');
   await editor.press('Escape');
   await expect(
-    page.getByRole('article', { name: 'Stash Renamed **source**' }),
+    page.getByRole('article', { name: 'Tree Renamed **source**' }),
   ).toContainText('Renamed source');
 });
 test('per-location capture caret and undo survive navigation', async ({
@@ -162,7 +160,7 @@ test('search location stays inside its note card and cancellation restores edito
   ).toBe(true);
 });
 
-test('sidebar expand state, parent keyboard navigation, and mixed stream ordering use actual stash IDs', async ({
+test('sidebar expand state, parent keyboard navigation, and mixed stream ordering use actual tree IDs', async ({
   page,
 }) => {
   await page.goto('/?fixture');
@@ -176,28 +174,26 @@ test('sidebar expand state, parent keyboard navigation, and mixed stream orderin
     /Root\s*\/\s*Parent\s*$/,
   );
   await page.getByRole('button', { name: 'Root', exact: true }).first().click();
-  const toggle = page.getByRole('button', { name: 'Collapse stash Parent' });
+  const toggle = page.getByRole('button', { name: 'Collapse tree Parent' });
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await toggle.click();
   await expect(
-    page.getByRole('button', { name: 'Open stash Child', exact: true }),
+    page.getByRole('button', { name: 'Open tree Child', exact: true }),
   ).toHaveCount(0);
-  await page.getByRole('button', { name: 'Expand stash Parent' }).click();
+  await page.getByRole('button', { name: 'Expand tree Parent' }).click();
   await expect(
-    page.getByRole('button', { name: 'Open stash Child', exact: true }),
+    page.getByRole('button', { name: 'Open tree Child', exact: true }),
   ).toBeVisible();
-  await page.getByRole('article', { name: 'Stash Parent' }).click();
+  await page.getByRole('article', { name: 'Tree Parent' }).click();
   await page.keyboard.press('ArrowRight');
-  await expect(
-    page.getByRole('article', { name: 'Stash Child' }),
-  ).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Tree Child' })).toBeVisible();
   await capture(page).fill('parent note');
   await capture(page).press('Enter');
   const entries = page
     .getByRole('region', { name: 'Note stream' })
     .getByRole('article');
   await expect(entries).toHaveCount(2);
-  await expect(entries.first()).toHaveAttribute('aria-label', 'Stash Child');
+  await expect(entries.first()).toHaveAttribute('aria-label', 'Tree Child');
   await expect(entries.last()).toHaveAttribute('aria-label', 'Saved note');
 });
 
@@ -209,12 +205,11 @@ test('successful restore resets capture undo even when restored source equals th
   await page.keyboard.insertText('same restored source');
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 2,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-11T00:00:00.000Z',
-      workspace: {
-        stashes: [],
-        notes: [],
+      library: {
+        items: [],
         drafts: [
           {
             key: 'compose',
@@ -223,7 +218,7 @@ test('successful restore resets capture undo even when restored source equals th
             updatedAt: 0,
           },
         ],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       },
     });
   });
@@ -238,7 +233,7 @@ test('successful restore resets capture undo even when restored source equals th
   await expect(capture(page)).toHaveText('same restored source');
 });
 
-test('constrained sidebar keeps actual nested navigation visible and stash creation reachable at 150% text', async ({
+test('constrained sidebar keeps actual nested navigation visible and tree creation reachable at 150% text', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
@@ -246,12 +241,12 @@ test('constrained sidebar keeps actual nested navigation visible and stash creat
   await page.addStyleTag({ content: ':root {font-size:24px !important}' });
   await create(page, 'Parent');
   await create(page, 'Child');
-  const navigation = page.getByRole('navigation', { name: 'Stashes' });
+  const navigation = page.getByRole('navigation', { name: 'Trees' });
   expect(
     await navigation.evaluate((el) => el.getBoundingClientRect().height),
   ).toBeGreaterThan(100);
   const child = navigation.getByRole('button', {
-    name: 'Open stash Child',
+    name: 'Open tree Child',
     exact: true,
   });
   await child.scrollIntoViewIfNeeded();
@@ -263,6 +258,6 @@ test('constrained sidebar keeps actual nested navigation visible and stash creat
     }),
   ).toBe(true);
   await page.keyboard.press('Meta+n');
-  await expect(page.getByRole('dialog', { name: 'New stash' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'New tree' })).toHaveCount(0);
   await expect(capture(page)).toBeFocused();
 });

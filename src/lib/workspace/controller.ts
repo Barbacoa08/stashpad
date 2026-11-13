@@ -18,7 +18,7 @@ import type {
   Repository,
   RestorePreview,
   CaptureItem,
-  CreateChildStash,
+  CreateChildTree,
   ReorderItem,
   PurgeItem,
   PurgeResult,
@@ -33,7 +33,7 @@ export type WorkspaceOperation =
   | 'navigation-reconcile'
   | 'save'
   | 'completion'
-  | 'create-stash'
+  | 'create-tree'
   | 'promote'
   | 'restore-item'
   | 'color'
@@ -45,7 +45,7 @@ export type WorkspaceOperation =
 export interface ViewState {
   snapshot: WorkspaceSnapshot;
   purgedItemIds: string[];
-  stashId: string | null;
+  ownerId: string | null;
   location: Location;
   mutationRetry: boolean;
   activeKey: string;
@@ -64,7 +64,7 @@ export class WorkspaceController {
   state: ViewState = {
     snapshot: emptyWorkspace(),
     purgedItemIds: [],
-    stashId: null,
+    ownerId: null,
     location: { scope: 'live', itemId: null },
     mutationRetry: false,
     activeKey: 'compose',
@@ -94,8 +94,8 @@ export class WorkspaceController {
   // In-memory acknowledgment state preserves a pending Save's original identity
   // after a structural command reconciles its committed write.
   private reconciledCaptures = new Set<string>();
-  private creationIntent: CreateChildStash | null = null;
-  private childIntents = new Map<string, CreateChildStash>();
+  private creationIntent: CreateChildTree | null = null;
+  private childIntents = new Map<string, CreateChildTree>();
   private retryIntent: (() => Promise<boolean>) | null = null;
   // Lost purge replies retain their exact reconciliation independently of newer
   // failed commands, which may need to checkpoint an already removed owner.
@@ -129,7 +129,7 @@ export class WorkspaceController {
     const current = this.state.location;
     if (
       current.itemId === null ||
-      s.items.some((x) => x.id === current.itemId && x.kind === 'stash')
+      s.items.some((x) => x.id === current.itemId && x.kind === 'tree')
     ) {
       const location =
         current.itemId === null
@@ -147,14 +147,14 @@ export class WorkspaceController {
     while (parent !== null) {
       const candidate = index.get(parent);
       if (
-        candidate?.kind === 'stash' &&
+        candidate?.kind === 'tree' &&
         effectiveScope(s.items, parent) === current.scope
       )
         break;
       parent = prior.get(parent)?.parentId ?? candidate?.parentId ?? null;
     }
     const location = { scope: current.scope, itemId: parent };
-    this.patch({ snapshot: s, location, stashId: parent });
+    this.patch({ snapshot: s, location, ownerId: parent });
     if (this.state.activeKey === composeKey(current))
       this.context(composeKey(location));
   }
@@ -173,7 +173,7 @@ export class WorkspaceController {
         this.snapshot(s);
         this.resetBuffers(s);
         this.patch({
-          stashId: null,
+          ownerId: null,
           location: { scope: 'live', itemId: null },
         });
         this.context(composeKey(null));
@@ -309,11 +309,11 @@ export class WorkspaceController {
           !this.state.snapshot.items.some(
             (x) =>
               x.id === to.itemId &&
-              (promoteDestination || x.kind === 'stash') &&
+              (promoteDestination || x.kind === 'tree') &&
               effectiveScope(this.state.snapshot.items, x.id) === to.scope,
           )
         )
-          throw new Error('This stash is unavailable.');
+          throw new Error('This tree is unavailable.');
         if (!(await this.checkpoint())) {
           this.retryIntent = retry;
           this.patch({ mutationRetry: true });
@@ -346,7 +346,7 @@ export class WorkspaceController {
           ...(intent !== this.viewIntent
             ? { operation: 'navigation-reconcile' as const }
             : {}),
-          stashId: destination.itemId,
+          ownerId: destination.itemId,
           location: destination,
           ...(intent === this.viewIntent &&
           clearQuery &&
@@ -383,12 +383,12 @@ export class WorkspaceController {
       ...this.state.location,
     });
   }
-  openStash(id: string | null) {
+  openTree(id: string | null) {
     if (
       id !== null &&
-      !this.state.snapshot.items.some((x) => x.id === id && x.kind === 'stash')
+      !this.state.snapshot.items.some((x) => x.id === id && x.kind === 'tree')
     ) {
-      this.error(new Error('This stash is unavailable.'));
+      this.error(new Error('This tree is unavailable.'));
       return Promise.resolve(false);
     }
     const at: Location = {
@@ -413,7 +413,7 @@ export class WorkspaceController {
       : itemLocation(this.state.snapshot.items, id);
     return this.navigate(id, at);
   }
-  createStash(selectedId?: string, retry?: CreateChildStash) {
+  createTree(selectedId?: string, retry?: CreateChildTree) {
     if (this.creating) return this.creating;
     const selected = selectedId
       ? this.state.snapshot.items.find((x) => x.id === selectedId)
@@ -424,7 +424,7 @@ export class WorkspaceController {
           itemId: selected.id,
         }
       : { ...this.state.location };
-    const captured: CreateChildStash =
+    const captured: CreateChildTree =
       retry ??
       (this.creationIntent &&
       this.creationIntent.parent.scope === parent.scope &&
@@ -442,31 +442,31 @@ export class WorkspaceController {
     this.creating = this.run(async () => {
       // Exit cleanup follows the actual queued departure; UUID and parent remain
       // the immutable creation destination selected by the original command.
-      const request: CreateChildStash = {
+      const request: CreateChildTree = {
         ...captured,
         leave: { ...this.state.location },
       };
       this.creationIntent = request;
       this.childIntents.set(request.id, request);
-      this.patch({ operation: 'create-stash', error: '' });
+      this.patch({ operation: 'create-tree', error: '' });
       try {
         if (!(await this.checkpoint())) {
-          this.retryIntent = () => this.createStash(undefined, request);
+          this.retryIntent = () => this.createTree(undefined, request);
           this.patch({ mutationRetry: true });
           return false;
         }
         if (!(await this.reconcileCreations(request.id))) {
-          this.retryIntent = () => this.createStash(undefined, request);
+          this.retryIntent = () => this.createTree(undefined, request);
           this.patch({ mutationRetry: true });
           return false;
         }
-        const snapshot = await this.repo.createChildStash(request);
+        const snapshot = await this.repo.createChildTree(request);
         this.creationIntent = null;
         this.childIntents.delete(request.id);
         this.retryIntent = null;
         this.patch({
           mutationRetry: this.uncertainPurgeRetries.size > 0,
-          status: 'Stash created',
+          status: 'Tree created',
           error: '',
         });
         const departed =
@@ -484,7 +484,7 @@ export class WorkspaceController {
             ...(view !== this.viewIntent
               ? { operation: 'navigation-reconcile' as const }
               : {}),
-            stashId: request.id,
+            ownerId: request.id,
             location: at,
             ...(query === this.queryRevision ? { query: '' } : {}),
           });
@@ -493,7 +493,7 @@ export class WorkspaceController {
         return true;
       } catch (e) {
         this.error(e);
-        this.retryIntent = () => this.createStash(undefined, request);
+        this.retryIntent = () => this.createTree(undefined, request);
         this.patch({ mutationRetry: true });
         return false;
       } finally {
@@ -563,14 +563,14 @@ export class WorkspaceController {
       location:
         key === 'compose:trash'
           ? { scope: 'trash', itemId: null }
-          : compose.stashId === null
+          : compose.ownerId === null
             ? { scope: 'live', itemId: null }
             : {
                 scope: effectiveScope(
                   this.state.snapshot.items,
-                  compose.stashId,
+                  compose.ownerId,
                 ),
-                itemId: compose.stashId,
+                itemId: compose.ownerId,
               },
       markdown: buffer.source,
       draft: { key, revision: buffer.revision },
@@ -758,7 +758,7 @@ export class WorkspaceController {
                   ?.parentId ?? null;
             at = { scope: current.scope, itemId: parent };
           }
-          this.patch({ stashId: at.itemId, location: at });
+          this.patch({ ownerId: at.itemId, location: at });
           if (
             this.state.activeKey === id ||
             at !== current ||
@@ -869,7 +869,7 @@ export class WorkspaceController {
             parent !== null &&
             (removed.has(parent) ||
               !result.workspace.items.some(
-                (x) => x.id === parent && x.kind === 'stash',
+                (x) => x.id === parent && x.kind === 'tree',
               ))
           )
             parent = index.get(parent)?.parentId ?? null;
@@ -886,7 +886,7 @@ export class WorkspaceController {
         this.patch({
           snapshot: result.workspace,
           location: at,
-          stashId: at.itemId,
+          ownerId: at.itemId,
           buffers,
           purgedItemIds: [
             ...new Set([...this.state.purgedItemIds, ...result.removedIds]),
@@ -934,7 +934,7 @@ export class WorkspaceController {
       const target = this.state.snapshot.items.find((x) => x.id === to.itemId);
       if (
         !target ||
-        target.kind !== 'stash' ||
+        target.kind !== 'tree' ||
         effectiveScope(this.state.snapshot.items, target.id) !== to.scope
       )
         throw new Error('This destination is unavailable.');
@@ -1041,7 +1041,7 @@ export class WorkspaceController {
       for (const [id, request] of this.childIntents) {
         if (id === skipChild) continue;
         if (current.items.some((x) => x.id.toLowerCase() === id.toLowerCase()))
-          current = await this.repo.createChildStash(request);
+          current = await this.repo.createChildTree(request);
         this.childIntents.delete(id);
         if (this.creationIntent?.id === id) this.creationIntent = null;
       }
@@ -1195,7 +1195,7 @@ export class WorkspaceController {
           this.snapshot(s);
           this.resetBuffers(s);
           this.patch({
-            stashId: null,
+            ownerId: null,
             location: { scope: 'live', itemId: null },
           });
           this.context(composeKey(null));

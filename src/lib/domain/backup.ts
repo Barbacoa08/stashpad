@@ -2,17 +2,12 @@ import {
   MAX_SOURCE,
   MAX_ENVELOPE,
   COLORS,
-  type BackupV6,
-  type V5Workspace,
-  type V3Workspace,
+  type BackupV7,
   type WorkspaceSnapshot,
   type AppError,
   type Item,
 } from './notes';
-import { validateBackup as validateLegacy } from './legacy-backup';
 import { hierarchyIndex, composeOwner, scopeIndex } from './hierarchy';
-import { validateV4Backup } from './v4-backup';
-import { validateV5Backup } from './v5-backup';
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
@@ -27,64 +22,7 @@ export const uuid = (v: unknown): v is string =>
 const invalid = (
   message = 'Invalid workspace fields or references.',
 ): AppError => ({ code: 'invalid_backup', message });
-const compare = (
-  a: { createdAt: number; id: string },
-  b: { createdAt: number; id: string },
-) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-export function convertLegacy(s: V3Workspace): WorkspaceSnapshot {
-  const items: Item[] = [
-    ...s.stashes.map((x) => ({
-      id: x.id,
-      parentId: x.parentId,
-      kind: 'stash' as const,
-      markdown: x.name,
-      done: false,
-      color: null,
-      position: 0,
-      createdAt: x.createdAt,
-      updatedAt: x.updatedAt,
-      deletedAt: null,
-      restoreParentId: null,
-      restoreIndex: null,
-    })),
-    ...s.notes.map((x) => ({
-      id: x.id,
-      parentId: x.deletedAt === null ? x.stashId : null,
-      kind: 'note' as const,
-      markdown: x.markdown,
-      done: x.done,
-      color: null,
-      position: 0,
-      createdAt: x.createdAt,
-      updatedAt: x.updatedAt,
-      deletedAt: x.deletedAt,
-      restoreParentId: x.deletedAt === null ? null : x.stashId,
-      restoreIndex: x.deletedAt === null ? null : 0,
-    })),
-  ];
-  const groups = new Map<string, Item[]>();
-  for (const x of items) {
-    const key = x.deletedAt !== null ? 'trash' : (x.parentId ?? 'home');
-    const group = groups.get(key) ?? [];
-    group.push(x);
-    groups.set(key, group);
-  }
-  for (const group of groups.values())
-    group.sort(compare).forEach((x, i) => (x.position = i));
-  for (const old of s.notes.filter((x) => x.deletedAt !== null))
-    items.find((x) => x.id === old.id)!.restoreIndex = items.filter(
-      (x) =>
-        x.deletedAt === null &&
-        x.parentId === old.stashId &&
-        compare(x, old) < 0,
-    ).length;
-  return {
-    items,
-    drafts: s.drafts,
-    undoDeleteIds: s.undoDeleteId === null ? [] : [s.undoDeleteId],
-  };
-}
-export function validateBackup(text: string): BackupV6 | AppError {
+export function validateBackup(text: string): BackupV7 | AppError {
   if (bytes(text) > MAX_ENVELOPE)
     return invalid('Backup exceeds the 10 MiB capacity.');
   let b: unknown;
@@ -93,28 +31,18 @@ export function validateBackup(text: string): BackupV6 | AppError {
   } catch {
     return invalid('Backup must be valid JSON.');
   }
-  if (record(b) && (b.version === 4 || b.version === 5)) {
-    const old =
-      b.version === 4 ? validateV4Backup(text) : validateV5Backup(text);
-    if ('code' in old) return old;
-    b = { ...old, version: 6, workspace: convertV5(old.workspace) };
-  } else if (record(b) && b.version !== 6) {
-    const old = validateLegacy(text);
-    if ('code' in old) return old;
-    b = { ...old, version: 6, workspace: convertLegacy(old.workspace) };
-  }
   if (
     !record(b) ||
-    !fields(b, ['format', 'version', 'exportedAt', 'workspace']) ||
-    b.format !== 'stashpad-alpha' ||
-    b.version !== 6 ||
+    !fields(b, ['format', 'version', 'exportedAt', 'library']) ||
+    b.format !== 'scratchtree-alpha' ||
+    b.version !== 7 ||
     typeof b.exportedAt !== 'string' ||
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(b.exportedAt) ||
     !Number.isFinite(Date.parse(b.exportedAt)) ||
     new Date(b.exportedAt).toISOString() !== b.exportedAt
   )
     return invalid();
-  const s = b.workspace;
+  const s = b.library;
   if (
     !record(s) ||
     !fields(s, ['items', 'drafts', 'undoDeleteIds']) ||
@@ -145,7 +73,7 @@ export function validateBackup(text: string): BackupV6 | AppError {
       !uuid(x.id) ||
       ids.has(x.id.toLowerCase()) ||
       (x.parentId !== null && !uuid(x.parentId)) ||
-      !['note', 'stash'].includes(x.kind as string) ||
+      !['note', 'tree'].includes(x.kind as string) ||
       typeof x.markdown !== 'string' ||
       bytes(x.markdown) > MAX_SOURCE ||
       typeof x.done !== 'boolean' ||
@@ -207,7 +135,7 @@ export function validateBackup(text: string): BackupV6 | AppError {
     const owner = composeOwner(d.key);
     if (
       owner
-        ? owner.stashId !== null && !index.has(owner.stashId)
+        ? owner.ownerId !== null && !index.has(owner.ownerId)
         : !uuid(d.key) || !index.has(d.key)
     )
       return invalid();
@@ -222,23 +150,15 @@ export function validateBackup(text: string): BackupV6 | AppError {
     return invalid();
   if (bytes(JSON.stringify(b)) > MAX_ENVELOPE)
     return invalid(
-      'Converted backup exceeds the 10 MiB capacity. The original is retained.',
+      'Backup exceeds the 10 MiB capacity. The original is retained.',
     );
-  return b as unknown as BackupV6;
+  return b as unknown as BackupV7;
 }
-export function encodeBackup(workspace: WorkspaceSnapshot): string {
+export function encodeBackup(library: WorkspaceSnapshot): string {
   return JSON.stringify({
-    format: 'stashpad-alpha',
-    version: 6,
+    format: 'scratchtree-alpha',
+    version: 7,
     exportedAt: new Date().toISOString(),
-    workspace,
+    library,
   });
-}
-
-export function convertV5(s: V5Workspace): WorkspaceSnapshot {
-  return {
-    items: s.items,
-    drafts: s.drafts,
-    undoDeleteIds: s.undoDeleteId === null ? [] : [s.undoDeleteId],
-  };
 }

@@ -62,12 +62,12 @@ export function historyLocationValidator(
   items: Item[],
   scopes: ReadonlyMap<string, Location['scope']> = scopeIndex(items),
 ): (at: Location) => boolean {
-  const stashes = new Set(
-    items.filter((x) => x.kind === 'stash').map((x) => x.id),
+  const trees = new Set(
+    items.filter((x) => x.kind === 'tree').map((x) => x.id),
   );
   return (at) =>
     at.itemId === null ||
-    (stashes.has(at.itemId) && scopes.get(at.itemId) === at.scope);
+    (trees.has(at.itemId) && scopes.get(at.itemId) === at.scope);
 }
 export interface Breadcrumb {
   label: string;

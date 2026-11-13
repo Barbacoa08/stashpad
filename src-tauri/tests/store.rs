@@ -1,6 +1,6 @@
 mod common;
 use common::*;
-use stashpad_alpha_kit::{model::*, store::Store};
+use scratchtree_lib::{model::*, store::Store};
 fn store() -> (tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     let db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
@@ -36,7 +36,7 @@ fn delete_undo_after_reopen() {
     assert!(!db.load().unwrap().undo_delete_ids.is_empty());
     assert_eq!(
         {
-            let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+            let r = scratchtree_lib::store::capture_undo(&db.load().unwrap()).unwrap();
             db.undo(&r)
         }
         .unwrap()
@@ -68,11 +68,9 @@ fn capacity_source_and_envelope_overhead() {
         .save(None, &"x".repeat(MAX_SOURCE + 1), "compose", 2, None)
         .is_err());
     assert_eq!(db.load().unwrap(), s);
-    let bytes = stashpad_alpha_kit::backup::encode(&s).unwrap();
+    let bytes = scratchtree_lib::backup::encode(&s).unwrap();
     assert_eq!(
-        stashpad_alpha_kit::backup::validate(&bytes)
-            .unwrap()
-            .workspace,
+        scratchtree_lib::backup::validate(&bytes).unwrap().library,
         s
     );
 }
@@ -129,9 +127,9 @@ fn full_note_draft_count_boundary_roundtrips() {
         updated_at: 0,
     });
     let committed = db.replace(&s).unwrap();
-    let bytes = stashpad_alpha_kit::backup::encode(&committed).unwrap();
-    let roundtrip = stashpad_alpha_kit::backup::validate(&bytes).unwrap();
-    assert_eq!(db.replace(&roundtrip.workspace).unwrap(), committed);
+    let bytes = scratchtree_lib::backup::encode(&committed).unwrap();
+    let roundtrip = scratchtree_lib::backup::validate(&bytes).unwrap();
+    assert_eq!(db.replace(&roundtrip.library).unwrap(), committed);
     assert!(db.save(None, "one over", "compose", 1, None).is_err());
     assert_eq!(db.load().unwrap(), committed);
 }
@@ -158,15 +156,13 @@ fn compact_envelope_exact_limit_includes_drafts_and_metadata() {
         revision: 1,
         updated_at: 0,
     });
-    let overhead = stashpad_alpha_kit::backup::encode(&s).unwrap().len();
+    let overhead = scratchtree_lib::backup::encode(&s).unwrap().len();
     s.drafts[0].markdown = "x".repeat(MAX_ENVELOPE - overhead);
     let committed = db.replace(&s).unwrap();
-    let bytes = stashpad_alpha_kit::backup::encode(&committed).unwrap();
+    let bytes = scratchtree_lib::backup::encode(&committed).unwrap();
     assert_eq!(bytes.len(), MAX_ENVELOPE);
     assert_eq!(
-        stashpad_alpha_kit::backup::validate(&bytes)
-            .unwrap()
-            .workspace,
+        scratchtree_lib::backup::validate(&bytes).unwrap().library,
         committed
     );
     let over = format!("{}x", committed.drafts[0].markdown);
@@ -191,97 +187,17 @@ fn cancel_edit_discards_only_its_draft_and_survives_reopen() {
 }
 
 #[test]
-fn actual_v1_file_migrates_additively_and_failed_migration_rolls_back() {
-    for invalid in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("legacy.sqlite3");
-        let c = rusqlite::Connection::open(&path).unwrap();
-        c.execute_batch("CREATE TABLE notes(id TEXT PRIMARY KEY,markdown TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER);CREATE TABLE drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);PRAGMA user_version=1;").unwrap();
-        let id = if invalid {
-            "bad-id"
-        } else {
-            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-        };
-        c.execute(
-            "INSERT INTO notes VALUES (?1,?2,0,0,0)",
-            rusqlite::params![id, "exact\r\n**source**"],
-        )
-        .unwrap();
-        c.execute("INSERT INTO settings VALUES ('undoDeleteId',?1)", [id])
-            .unwrap();
-        let active = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB";
-        c.execute(
-            "INSERT INTO notes VALUES (?1,?2,1,2,NULL)",
-            rusqlite::params![active, "active exact\r\n"],
-        )
-        .unwrap();
-        c.execute(
-            "INSERT INTO drafts VALUES (?1,?2,4,5)",
-            rusqlite::params![active, "note draft exact\r\n"],
-        )
-        .unwrap();
-        c.execute(
-            "INSERT INTO drafts VALUES ('compose',?1,6,7)",
-            ["Home draft exact\r\n"],
-        )
-        .unwrap();
-        drop(c);
-        if invalid {
-            assert!(Store::open(&path).is_err());
-            let c = rusqlite::Connection::open(&path).unwrap();
-            assert_eq!(
-                c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-                    .unwrap(),
-                1
-            );
-            assert_eq!(
-                c.query_row(
-                    "SELECT COUNT(*) FROM pragma_table_info('notes') WHERE name='stash_id'",
-                    [],
-                    |r| r.get::<_, i64>(0)
-                )
-                .unwrap(),
-                0
-            );
-        } else {
-            let mut s = Store::open(&path).unwrap();
-            let v = serde_json::to_value(s.load().unwrap()).unwrap();
-            assert!(v["items"].as_array().unwrap().iter().any(|n| n["id"] == id
-                && n["markdown"] == "exact\r\n**source**"
-                && n["deletedAt"] == 0));
-            assert_eq!(v["undoDeleteIds"][0], id);
-            let snapshot = s.load().unwrap();
-            assert!(snapshot.items.iter().any(|n| n.id == active
-                && n.parent_id.is_none()
-                && n.markdown == "active exact\r\n"
-                && n.created_at == 1
-                && n.updated_at == 2));
-            assert!(snapshot.drafts.iter().any(|d| d.key == active
-                && d.markdown == "note draft exact\r\n"
-                && d.revision == 4
-                && d.updated_at == 5));
-            assert!(snapshot.drafts.iter().any(|d| d.key == "compose"
-                && d.markdown == "Home draft exact\r\n"
-                && d.revision == 6
-                && d.updated_at == 7));
-            drop(s);
-            assert!(Store::open(&path).is_ok());
-        }
-    }
-}
-
-#[test]
 fn nested_storage_scoped_drafts_and_edit_ownership_survive_reopen() {
     let (dir, mut db) = store();
-    let s = db.create_stash(" Parent ", None).unwrap();
+    let s = db.create_tree(" Parent ", None).unwrap();
     let parent = s
         .items
         .iter()
-        .find(|x| x.kind == Kind::Stash)
+        .find(|x| x.kind == Kind::Tree)
         .unwrap()
         .id
         .clone();
-    let s = db.create_stash("Child", Some(&parent)).unwrap();
+    let s = db.create_tree("Child", Some(&parent)).unwrap();
     let child = s
         .items
         .iter()
@@ -318,9 +234,9 @@ fn nested_storage_scoped_drafts_and_edit_ownership_survive_reopen() {
             .as_deref(),
         Some(child.as_str())
     );
-    assert!(db.create_stash("bad", Some("missing")).is_err());
+    assert!(db.create_tree("bad", Some("missing")).is_err());
     assert_eq!(db.load().unwrap(), s);
-    db.rename_stash(&parent, "Renamed").unwrap();
+    db.rename_tree(&parent, "Renamed").unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
     let s = db.load().unwrap();
@@ -339,13 +255,13 @@ fn nested_storage_scoped_drafts_and_edit_ownership_survive_reopen() {
     );
 }
 #[test]
-fn stash_source_is_full_markdown_without_legacy_name_limits() {
+fn tree_source_is_full_markdown_without_title_limits() {
     let (_dir, mut db) = store();
     let source = "\u{feff}Name\u{feff}";
-    let s = db.create_stash(source, None).unwrap();
+    let s = db.create_tree(source, None).unwrap();
     assert_eq!(s.items[0].markdown, source);
-    assert!(db.create_stash(&"😀".repeat(201), None).is_ok());
-    assert!(db.create_stash("", None).is_ok());
+    assert!(db.create_tree(&"😀".repeat(201), None).is_ok());
+    assert!(db.create_tree("", None).is_ok());
 }
 
 #[test]
@@ -355,7 +271,7 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     drop(db);
     let path = dir.path().join("notes.sqlite3");
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("PRAGMA user_version=7;").unwrap();
+    c.execute_batch("PRAGMA user_version=8;").unwrap();
     drop(c);
     let before = std::fs::read(&path).unwrap();
     assert!(Store::open(&path).is_err());
@@ -365,11 +281,11 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
 #[test]
 fn empty_existing_note_preserves_identity_owner_and_exact_whitespace() {
     let (dir, mut db) = store();
-    let s = db.create_stash("Owner", None).unwrap();
+    let s = db.create_tree("Owner", None).unwrap();
     let owner = s
         .items
         .iter()
-        .find(|x| x.kind == Kind::Stash)
+        .find(|x| x.kind == Kind::Tree)
         .unwrap()
         .id
         .clone();
@@ -433,4 +349,123 @@ fn empty_existing_note_preserves_identity_owner_and_exact_whitespace() {
             .markdown,
         " \r\n\n\t"
     );
+}
+
+#[test]
+fn fresh_database_initializes_schema_seven() {
+    let (dir, mut db) = store();
+    assert!(db.load().is_ok());
+    let c = rusqlite::Connection::open(dir.path().join("notes.sqlite3")).unwrap();
+    assert_eq!(
+        c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        7
+    );
+}
+#[test]
+fn nonempty_unsupported_database_is_rejected_without_mutation() {
+    for version in [0, 1, 2, 3, 4, 5, 6, 8] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unsupported.sqlite3");
+        let c = rusqlite::Connection::open(&path).unwrap();
+        c.execute_batch(&format!("CREATE TABLE notes(id TEXT, markdown TEXT);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);INSERT INTO notes VALUES ('exact','source');INSERT INTO settings VALUES ('unknown','retained');PRAGMA user_version={version};")).unwrap();
+        drop(c);
+        let before = std::fs::read(&path).unwrap();
+        assert!(Store::open(&path).is_err(), "accepted schema {version}");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "mutated schema {version}"
+        );
+    }
+}
+
+#[test]
+fn unsupported_complete_schema_is_refused_without_rewriting_any_bytes() {
+    for version in [0, 1, 2, 3, 4, 5, 6, 8] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        let mut db = Store::open(&path).unwrap();
+        db.save(None, "source\r\n", "compose", 1, None).unwrap();
+        drop(db);
+        let c = rusqlite::Connection::open(&path).unwrap();
+        c.execute_batch(&format!(
+            "INSERT INTO settings VALUES ('unknown','exact');PRAGMA user_version={version};"
+        ))
+        .unwrap();
+        drop(c);
+        let before = std::fs::read(&path).unwrap();
+        assert!(Store::open(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+}
+#[test]
+fn invalid_current_sqlite_rows_are_refused_without_mutation() {
+    for update in [
+        "UPDATE items SET created_at=-1",
+        "UPDATE items SET parent_id=id",
+        "UPDATE items SET kind='branch'",
+        "UPDATE items SET done=2",
+        "UPDATE items SET restore_index=0",
+        "UPDATE items SET markdown=CAST(X'80' AS TEXT)",
+        "UPDATE settings SET value='null' WHERE key='undoDeleteIds'",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite3");
+        let mut db = Store::open(&path).unwrap();
+        db.save(None, "retained", "compose", 1, None).unwrap();
+        drop(db);
+        let c = rusqlite::Connection::open(&path).unwrap();
+        c.execute_batch(
+            "PRAGMA ignore_check_constraints=ON;INSERT INTO settings VALUES ('unknown','exact');",
+        )
+        .unwrap();
+        c.execute_batch(update).unwrap();
+        drop(c);
+        let before = std::fs::read(&path).unwrap();
+        assert!(Store::open(&path).is_err(), "accepted {update}");
+        assert_eq!(std::fs::read(&path).unwrap(), before, "mutated {update}");
+    }
+}
+#[test]
+fn prospective_capacity_replacement_preserves_rows_drafts_settings_and_version() {
+    let (dir, mut db) = store();
+    let before = db
+        .save(None, "retained **source**\r\n", "compose", 1, None)
+        .unwrap();
+    let path = dir.path().join("notes.sqlite3");
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("INSERT INTO settings VALUES ('unknown','exact');")
+        .unwrap();
+    drop(c);
+    let mut too_large = WorkspaceSnapshot::default();
+    for i in 0..10 {
+        too_large.items.push(Item {
+            id: uuid::Uuid::from_u128(i + 1).to_string(),
+            markdown: "x".repeat(MAX_SOURCE),
+            position: i as i64,
+            ..item()
+        });
+    }
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(db.replace(&too_large).is_err());
+    assert_eq!(db.load().unwrap(), before);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    let mut too_many = WorkspaceSnapshot::default();
+    for i in 0..20001 {
+        too_many.items.push(Item {
+            id: uuid::Uuid::from_u128(i + 1).to_string(),
+            position: i as i64,
+            ..item()
+        });
+    }
+    assert!(db.replace(&too_many).is_err());
+    assert_eq!(db.load().unwrap(), before);
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+}
+#[test]
+fn native_configuration_pins_the_fresh_preview_identifier() {
+    let config: tauri::Config = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    assert_eq!(config.identifier, "tech.barbajoe.scratchtree.preview");
+    assert_eq!(config.product_name.as_deref(), Some("Scratchtree"));
 }

@@ -77,19 +77,6 @@ pub fn iso_now() -> String {
     )
 }
 pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
-    validate_version_snapshot(s, true)
-}
-pub fn validate_v4_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
-    let mut value = serde_json::to_value(s).map_err(|_| invalid())?;
-    value
-        .as_object_mut()
-        .ok_or_else(invalid)?
-        .remove("undoDeleteIds");
-    value["undoDeleteId"] = s.undo_delete_ids.first().cloned().into();
-    let _: V4Workspace = serde_json::from_value(value).map_err(|_| invalid())?;
-    validate_version_snapshot(s, false)
-}
-fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()> {
     if s.items.len() > 20000 || s.drafts.len() > 40002 {
         return Err(invalid());
     }
@@ -123,7 +110,7 @@ fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()>
             }
             let current = index.get(key).ok_or_else(invalid)?;
             if let Some(parent) = current.parent_id.as_deref() {
-                if index.get(parent).is_none_or(|p| p.kind != Kind::Stash) {
+                if index.get(parent).is_none_or(|p| p.kind != Kind::Tree) {
                     return Err(invalid());
                 }
             }
@@ -155,21 +142,14 @@ fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()>
     let mut ranks = HashSet::new();
     for x in &s.items {
         if x.deleted_at.is_some() {
-            if x.parent_id
-                .as_deref()
-                .is_some_and(|parent| !current || !scopes[parent])
-            {
+            if x.parent_id.as_deref().is_some_and(|parent| !scopes[parent]) {
                 return Err(invalid());
             }
         } else if x.restore_parent_id.is_some() || x.restore_index.is_some() {
             return Err(invalid());
         }
         if let Some(parent) = x.restore_parent_id.as_deref() {
-            if x.restore_index.is_none()
-                || index
-                    .get(parent)
-                    .is_none_or(|p| !current && p.kind != Kind::Stash)
-            {
+            if x.restore_index.is_none() || !index.contains_key(parent) {
                 return Err(invalid());
             }
         }
@@ -186,9 +166,7 @@ fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()>
         let valid_key = if d.key == "compose" || d.key == "compose:trash" {
             true
         } else if let Some(id) = d.key.strip_prefix("compose:") {
-            index
-                .get(id)
-                .is_some_and(|x| current || x.kind == Kind::Stash)
+            index.contains_key(id)
         } else {
             uuid(&d.key) && index.contains_key(d.key.as_str())
         };
@@ -214,93 +192,13 @@ fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()>
     }
     Ok(())
 }
-pub fn convert_legacy(s: V3Workspace) -> WorkspaceSnapshot {
-    let mut items: Vec<Item> = s
-        .stashes
-        .into_iter()
-        .map(|x| Item {
-            id: x.id,
-            parent_id: x.parent_id,
-            kind: Kind::Stash,
-            markdown: x.name,
-            done: false,
-            color: None,
-            position: 0,
-            created_at: x.created_at,
-            updated_at: x.updated_at,
-            deleted_at: None,
-            restore_parent_id: None,
-            restore_index: None,
-        })
-        .collect();
-    for x in s.notes {
-        items.push(Item {
-            id: x.id,
-            parent_id: if x.deleted_at.is_some() {
-                None
-            } else {
-                x.stash_id.clone()
-            },
-            kind: Kind::Note,
-            markdown: x.markdown,
-            done: x.done,
-            color: None,
-            position: 0,
-            created_at: x.created_at,
-            updated_at: x.updated_at,
-            deleted_at: x.deleted_at,
-            restore_parent_id: if x.deleted_at.is_some() {
-                x.stash_id
-            } else {
-                None
-            },
-            restore_index: x.deleted_at.map(|_| 0),
-        });
-    }
-    let mut ordered: Vec<usize> = (0..items.len()).collect();
-    ordered.sort_by(|&a, &b| {
-        items[a]
-            .created_at
-            .cmp(&items[b].created_at)
-            .then_with(|| items[a].id.cmp(&items[b].id))
-    });
-    let mut groups: HashMap<(Option<String>, bool), i64> = HashMap::new();
-    for &i in &ordered {
-        let x = &mut items[i];
-        let pos = groups
-            .entry((x.parent_id.clone(), x.deleted_at.is_some()))
-            .or_default();
-        x.position = *pos;
-        *pos += 1;
-    }
-    for &i in &ordered {
-        if items[i].deleted_at.is_some() {
-            let x = &items[i];
-            let rank = items
-                .iter()
-                .filter(|y| {
-                    y.deleted_at.is_none()
-                        && y.parent_id == x.restore_parent_id
-                        && (y.created_at < x.created_at
-                            || (y.created_at == x.created_at && y.id < x.id))
-                })
-                .count() as i64;
-            items[i].restore_index = Some(rank);
-        }
-    }
-    WorkspaceSnapshot {
-        items,
-        drafts: s.drafts,
-        undo_delete_ids: s.undo_delete_id.into_iter().collect(),
-    }
-}
 pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     validate_snapshot(s)?;
-    let b = BackupV6 {
-        format: "stashpad-alpha".into(),
-        version: 6,
+    let b = BackupV7 {
+        format: "scratchtree-alpha".into(),
+        version: 7,
         exported_at: iso_now(),
-        workspace: s.clone(),
+        library: s.clone(),
     };
     let bytes = serde_json::to_vec(&b).map_err(storage_error)?;
     if bytes.len() > MAX_ENVELOPE {
@@ -311,58 +209,25 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub fn validate(bytes: &[u8]) -> Result<BackupV6> {
+pub fn validate(bytes: &[u8]) -> Result<BackupV7> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
+    // Match JSON.parse's last-value rule before validating the strict current contract.
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    let b: BackupV6 = match value.get("version").and_then(|x| x.as_i64()) {
-        Some(6) => serde_json::from_value(value).map_err(|_| invalid())?,
-        Some(5) => {
-            let old = crate::v5_backup::validate(bytes)?;
-            BackupV6 {
-                format: old.format,
-                version: 6,
-                exported_at: old.exported_at,
-                workspace: old.workspace.into(),
-            }
-        }
-        Some(4) => {
-            let old: BackupV4 = serde_json::from_value(value).map_err(|_| invalid())?;
-            if old.format != "stashpad-alpha" || !timestamp(&old.exported_at) {
-                return Err(invalid());
-            }
-            let workspace: WorkspaceSnapshot = old.workspace.into();
-            validate_v4_snapshot(&workspace)?;
-            BackupV6 {
-                format: old.format,
-                version: 6,
-                exported_at: old.exported_at,
-                workspace,
-            }
-        }
-        _ => {
-            let old = crate::legacy_backup::validate(bytes)?;
-            BackupV6 {
-                format: old.format,
-                version: 6,
-                exported_at: old.exported_at,
-                workspace: convert_legacy(old.workspace),
-            }
-        }
-    };
-    if b.format != "stashpad-alpha" || b.version != 6 || !timestamp(&b.exported_at) {
+    let b: BackupV7 = serde_json::from_value(value).map_err(|_| invalid())?;
+    if b.format != "scratchtree-alpha" || b.version != 7 || !timestamp(&b.exported_at) {
         return Err(invalid());
     }
-    validate_snapshot(&b.workspace)?;
-    encode(&b.workspace).map_err(|_|error("invalid_backup","Converted backup exceeds the 10 MiB capacity. The original is retained; recover using a compatible app or verified smaller copy."))?;
+    validate_snapshot(&b.library)?;
+    encode(&b.library).map_err(|_|error("invalid_backup","Backup exceeds the 10 MiB capacity. The original is retained; recover using a compatible app or verified smaller copy."))?;
     Ok(b)
 }
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| error("file_error", "Choose a local destination folder."))?;
-    let tmp = parent.join(format!(".stashpad-{}.tmp", uuid::Uuid::new_v4()));
+    let tmp = parent.join(format!(".scratchtree-{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| {
         let mut f = std::fs::OpenOptions::new()
             .write(true)

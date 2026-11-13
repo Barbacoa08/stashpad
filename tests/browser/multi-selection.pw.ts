@@ -16,7 +16,7 @@ async function seed(page: Page) {
         markdown: `selection ${index}`,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: crypto.randomUUID(),
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -253,7 +253,7 @@ test('an all-sibling selection has neutral keyboard boundaries and no unavailabl
   );
   await page.keyboard.down('Meta');
   await expect(page.locator('.stream-command-hint')).toHaveText(
-    '⌘N New stash · ⌘⌫ Delete',
+    '⌘N New tree · ⌘⌫ Delete',
   );
   await page.keyboard.up('Meta');
   await page.keyboard.press('Meta+ArrowUp');

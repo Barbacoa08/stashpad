@@ -11,7 +11,7 @@
   import { createReorderMotion } from '../workspace/reorder-motion';
   import type { MoveItems } from '../platform/workspace';
   import Icon from './Icon.svelte';
-  import StashSidebar from './StashSidebar.svelte';
+  import TreeSidebar from './TreeSidebar.svelte';
   import {
     composeKey,
     composeOwner,
@@ -215,7 +215,7 @@
   let hierarchy = $derived(
     createHierarchyPresentation(
       viewState.snapshot.items.filter(
-        (x) => x.kind === 'stash' && scopes.get(x.id) === 'live',
+        (x) => x.kind === 'tree' && scopes.get(x.id) === 'live',
       ),
     ),
   );
@@ -223,24 +223,24 @@
     createHierarchyPresentation(
       viewState.snapshot.items.filter(
         (x) =>
-          x.kind === 'stash' && scopes.get(x.id) === viewState.location.scope,
+          x.kind === 'tree' && scopes.get(x.id) === viewState.location.scope,
       ),
       viewState.location.scope === 'trash' ? 'Trash' : 'Root',
     ),
   );
   let deletionRoot = $derived.by(() => {
-    let item = selectedNote ?? currentStash;
+    let item = selectedNote ?? currentTree;
     const index = new Map(viewState.snapshot.items.map((x) => [x.id, x]));
     while (item && item.deletedAt === null && item.parentId !== null)
       item = index.get(item.parentId);
     return item?.deletedAt !== null ? item : undefined;
   });
-  let currentStash = $derived(
-    viewState.stashId === null
+  let currentTree = $derived(
+    viewState.ownerId === null
       ? undefined
-      : viewState.snapshot.items.find((x) => x.id === viewState.stashId),
+      : viewState.snapshot.items.find((x) => x.id === viewState.ownerId),
   );
-  let destination = $derived(locationHierarchy.label(viewState.stashId).text);
+  let destination = $derived(locationHierarchy.label(viewState.ownerId).text);
   const editorStates = new Map<string, EditorState>();
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
@@ -249,7 +249,7 @@
       viewState.snapshot.items,
       viewState.query,
       viewState.location.scope,
-    ).filter((n) => viewState.query.trim() || n.parentId === viewState.stashId),
+    ).filter((n) => viewState.query.trim() || n.parentId === viewState.ownerId),
   );
   let activeNote = $derived(
     viewState.snapshot.items.find((n) => n.id === viewState.activeKey),
@@ -299,7 +299,7 @@
     commandHeld && viewState.loaded && !blocked && !palette,
   );
   let streamCommandHint = $derived.by(() => {
-    const hints = ['⌘N New stash'];
+    const hints = ['⌘N New tree'];
     const selectedVisible = shownEntries.some((x) => x.id === selected);
     const typing = isTyping(hintFocus);
     // Handles have their own Command-arrow binding; other controls use the
@@ -348,7 +348,7 @@
       ?.querySelector(`[data-entry-id="${selected}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }
-  async function openStash(
+  async function openTree(
     id: string | null,
     preferred?: string,
     scope: Location['scope'] = 'live',
@@ -391,7 +391,7 @@
       focus.stop();
     }
   }
-  async function createStash() {
+  async function createTree() {
     if (blocked || creating) return;
     navigation.cancel();
     creating = true;
@@ -400,7 +400,7 @@
     selection.remember(viewState.location, selected);
     try {
       if (
-        await controller.createStash(
+        await controller.createTree(
           shownEntries.some((x) => x.id === selected) ? selected : undefined,
         )
       ) {
@@ -1161,16 +1161,14 @@
   function openMove() {
     if (blocked || !selected || viewState.query.trim()) {
       if (viewState.query.trim())
-        controller.feedback(
-          'Open the containing stash to move search results.',
-        );
+        controller.feedback('Open the containing tree to move search results.');
       return;
     }
     const ids = selectedGroup(selected),
       excluded = new Set(ids),
       snapshot = viewState.snapshot;
     if (!ids.length) {
-      controller.feedback('Open the containing stash to move this item.');
+      controller.feedback('Open the containing tree to move this item.');
       return;
     }
     const children = new Map<string, string[]>();
@@ -1189,11 +1187,11 @@
         }
     const destinations: MoveDestination[] = [];
     for (const scope of ['live', 'trash'] as const) {
-      const stashes = snapshot.items.filter(
-        (item) => item.kind === 'stash' && scopes.get(item.id) === scope,
+      const trees = snapshot.items.filter(
+        (item) => item.kind === 'tree' && scopes.get(item.id) === scope,
       );
       const rootLabel = scope === 'live' ? 'Root' : 'Trash';
-      const presentation = createHierarchyPresentation(stashes, rootLabel);
+      const presentation = createHierarchyPresentation(trees, rootLabel);
       destinations.push(
         {
           key: scope,
@@ -1201,7 +1199,7 @@
           path: '',
           location: { scope, itemId: null },
         },
-        ...stashes
+        ...trees
           .filter((item) => !excluded.has(item.id))
           .map((item) => ({
             key: item.id,
@@ -1280,7 +1278,7 @@
     event.stopPropagation();
     if (viewState.query.trim()) {
       controller.feedback(
-        'Open the containing stash to reorder search results.',
+        'Open the containing tree to reorder search results.',
       );
       return;
     }
@@ -1417,7 +1415,7 @@
     } else if (event.key === '1') {
       event.preventDefault();
       event.stopPropagation();
-      void openStash(null);
+      void openTree(null);
     }
   }
   function commands(event: KeyboardEvent) {
@@ -1445,7 +1443,7 @@
         moveKey(event, selected);
       } else if (key === 'n') {
         event.preventDefault();
-        void createStash();
+        void createTree();
       } else if (key === 'f') {
         event.preventDefault();
         search?.focus();
@@ -1501,12 +1499,12 @@
       void copy(selected);
     } else if ((key === 'enter' || key === 'arrowright') && selectedNote) {
       event.preventDefault();
-      void openStash(selectedNote.id);
-    } else if (key === 'arrowleft' && viewState.stashId !== null) {
+      void openTree(selectedNote.id);
+    } else if (key === 'arrowleft' && viewState.ownerId !== null) {
       event.preventDefault();
-      void openStash(
-        currentStash?.parentId ?? null,
-        viewState.stashId,
+      void openTree(
+        currentTree?.parentId ?? null,
+        viewState.ownerId,
         viewState.location.scope,
       );
     } else if (key === 'arrowup' || key === 'arrowdown') {
@@ -1557,7 +1555,7 @@
     if (navigationBlocked) return;
     const visit = navigation.begin(direction, validVisit);
     if (visit)
-      void openStash(
+      void openTree(
         visit.location.itemId,
         undefined,
         visit.location.scope,
@@ -1683,7 +1681,7 @@
             disabled={navigationBlocked}
             title={crumb.label}
             onclick={() =>
-              void openStash(
+              void openTree(
                 crumb.location!.itemId,
                 undefined,
                 crumb.location!.scope,
@@ -1737,12 +1735,12 @@
             >{/if}
         </div>
         <div class="navigation-hint-anchor">
-          <StashSidebar
+          <TreeSidebar
             presentation={hierarchy}
-            currentId={viewState.stashId}
+            currentId={viewState.ownerId}
             live={viewState.location.scope === 'live'}
             disabled={navigationBlocked}
-            onopen={(id) => void openStash(id)}
+            onopen={(id) => void openTree(id)}
           />
           {#if showCommandHints}<span
               class="command-hint home-command-hint"
@@ -1751,7 +1749,7 @@
         </div>
         <div class="backup-actions">
           <button
-            onclick={() => void openStash(null, undefined, 'trash')}
+            onclick={() => void openTree(null, undefined, 'trash')}
             aria-current={viewState.location.scope === 'trash'
               ? 'page'
               : undefined}
@@ -1956,7 +1954,7 @@
             >
             <p>Color: {selectedNote.color ?? 'None'}</p>
             {#if viewState.query.trim()}<p>
-                Open the containing stash to reorder search results.
+                Open the containing tree to reorder search results.
               </p>{/if}
           {/if}
           {#if viewState.location.scope === 'trash'}
@@ -1994,7 +1992,7 @@
           {/if}
           <div class="shortcut-list" aria-label="Keyboard shortcuts">
             <div>
-              <span>New stash</span><span class="shortcut-keys"
+              <span>New tree</span><span class="shortcut-keys"
                 ><kbd>⌘</kbd><kbd>N</kbd></span
               >
             </div>
@@ -2088,7 +2086,7 @@
       >
         <h2>Replace workspace?</h2>
         <p>
-          {viewState.preview.notes} notes, {viewState.preview.stashes} stashes, and
+          {viewState.preview.notes} notes, {viewState.preview.trees} trees, and
           {viewState.preview.drafts} drafts.
         </p>
         <p>{viewState.preview.warning}</p>
