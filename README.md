@@ -18,11 +18,11 @@ _Current source preview with synthetic notes; see the download compatibility not
 
 ## Download and install
 
-**Source preview:** the Root navigation tree and custom Dock icon are in current source; the published alpha.3 installer predates this visual update.
+**Latest release:** alpha.4 includes the Root navigation tree and custom Dock icon.
 
-**Compatibility:** alpha.3 and current source use schema 6/BackupV6. Alpha.2 uses schema 4 and cannot reopen an upgraded schema-6 library or import BackupV6. Schema-5-only builds also cannot reopen an upgraded schema-6 library. Export a backup and quit older Preview copies before upgrading, and use compatible app versions when transferring backups between Macs.
+**Compatibility:** alpha.3, alpha.4, and current source use schema 6/BackupV6. Alpha.2 uses schema 4 and cannot reopen an upgraded schema-6 library or import BackupV6. Schema-5-only builds also cannot reopen an upgraded schema-6 library. Export a backup and quit older Preview copies before upgrading, and use compatible app versions when transferring backups between Macs.
 
-[Download Stashpad Preview v0.1.0-alpha.3 for Apple Silicon](https://github.com/Barbacoa08/stashpad/releases/download/v0.1.0-alpha.3/Stashpad-Preview_0.1.0-alpha.3_aarch64.dmg) · [Release notes](https://github.com/Barbacoa08/stashpad/releases/tag/v0.1.0-alpha.3)
+[Download Stashpad Preview v0.1.0-alpha.4 for Apple Silicon](https://github.com/Barbacoa08/stashpad/releases/download/v0.1.0-alpha.4/Stashpad-Preview_0.1.0-alpha.4_aarch64.dmg) · [Release notes](https://github.com/Barbacoa08/stashpad/releases/tag/v0.1.0-alpha.4)
 
 1. If updating, export a backup and quit the old Stashpad Preview first.
 2. Open the downloaded DMG, drag Stashpad Preview to Applications, and replace the existing app if prompted. Your app data is stored separately from the app.
