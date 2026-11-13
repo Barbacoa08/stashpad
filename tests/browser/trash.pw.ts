@@ -116,7 +116,7 @@ test('Trash opens retained trees with ordinary editing, capture, keyboard comman
     ),
   ).toBe(5);
 });
-test('inherited child deletion detaches, parent restore leaves independent roots, neutral root deletion retains date and Undo', async ({
+test('deleting an inherited Trash child permanently removes it while parent Restore preserves surviving children', async ({
   page,
 }) => {
   const ids = await seed(page);
@@ -128,28 +128,18 @@ test('inherited child deletion detaches, parent restore leaves independent roots
     page.getByRole('complementary', { name: 'Note details' }),
   ).toContainText('Inherited from');
   await page.keyboard.press('Meta+Backspace');
+  await expect(card(page, ids[3])).toHaveCount(0);
   await expect(card(page, ids[4])).toHaveClass(/selected/);
   await stream(page).press('ArrowLeft');
   await card(page, ids[1]).click();
   await restore(page).click();
-  await card(page, ids[3]).click();
-  const before = await page.evaluate(
-    () => (window as any).__test.repo.snapshot,
-  );
-  await page.keyboard.press('Meta+Backspace');
-  await expect(page.getByRole('status').last()).toContainText(
-    'already in Trash',
-  );
-  expect(
-    await page.evaluate(() => (window as any).__test.repo.snapshot),
-  ).toEqual(before);
-  await restore(page).click();
   await expect(capture(page)).toBeFocused();
-  expect(
-    await page.evaluate(
-      () => (window as any).__test.repo.snapshot.undoDeleteId,
-    ),
-  ).toBeNull();
+  const state = await page.evaluate(() => (window as any).__test.repo.snapshot);
+  expect(state.items.some((item: any) => item.id === ids[3])).toBe(false);
+  expect(state.items.find((item: any) => item.id === ids[4]).parentId).toBe(
+    ids[1],
+  );
+  expect(state.undoDeleteIds).toEqual([]);
 });
 test('Trash search stays scoped with bounded paths, restores inherited tree to Home, and preserves capture destination', async ({
   page,

@@ -101,8 +101,8 @@ test('acknowledged keyboard reorder moves real keyed cards through intermediate 
   const destinationY = (await card(page, ids[0]).boundingBox())!.y;
   await page.evaluate(() => {
     const t = (window as any).__test,
-      reorder = t.repo.reorderItem.bind(t.repo);
-    t.repo.reorderItem = async (request: any) => {
+      reorder = t.repo.moveItems.bind(t.repo);
+    t.repo.moveItems = async (request: any) => {
       await new Promise<void>((r) => {
         t.releaseReorder = r;
       });
@@ -115,7 +115,7 @@ test('acknowledged keyboard reorder moves real keyed cards through intermediate 
     .poll(() =>
       page.evaluate(() => (window as any).__test.controller.state.operation),
     )
-    .toBe('reorder');
+    .toBe('move');
   expect(await order(page)).toEqual(ids);
   expect(await active(page)).toBe(0);
   expect(
@@ -203,7 +203,7 @@ test('failed, boundary, source, membership, and search updates create no reorder
 }) => {
   const ids = await seed(page);
   await page.evaluate(() => {
-    (window as any).__test.repo.fail = 'reorder';
+    (window as any).__test.repo.fail = 'move';
   });
   await handle(page, ids[0]).press('Meta+ArrowDown');
   await expect(page.getByRole('alert')).toContainText('failure');

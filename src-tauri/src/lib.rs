@@ -3,6 +3,8 @@ mod external;
 pub mod legacy_backup;
 pub mod model;
 pub mod store;
+pub mod v5_backup;
+mod window_geometry;
 use model::*;
 use std::{
     path::PathBuf,
@@ -49,10 +51,10 @@ fn fail_operation(operation: &str) -> Result<()> {
     let _ = operation;
     Ok(())
 }
-async fn mutate(
+async fn mutate<T: Send + 'static>(
     state: State<'_, NativeState>,
-    f: impl FnOnce(&mut store::Store) -> Result<WorkspaceSnapshot> + Send + 'static,
-) -> Result<WorkspaceSnapshot> {
+    f: impl FnOnce(&mut store::Store) -> Result<T> + Send + 'static,
+) -> Result<T> {
     let inner = state.inner.clone();
     let path = state.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -148,16 +150,44 @@ fn clipboard_write_text(app: tauri::AppHandle, text: String) -> Result<()> {
     app.clipboard().write_text(text).map_err(storage_error)
 }
 #[tauri::command]
-async fn item_delete(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
-    mutate(state, move |s| s.delete(&id)).await
+async fn item_delete(
+    state: State<'_, NativeState>,
+    id: String,
+    leave: Option<Location>,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.delete_leaving(&id, leave.as_ref())).await
 }
 #[tauri::command]
-async fn item_undo_delete(state: State<'_, NativeState>) -> Result<WorkspaceSnapshot> {
-    mutate(state, |s| s.undo()).await
+async fn item_undo_delete(
+    state: State<'_, NativeState>,
+    request: UndoDeleteRequest,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.undo(&request)).await
 }
 #[tauri::command]
 async fn item_restore(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
     mutate(state, move |s| s.restore(&id)).await
+}
+#[tauri::command]
+async fn item_purge(state: State<'_, NativeState>, request: PurgeItem) -> Result<PurgeResult> {
+    fail_operation("purge")?;
+    mutate(state, move |s| s.purge(&request)).await
+}
+#[tauri::command]
+async fn workspace_transition(
+    state: State<'_, NativeState>,
+    request: TransitionLocation,
+) -> Result<WorkspaceSnapshot> {
+    fail_operation("navigate")?;
+    mutate(state, move |s| s.transition(&request)).await
+}
+#[tauri::command]
+async fn items_move(
+    state: State<'_, NativeState>,
+    request: MoveItems,
+) -> Result<WorkspaceSnapshot> {
+    fail_operation("move")?;
+    mutate(state, move |s| s.move_items(&request)).await
 }
 #[derive(serde::Serialize)]
 struct Preview {
@@ -281,6 +311,9 @@ pub fn run() {
         )
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            app.manage(window_geometry::GeometryState::new(
+                app.path().app_config_dir().ok(),
+            ));
             let path = app.path().app_data_dir()?.join("notes.sqlite3");
             app.manage(NativeState {
                 path,
@@ -291,6 +324,12 @@ pub fn run() {
             });
             Ok(())
         })
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                window_geometry::restore(&webview.window());
+            }
+        })
+        .on_window_event(window_geometry::event)
         .invoke_handler(tauri::generate_handler![
             workspace_load,
             draft_checkpoint,
@@ -305,12 +344,23 @@ pub fn run() {
             item_set_color,
             item_reorder,
             item_delete,
+            item_purge,
+            workspace_transition,
+            items_move,
             item_restore,
             item_undo_delete,
             backup_export,
             backup_preview_restore,
             backup_confirm_restore
         ])
-        .run(tauri::generate_context!())
-        .expect("Cannot start local workspace");
+        .build(tauri::generate_context!())
+        .expect("Cannot start local workspace")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                window_geometry::exiting(app);
+            }
+        });
 }

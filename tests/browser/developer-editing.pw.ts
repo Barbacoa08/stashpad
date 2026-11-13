@@ -316,7 +316,7 @@ test('expansion uses exact note identity across filters and survives deletion/Un
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 4,
+      version: 6,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });

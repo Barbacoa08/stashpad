@@ -12,8 +12,12 @@ import type {
   CaptureItem,
   CreateChildStash,
   ReorderItem,
+  PurgeItem,
+  MoveItems,
+  TransitionLocation,
+  UndoDeleteRequest,
 } from '../../src/lib/platform/workspace';
-import type { ColorToken } from '../../src/lib/domain/notes';
+import type { ColorToken, Location } from '../../src/lib/domain/notes';
 import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
 export class MemoryRepository implements Repository {
   snapshot = emptyWorkspace();
@@ -109,17 +113,31 @@ export class MemoryRepository implements Repository {
       (s) => (s.drafts = s.drafts.filter((d) => d.key !== key)),
     );
   }
-  async deleteItem(id: string) {
+  async deleteItem(id: string, leave?: Location) {
     this.check('delete');
-    return this.mutate((s) => items.deleteItem(s, id));
+    return this.mutate((s) => items.deleteItem(s, id, leave));
+  }
+  async purgeItem(request: PurgeItem) {
+    this.check('purge');
+    const s = structuredClone(this.snapshot);
+    const removedIds = items.purgeItem(s, request);
+    return { workspace: this.commit(s), removedIds };
+  }
+  async transitionLocation(request: TransitionLocation) {
+    this.check('navigate');
+    return this.mutate((s) => items.transitionLocation(s, request));
+  }
+  async moveItems(request: MoveItems) {
+    this.check('move');
+    return this.mutate((s) => items.moveItems(s, request));
   }
   async restoreItem(id: string) {
     this.check('restore-item');
     return this.mutate((s) => items.restoreItem(s, id));
   }
-  async undoDelete() {
+  async undoDelete(request: UndoDeleteRequest) {
     this.check('undo');
-    return this.mutate((s) => items.undoDelete(s));
+    return this.mutate((s) => items.undoDelete(s, request));
   }
   async exportBackup() {
     this.check('export');

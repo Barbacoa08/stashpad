@@ -48,7 +48,7 @@ const workspace = (): WorkspaceSnapshot => ({
 it('roundtrips nested ownership and resolves a flat hierarchy and exact compose keys', () => {
   const s = workspace();
   const checked = validateCurrent(encodeCurrent(convertLegacy(s)));
-  expect(checked).toHaveProperty('version', 4);
+  expect(checked).toHaveProperty('version', 6);
   expect(checked).toHaveProperty('workspace', convertLegacy(s));
   expect(
     stashPath(
@@ -132,7 +132,7 @@ it('validates a 10000 deep chain without recursion or quadratic ancestor scans',
   }
   expect(validateCurrent(encodeCurrent(convertLegacy(s)))).toHaveProperty(
     'version',
-    4,
+    6,
   );
   expect(
     stashPath(

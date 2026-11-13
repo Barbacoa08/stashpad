@@ -186,6 +186,11 @@
     onmousedown={(event) => event.preventDefault()}
     onclick={() => {
       onexpand(!expanded);
-    }}>{expanded ? 'Collapse' : 'Expand'}</button
+    }}
+    >{expanded ? 'Collapse' : 'Expand'}<span
+      class="note-expand-chevron"
+      class:up={expanded}
+      aria-hidden="true"
+    ></span></button
   >
 {/if}

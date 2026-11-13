@@ -2,14 +2,17 @@ import {
   MAX_SOURCE,
   MAX_ENVELOPE,
   COLORS,
-  type BackupV4,
+  type BackupV6,
+  type V5Workspace,
   type V3Workspace,
   type WorkspaceSnapshot,
   type AppError,
   type Item,
 } from './notes';
 import { validateBackup as validateLegacy } from './legacy-backup';
-import { hierarchyIndex, composeOwner } from './hierarchy';
+import { hierarchyIndex, composeOwner, scopeIndex } from './hierarchy';
+import { validateV4Backup } from './v4-backup';
+import { validateV5Backup } from './v5-backup';
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === 'object' && !Array.isArray(v);
@@ -75,9 +78,13 @@ export function convertLegacy(s: V3Workspace): WorkspaceSnapshot {
         x.parentId === old.stashId &&
         compare(x, old) < 0,
     ).length;
-  return { items, drafts: s.drafts, undoDeleteId: s.undoDeleteId };
+  return {
+    items,
+    drafts: s.drafts,
+    undoDeleteIds: s.undoDeleteId === null ? [] : [s.undoDeleteId],
+  };
 }
-export function validateBackup(text: string): BackupV4 | AppError {
+export function validateBackup(text: string): BackupV6 | AppError {
   if (bytes(text) > MAX_ENVELOPE)
     return invalid('Backup exceeds the 10 MiB capacity.');
   let b: unknown;
@@ -86,16 +93,21 @@ export function validateBackup(text: string): BackupV4 | AppError {
   } catch {
     return invalid('Backup must be valid JSON.');
   }
-  if (record(b) && b.version !== 4) {
+  if (record(b) && (b.version === 4 || b.version === 5)) {
+    const old =
+      b.version === 4 ? validateV4Backup(text) : validateV5Backup(text);
+    if ('code' in old) return old;
+    b = { ...old, version: 6, workspace: convertV5(old.workspace) };
+  } else if (record(b) && b.version !== 6) {
     const old = validateLegacy(text);
     if ('code' in old) return old;
-    b = { ...old, version: 4, workspace: convertLegacy(old.workspace) };
+    b = { ...old, version: 6, workspace: convertLegacy(old.workspace) };
   }
   if (
     !record(b) ||
     !fields(b, ['format', 'version', 'exportedAt', 'workspace']) ||
     b.format !== 'stashpad-alpha' ||
-    b.version !== 4 ||
+    b.version !== 6 ||
     typeof b.exportedAt !== 'string' ||
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(b.exportedAt) ||
     !Number.isFinite(Date.parse(b.exportedAt)) ||
@@ -105,7 +117,7 @@ export function validateBackup(text: string): BackupV4 | AppError {
   const s = b.workspace;
   if (
     !record(s) ||
-    !fields(s, ['items', 'drafts', 'undoDeleteId']) ||
+    !fields(s, ['items', 'drafts', 'undoDeleteIds']) ||
     !Array.isArray(s.items) ||
     !Array.isArray(s.drafts) ||
     s.items.length > 20000 ||
@@ -157,18 +169,18 @@ export function validateBackup(text: string): BackupV4 | AppError {
   } catch {
     return invalid();
   }
+  const scopes = scopeIndex(items);
   const ranks = new Set<string>();
   for (const x of items) {
     if (
       x.deletedAt !== null
-        ? x.parentId !== null
+        ? x.parentId !== null && scopes.get(x.parentId) !== 'trash'
         : x.restoreParentId !== null || x.restoreIndex !== null
     )
       return invalid();
     if (
       x.restoreParentId !== null &&
-      (x.restoreIndex === null ||
-        index.get(x.restoreParentId)?.kind !== 'stash')
+      (x.restoreIndex === null || !index.has(x.restoreParentId))
     )
       return invalid();
     const rank = JSON.stringify([
@@ -195,28 +207,38 @@ export function validateBackup(text: string): BackupV4 | AppError {
     const owner = composeOwner(d.key);
     if (
       owner
-        ? owner.stashId !== null && index.get(owner.stashId)?.kind !== 'stash'
+        ? owner.stashId !== null && !index.has(owner.stashId)
         : !uuid(d.key) || !index.has(d.key)
     )
       return invalid();
     keys.add(d.key.toLowerCase());
   }
   if (
-    s.undoDeleteId !== null &&
-    (!uuid(s.undoDeleteId) || index.get(s.undoDeleteId)?.deletedAt == null)
+    !Array.isArray(s.undoDeleteIds) ||
+    s.undoDeleteIds.length > items.length ||
+    new Set(s.undoDeleteIds).size !== s.undoDeleteIds.length ||
+    s.undoDeleteIds.some((id) => !uuid(id) || index.get(id)?.deletedAt == null)
   )
     return invalid();
   if (bytes(JSON.stringify(b)) > MAX_ENVELOPE)
     return invalid(
       'Converted backup exceeds the 10 MiB capacity. The original is retained.',
     );
-  return b as unknown as BackupV4;
+  return b as unknown as BackupV6;
 }
 export function encodeBackup(workspace: WorkspaceSnapshot): string {
   return JSON.stringify({
     format: 'stashpad-alpha',
-    version: 4,
+    version: 6,
     exportedAt: new Date().toISOString(),
     workspace,
   });
+}
+
+export function convertV5(s: V5Workspace): WorkspaceSnapshot {
+  return {
+    items: s.items,
+    drafts: s.drafts,
+    undoDeleteIds: s.undoDeleteId === null ? [] : [s.undoDeleteId],
+  };
 }

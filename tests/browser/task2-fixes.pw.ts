@@ -106,18 +106,18 @@ test('rendered text selection protects Command Backspace while explicit Delete r
   await expect(cards(page)).toHaveCount(1);
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.undoDeleteId,
+      () => (window as any).__test.repo.snapshot.undoDeleteIds,
     ),
-  ).toBeNull();
+  ).toEqual([]);
   await cards(page)
     .getByRole('button', { name: 'Delete note', exact: true })
     .click();
   await expect(cards(page)).toHaveCount(0);
   expect(
     await page.evaluate(
-      () => (window as any).__test.repo.snapshot.undoDeleteId,
+      () => (window as any).__test.repo.snapshot.undoDeleteIds,
     ),
-  ).not.toBeNull();
+  ).toHaveLength(1);
 });
 test('button submission restores normal capture and inline-stream focus without a newer focus choice', async ({
   page,

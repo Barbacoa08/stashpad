@@ -58,7 +58,7 @@ fn actual_legacy_migrations_are_transactional_and_preserve_all_metadata() {
             active.parent_id.as_deref(),
             if version == 1 { None } else { Some(OWNER) }
         );
-        assert_eq!(s.undo_delete_id.as_deref(), Some(DELETED));
+        assert_eq!(s.undo_delete_ids, vec![DELETED.to_string()]);
         assert_eq!(s.drafts.len(), if version == 1 { 2 } else { 3 });
         db.set_done(ID, true).unwrap();
         drop(db);
@@ -66,7 +66,7 @@ fn actual_legacy_migrations_are_transactional_and_preserve_all_metadata() {
         assert_eq!(
             c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            4
+            6
         );
         assert_eq!(
             c.query_row(
@@ -105,7 +105,7 @@ fn strict_legacy_and_current_wire_parity() {
             }
         }
         let normalized = backup::validate(&serde_json::to_vec(&b).unwrap()).unwrap();
-        assert_eq!(normalized.version, 4);
+        assert_eq!(normalized.version, 6);
         assert_eq!(normalized.workspace.items[0].done, version == 3);
         for value in [
             serde_json::Value::Null,
@@ -204,7 +204,11 @@ fn desired_completion_is_idempotent_monotonic_persistent_and_editable_in_trash()
     assert_eq!(changed.items[0].deleted_at, deleted.items[0].deleted_at);
     assert!(!changed.items[0].done);
     assert!(db.set_done("missing", true).is_err());
-    db.undo().unwrap();
+    {
+        let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+        db.undo(&r)
+    }
+    .unwrap();
     drop(db);
     let mut db = Store::open(&path).unwrap();
     let saved = db.load().unwrap();

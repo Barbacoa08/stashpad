@@ -247,6 +247,217 @@ pub enum ColorToken {
     Pink,
     Gray,
 }
+// Version-4 enums and fields are frozen independently of current Item.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum V4Kind {
+    Note,
+    Stash,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum V4ColorToken {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+    Gray,
+}
+impl From<V4Kind> for Kind {
+    fn from(x: V4Kind) -> Self {
+        match x {
+            V4Kind::Note => Self::Note,
+            V4Kind::Stash => Self::Stash,
+        }
+    }
+}
+impl From<V4ColorToken> for ColorToken {
+    fn from(x: V4ColorToken) -> Self {
+        match x {
+            V4ColorToken::Red => Self::Red,
+            V4ColorToken::Orange => Self::Orange,
+            V4ColorToken::Yellow => Self::Yellow,
+            V4ColorToken::Green => Self::Green,
+            V4ColorToken::Teal => Self::Teal,
+            V4ColorToken::Blue => Self::Blue,
+            V4ColorToken::Purple => Self::Purple,
+            V4ColorToken::Pink => Self::Pink,
+            V4ColorToken::Gray => Self::Gray,
+        }
+    }
+}
+impl From<V5Kind> for Kind {
+    fn from(x: V5Kind) -> Self {
+        match x {
+            V5Kind::Note => Self::Note,
+            V5Kind::Stash => Self::Stash,
+        }
+    }
+}
+impl From<V5ColorToken> for ColorToken {
+    fn from(x: V5ColorToken) -> Self {
+        match x {
+            V5ColorToken::Red => Self::Red,
+            V5ColorToken::Orange => Self::Orange,
+            V5ColorToken::Yellow => Self::Yellow,
+            V5ColorToken::Green => Self::Green,
+            V5ColorToken::Teal => Self::Teal,
+            V5ColorToken::Blue => Self::Blue,
+            V5ColorToken::Purple => Self::Purple,
+            V5ColorToken::Pink => Self::Pink,
+            V5ColorToken::Gray => Self::Gray,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum V5Kind {
+    Note,
+    Stash,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum V5ColorToken {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Teal,
+    Blue,
+    Purple,
+    Pink,
+    Gray,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V5Item {
+    pub id: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub parent_id: Option<String>,
+    pub kind: V5Kind,
+    pub markdown: String,
+    pub done: bool,
+    #[serde(deserialize_with = "required_nullable")]
+    pub color: Option<V5ColorToken>,
+    pub position: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub deleted_at: Option<i64>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_parent_id: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_index: Option<i64>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V5Workspace {
+    pub items: Vec<V5Item>,
+    pub drafts: Vec<Draft>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub undo_delete_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupV5 {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub workspace: V5Workspace,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V4Item {
+    pub id: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub parent_id: Option<String>,
+    pub kind: V4Kind,
+    pub markdown: String,
+    pub done: bool,
+    #[serde(deserialize_with = "required_nullable")]
+    pub color: Option<V4ColorToken>,
+    pub position: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub deleted_at: Option<i64>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_parent_id: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_index: Option<i64>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct V4Workspace {
+    pub items: Vec<V4Item>,
+    pub drafts: Vec<Draft>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub undo_delete_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupV4 {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub workspace: V4Workspace,
+}
+impl From<V4Workspace> for WorkspaceSnapshot {
+    fn from(s: V4Workspace) -> Self {
+        Self {
+            items: s
+                .items
+                .into_iter()
+                .map(|x| Item {
+                    id: x.id,
+                    parent_id: x.parent_id,
+                    kind: x.kind.into(),
+                    markdown: x.markdown,
+                    done: x.done,
+                    color: x.color.map(Into::into),
+                    position: x.position,
+                    created_at: x.created_at,
+                    updated_at: x.updated_at,
+                    deleted_at: x.deleted_at,
+                    restore_parent_id: x.restore_parent_id,
+                    restore_index: x.restore_index,
+                })
+                .collect(),
+            drafts: s.drafts,
+            undo_delete_ids: s.undo_delete_id.into_iter().collect(),
+        }
+    }
+}
+impl From<V5Workspace> for WorkspaceSnapshot {
+    fn from(s: V5Workspace) -> Self {
+        Self {
+            items: s
+                .items
+                .into_iter()
+                .map(|x| Item {
+                    id: x.id,
+                    parent_id: x.parent_id,
+                    kind: x.kind.into(),
+                    markdown: x.markdown,
+                    done: x.done,
+                    color: x.color.map(Into::into),
+                    position: x.position,
+                    created_at: x.created_at,
+                    updated_at: x.updated_at,
+                    deleted_at: x.deleted_at,
+                    restore_parent_id: x.restore_parent_id,
+                    restore_index: x.restore_index,
+                })
+                .collect(),
+            drafts: s.drafts,
+            undo_delete_ids: s.undo_delete_id.into_iter().collect(),
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Item {
@@ -273,16 +484,7 @@ pub struct Item {
 pub struct WorkspaceSnapshot {
     pub items: Vec<Item>,
     pub drafts: Vec<Draft>,
-    #[serde(deserialize_with = "required_nullable")]
-    pub undo_delete_id: Option<String>,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BackupV4 {
-    pub format: String,
-    pub version: i64,
-    pub exported_at: String,
-    pub workspace: WorkspaceSnapshot,
+    pub undo_delete_ids: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -310,6 +512,7 @@ pub struct CaptureItem {
 pub struct CreateChildStash {
     pub id: String,
     pub parent: Location,
+    pub leave: Option<Location>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -331,4 +534,74 @@ impl Location {
             |id| format!("compose:{id}"),
         )
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PurgeItem {
+    pub id: String,
+    pub location: Location,
+    pub expected_subtree_ids: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PurgeResult {
+    pub workspace: WorkspaceSnapshot,
+    pub removed_ids: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransitionLocation {
+    pub from: Location,
+    pub to: Location,
+    pub promote_destination: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MoveItems {
+    pub proof: Option<StructuralProof>,
+    pub deleted_at: Option<i64>,
+    pub ids: Vec<String>,
+    pub from: Location,
+    pub to: Location,
+    pub before_from: Vec<String>,
+    pub before_to: Vec<String>,
+    pub after_from: Vec<String>,
+    pub after_to: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackupV6 {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub workspace: WorkspaceSnapshot,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StructuralItem {
+    pub id: String,
+    #[serde(deserialize_with = "required_nullable")]
+    pub parent_id: Option<String>,
+    pub kind: Kind,
+    pub position: i64,
+    #[serde(deserialize_with = "required_nullable")]
+    pub deleted_at: Option<i64>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_parent_id: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
+    pub restore_index: Option<i64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StructuralProof {
+    pub before: Vec<StructuralItem>,
+    pub after: Vec<StructuralItem>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UndoDeleteRequest {
+    pub ids: Vec<String>,
+    pub proof: StructuralProof,
 }

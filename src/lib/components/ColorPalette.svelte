@@ -3,12 +3,14 @@
   import { COLORS, type ColorToken } from '../domain/notes';
   import { markerColors } from '../workspace/colors';
   let {
+    anchor,
     color,
     disabled,
     error,
     onchoose,
     onclose,
   }: {
+    anchor: HTMLElement;
     color: ColorToken | null;
     disabled: boolean;
     error: string;
@@ -18,9 +20,101 @@
   const choices = [...COLORS, null];
   let candidate = $state(0);
   let panel: HTMLDivElement;
+  let reposition = () => {};
+  // Recheck clipping after a pending write settles, even if the popup size is unchanged.
+  $effect(() => {
+    disabled;
+    error;
+    reposition();
+  });
   onMount(() => {
     candidate = choices.indexOf(color);
+    const ancestors: HTMLElement[] = [];
+    for (
+      let parent = anchor.parentElement;
+      parent;
+      parent = parent.parentElement
+    )
+      ancestors.push(parent);
+    let frame = 0;
+    function position() {
+      frame = 0;
+      const row = anchor.getBoundingClientRect();
+      let left = Math.max(0, row.left),
+        right = Math.min(window.innerWidth, row.right),
+        top = Math.max(0, row.top),
+        bottom = Math.min(window.innerHeight, row.bottom);
+      for (const parent of ancestors) {
+        const style = getComputedStyle(parent);
+        const rect = parent.getBoundingClientRect();
+        if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+          left = Math.max(left, rect.left + parent.clientLeft);
+          right = Math.min(
+            right,
+            rect.left + parent.clientLeft + parent.clientWidth,
+          );
+        }
+        if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+          top = Math.max(top, rect.top + parent.clientTop);
+          bottom = Math.min(
+            bottom,
+            rect.top + parent.clientTop + parent.clientHeight,
+          );
+        }
+      }
+      if (!anchor.isConnected || right <= left || bottom <= top) {
+        // Existing close policy keeps a submitted write alive, without returning focus.
+        onclose(false);
+        return;
+      }
+      const gap = 8;
+      const recovery = document.querySelector<HTMLElement>(
+        '.workspace-feedback.compact:not(.sr-only)',
+      );
+      const lowerEdge = Math.min(
+        window.innerHeight - gap,
+        recovery ? recovery.getBoundingClientRect().top - gap : Infinity,
+      );
+      panel.style.maxHeight = `${Math.max(24, lowerEdge - gap)}px`;
+      const popup = panel.getBoundingClientRect();
+      const x =
+        right + gap + popup.width <= window.innerWidth - gap
+          ? right + gap
+          : left - gap - popup.width >= gap
+            ? left - gap - popup.width
+            : right - popup.width;
+      panel.style.left = `${Math.max(gap, Math.min(x, window.innerWidth - gap - popup.width))}px`;
+      panel.style.top = `${Math.max(gap, Math.min(top, lowerEdge - popup.height))}px`;
+      panel.style.visibility = 'visible';
+    }
+    function schedulePosition() {
+      if (!frame) frame = requestAnimationFrame(position);
+    }
+    reposition = schedulePosition;
+    const resize = new ResizeObserver(schedulePosition);
+    for (const node of [anchor, panel, ...ancestors]) resize.observe(node);
+    document
+      .querySelectorAll('.workspace-feedback')
+      .forEach((node) => resize.observe(node));
+    const mutation = new MutationObserver(schedulePosition);
+    if (anchor.parentElement)
+      mutation.observe(anchor.parentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    window.addEventListener('scroll', schedulePosition, true);
+    window.addEventListener('resize', schedulePosition);
+    position();
     focusCandidate();
+    return () => {
+      reposition = () => {};
+      cancelAnimationFrame(frame);
+      resize.disconnect();
+      mutation.disconnect();
+      window.removeEventListener('scroll', schedulePosition, true);
+      window.removeEventListener('resize', schedulePosition);
+    };
   });
   function focusCandidate() {
     panel.querySelectorAll<HTMLButtonElement>('button')[candidate]?.focus();
@@ -76,6 +170,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="color-palette"
+  style="left: 0; top: 0; visibility: hidden"
   role="dialog"
   tabindex="-1"
   aria-label="Assign color"
@@ -128,12 +223,12 @@
             >
               <span
                 class="color-swatch"
+                class:color-reset={choice === null}
                 style:background={choice ? markerColors[choice] : 'transparent'}
-                aria-hidden="true"
-              ></span>
-              <span>{name(choice)}</span><span
-                class="color-saved"
-                aria-hidden="true">{color === choice ? '✓' : ''}</span
+                aria-hidden="true">{choice === null ? '↺' : ''}</span
+              >
+              <span class="color-saved" aria-hidden="true"
+                >{color === choice ? '✓' : ''}</span
               >
             </button>
           </div>

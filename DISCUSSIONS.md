@@ -14,7 +14,11 @@ The current interface uses locally authored CSS; no styling library is selected.
 
 ## Cross-parent movement
 
-Items can currently reorder among siblings, but cannot move across parents or be reparented. Decide the interaction and recovery rules for moving notes and containers between locations.
+M uses a staged destination dialog for moving selected siblings together within or between the live library and Trash. A live-to-Trash move creates one persistent group Undo action. Dragging and Command-Up/Down rearrange siblings. Decide whether dragging should also move items between parents, and discuss cross-owner selection separately.
+
+## Keyboard selection and batch actions
+
+Mouse Shift-range and Command-toggle selection are accepted. Research keyboard range expansion, contraction, anchor/focus behavior, and selection clearing before adding Shift-arrow selection. Decide batch edit/color/completion/copy/delete behavior separately; those actions currently use one primary item. Current selection conventions draw on [Apple’s selection guidance](https://support.apple.com/guide/mac-help/select-items-mchlp1378/mac) and [WAI-ARIA guidance distinguishing focus and selection](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/#kbd_focus_vs_selection). Interactive note cards retain their content/button semantics rather than becoming listbox options.
 
 ## Tabs
 
@@ -34,7 +38,7 @@ The current picker offers nine fixed colors and Reset. Decide whether arbitrary 
 
 ## Trash purge
 
-Trash retains items for at least 90 days; automatic permanent cleanup is not enabled, and no permanent purge exists. Decide eventual purge, retention, and recovery behavior before implementing deletion of retained data.
+Manual Delete inside Trash permanently removes the selected item and its children, without Undo. Automatic permanent cleanup is not enabled. Decide any future 90-day cleanup schedule, retention exceptions, and recovery behavior separately; existing backups are not securely erased by logical item deletion.
 
 ## Accounts and synchronization
 
@@ -43,6 +47,10 @@ A later MVP is intended to use one shared API/backend database and device-local 
 ## Mobile companions
 
 Mac comes first. Future iOS and Android companions are intended primarily for viewing, copy/paste, and short Markdown capture. Tauri is preferred, with Capacitor as a fallback if mobile friction warrants it. Decide the mobile scope and validate platform/editor constraints separately.
+
+## Developer ID signing and notarization
+
+The current Mac alpha is ad-hoc signed and is not notarized, so macOS can block its first launch. Decide whether and when to use Developer ID signing and notarization, including their distribution and maintenance implications. See [issue #6](https://github.com/Barbacoa08/stashpad/issues/6).
 
 ## Other repository decision
 

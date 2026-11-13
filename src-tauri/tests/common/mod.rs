@@ -64,6 +64,7 @@ impl SeedStore for Store {
                 scope: Scope::Live,
                 item_id: parent.map(str::to_owned),
             },
+            leave: None,
         })?;
         self.save_source(
             &id,

@@ -316,12 +316,19 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
     /selected/,
   );
+  const childId = await page
+    .getByRole('article', { name: 'Stash Child' })
+    .getAttribute('data-entry-id');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('.note-card[data-kind="note"]')).toHaveCount(0);
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
+  await expect(page.locator(`[data-entry-id="${childId}"]`)).toHaveClass(
     /selected/,
+  );
+  await expect(page.locator(`[data-entry-id="${childId}"]`)).toHaveAttribute(
+    'data-kind',
+    'note',
   );
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
@@ -339,7 +346,7 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
-      version: 4,
+      version: 6,
       exportedAt: '2026-11-11T00:00:00.000Z',
       workspace: t.repo.snapshot,
     });
@@ -353,8 +360,12 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
+  await expect(page.locator(`[data-entry-id="${childId}"]`)).toHaveClass(
     /selected/,
+  );
+  await expect(page.locator(`[data-entry-id="${childId}"]`)).toHaveAttribute(
+    'data-kind',
+    'note',
   );
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await page.getByRole('searchbox').fill('owned');
