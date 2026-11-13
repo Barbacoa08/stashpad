@@ -1069,9 +1069,6 @@ kbd {
 .workspace {
   position: relative;
 }
-.compact-palette .color-palette {
-  max-height: calc(75dvh - 6rem);
-}
 .workspace-feedback p {
   overflow-wrap: anywhere;
 }
@@ -1254,8 +1251,6 @@ kbd {
 .color-palette {
   position: fixed;
   z-index: 15;
-  right: 1rem;
-  top: 4rem;
   width: max-content;
   max-width: calc(100vw - 2rem);
   max-height: calc(100vh - 5rem);

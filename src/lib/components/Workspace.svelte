@@ -80,6 +80,7 @@
   type PaletteSession = {
     session: number;
     id: string;
+    anchor: HTMLElement;
     returnTo: HTMLElement | null;
     pending: boolean;
     error: string;
@@ -981,7 +982,12 @@
       !shownEntries.some((x) => x.id === selected)
     )
       return;
+    const anchor = stream?.querySelector<HTMLElement>(
+      `[data-entry-id="${selectedNote.id}"]`,
+    );
+    if (!anchor) return;
     palette = {
+      anchor,
       session: ++paletteSequence,
       id: selectedNote.id,
       pending: false,
@@ -1591,10 +1597,7 @@
       >{/if}
   </section>
 {/snippet}
-<main
-  class:native-chrome={nativeChrome}
-  class:compact-palette={!!palette && !detailsOpen && !!viewState.error}
->
+<main class:native-chrome={nativeChrome}>
   <header class="app-header">
     <div class="native-controls-inset" aria-hidden="true"></div>
     <button
@@ -2061,6 +2064,7 @@
         (x) => x.id === session.id,
       )}
       {#if target}<ColorPalette
+          anchor={session.anchor}
           color={target.color}
           disabled={session.pending || blocked}
           error={session.error}
