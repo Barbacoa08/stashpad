@@ -65,27 +65,18 @@ export function reconcileMouseSelection(
   };
 }
 
-/** Move each selected run one sibling step, retaining both relative orders. */
+/** Collect selected siblings into a block and move it one unselected gap. */
 export function reorderSelected(
   displayed: readonly string[],
   ids: readonly string[],
   direction: -1 | 1,
 ): string[] {
-  const order = [...displayed],
-    selected = new Set(ids);
-  const positions =
-    direction === -1
-      ? order.map((_, index) => index)
-      : order.map((_, index) => index).reverse();
-  for (const index of positions) {
-    const neighbor = index + direction;
-    if (
-      selected.has(order[index]) &&
-      neighbor >= 0 &&
-      neighbor < order.length &&
-      !selected.has(order[neighbor])
-    )
-      [order[index], order[neighbor]] = [order[neighbor], order[index]];
-  }
-  return order;
+  const selected = new Set(ids);
+  if (!selected.size) return [...displayed];
+  const block = displayed.filter((id) => selected.has(id));
+  if (block.length !== selected.size) return [...displayed];
+  const remaining = displayed.filter((id) => !selected.has(id));
+  const first = displayed.findIndex((id) => selected.has(id));
+  const gap = Math.max(0, Math.min(remaining.length, first + direction));
+  return [...remaining.slice(0, gap), ...block, ...remaining.slice(gap)];
 }

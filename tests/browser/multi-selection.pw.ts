@@ -116,7 +116,7 @@ test('search selection stays one exact result and editing retains its text selec
   await expect.poll(() => selected(page)).toEqual([ids[3]]);
 });
 
-test('noncontiguous Command arrows preserve separated runs and drag inserts the captured ordered block once', async ({
+test('noncontiguous Command arrows collect a block and drag inserts the captured ordered block once', async ({
   page,
 }) => {
   const ids = await seed(page);
@@ -137,11 +137,22 @@ test('noncontiguous Command arrows preserve separated runs and drag inserts the 
   });
   await card(page, ids[1]).click();
   await card(page, ids[3]).click({ modifiers: ['Meta'] });
+  const stream = page.getByRole('region', { name: 'Note stream' });
+  await stream.focus();
   await page.keyboard.press('Meta+ArrowUp');
-  await expect.poll(order).toEqual([ids[1], ids[0], ids[3], ids[2], ids[4]]);
+  await expect(stream).toBeFocused();
+  await expect.poll(order).toEqual([ids[1], ids[3], ids[0], ids[2], ids[4]]);
   await expect.poll(() => selected(page)).toEqual([ids[1], ids[3]]);
   await page.keyboard.press('Meta+ArrowDown');
-  await expect.poll(order).toEqual(ids);
+  await expect.poll(order).toEqual([ids[0], ids[1], ids[3], ids[2], ids[4]]);
+  await expect.poll(() => selected(page)).toEqual([ids[1], ids[3]]);
+  await expect(stream).toBeFocused();
+  await expect(
+    card(page, ids[3]).getByRole('button', { name: 'Mark done', exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    card(page, ids[1]).getByRole('button', { name: 'Mark done', exact: true }),
+  ).toHaveCount(0);
   const transfer = await page.evaluateHandle(() => new DataTransfer());
   await card(page, ids[1])
     .getByRole('button', { name: 'Reorder item', exact: true })
@@ -195,7 +206,7 @@ test('failed group movement retries captured membership after a newer selection 
           entries.map((entry) => entry.getAttribute('data-entry-id')),
         ),
     )
-    .toEqual([ids[1], ids[0], ids[3], ids[2], ids[4]]);
+    .toEqual([ids[1], ids[3], ids[0], ids[2], ids[4]]);
   await expect.poll(() => selected(page)).toEqual([ids[4]]);
   await card(page, ids[1]).click();
   await card(page, ids[3]).click({ modifiers: ['Meta'] });
@@ -216,7 +227,7 @@ test('failed group movement retries captured membership after a newer selection 
           .map((item: any) => item.id),
       ),
     )
-    .toEqual(ids);
+    .toEqual([ids[0], ids[1], ids[3], ids[2], ids[4]]);
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(page.getByRole('searchbox')).toHaveValue('selection 0');
   expect(

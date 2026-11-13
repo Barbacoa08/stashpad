@@ -104,13 +104,13 @@ it('removing the selected anchor moves the anchor to a surviving primary before 
   });
 });
 
-it('Command arrows shift each selected run one place without coalescing separated runs', async () => {
+it('Command arrows collect separated selections before moving the block', async () => {
   const { reorderSelected } =
     await import('../../src/lib/workspace/mouse-selection');
-  expect(reorderSelected(displayed, ['stash-b', 'stash-d'], -1)).toEqual([
+  expect(reorderSelected(displayed, ['stash-d', 'stash-b'], -1)).toEqual([
     'stash-b',
-    'note-a',
     'stash-d',
+    'note-a',
     'note-c',
     'note-e',
   ]);
@@ -118,16 +118,14 @@ it('Command arrows shift each selected run one place without coalescing separate
     'note-a',
     'note-c',
     'stash-b',
-    'note-e',
-    'stash-d',
-  ]);
-  expect(reorderSelected(displayed, ['stash-b', 'note-c'], -1)).toEqual([
-    'stash-b',
-    'note-c',
-    'note-a',
     'stash-d',
     'note-e',
   ]);
+});
+
+it('clamps blocks at boundaries and moves contiguous blocks one gap at a time', async () => {
+  const { reorderSelected } =
+    await import('../../src/lib/workspace/mouse-selection');
   expect(reorderSelected(displayed, ['note-a', 'note-c'], -1)).toEqual([
     'note-a',
     'note-c',
@@ -135,5 +133,44 @@ it('Command arrows shift each selected run one place without coalescing separate
     'stash-d',
     'note-e',
   ]);
+  expect(reorderSelected(displayed, ['note-a', 'stash-b'], -1)).toEqual(
+    displayed,
+  );
+  expect(reorderSelected(displayed, ['stash-d', 'note-e'], 1)).toEqual(
+    displayed,
+  );
+  const once = reorderSelected(displayed, ['stash-b', 'stash-d'], 1);
+  expect(reorderSelected(once, ['stash-b', 'stash-d'], 1)).toEqual([
+    'note-a',
+    'note-c',
+    'note-e',
+    'stash-b',
+    'stash-d',
+  ]);
+  expect(reorderSelected(displayed, [], 1)).toEqual(displayed);
   expect(reorderSelected(displayed, displayed, 1)).toEqual(displayed);
+  expect(reorderSelected(displayed, ['stash-b', 'missing'], 1)).toEqual(
+    displayed,
+  );
+});
+
+it('checks large selected groups with a linear number of displayed-array reads', async () => {
+  const { reorderSelected } =
+    await import('../../src/lib/workspace/mouse-selection');
+  for (const width of [200, 600]) {
+    const entries = Array.from(
+      { length: width },
+      (_, index) => `item-${index}`,
+    );
+    let reads = 0;
+    const observed = new Proxy(entries, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^(0|[1-9]\d*)$/.test(property))
+          reads++;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    reorderSelected(observed, entries.slice(0, width - 1), 1);
+    expect(reads).toBeLessThan(20 * width);
+  }
 });
