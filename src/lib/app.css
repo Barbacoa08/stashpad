@@ -1256,32 +1256,42 @@ kbd {
   z-index: 15;
   right: 1rem;
   top: 4rem;
-  width: min(20rem, calc(100vw - 2rem));
+  width: max-content;
+  max-width: calc(100vw - 2rem);
   max-height: calc(100vh - 5rem);
   overflow-y: auto;
-  padding: 0.8rem;
+  padding: 0.3rem;
   background: #202733;
   color: #eee;
   border: 1px solid #8a98aa;
   border-radius: 4px;
   box-shadow: 0 0.5rem 2rem #0008;
 }
+.color-palette:has([role='alert']) {
+  width: min(18rem, calc(100vw - 2rem));
+}
+.color-palette [role='alert'] {
+  overflow-wrap: anywhere;
+}
 .color-choices {
   display: grid;
-  gap: 0.3rem;
+  gap: 0.25rem;
+  width: max-content;
 }
 .color-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.3rem;
+  grid-template-columns: repeat(2, max(24px, 1.5rem));
+  gap: 0.25rem;
 }
 .color-choice {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  width: 100%;
-  min-height: 2rem;
-  text-align: left;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
   background: transparent;
   border: 1px solid transparent;
 }
@@ -1294,24 +1304,35 @@ kbd {
   background: #ffffff0a;
 }
 .color-saved {
-  margin-left: auto;
+  position: absolute;
+  display: grid;
+  place-items: center;
   width: 1em;
+  height: 1em;
+  color: #111;
+  line-height: 1;
+  text-shadow: none;
+  pointer-events: none;
 }
 .color-swatch {
-  width: 0.8rem;
-  height: 0.8rem;
+  width: 1.25rem;
+  height: 1.25rem;
   border: 1px solid #bdbdbd;
   border-radius: 2px;
-  flex: none;
 }
-
 .color-reset {
   display: grid;
   place-items: center;
-  width: 1rem;
-  height: 1rem;
   border-color: transparent;
   line-height: 1;
+}
+.color-choice:has(.color-reset) .color-saved {
+  right: 0;
+  bottom: 0;
+  width: 0.65em;
+  height: 0.65em;
+  font-size: 0.65em;
+  color: white;
 }
 
 /* Search, Home, top-level stacks, and footer actions share icon columns. */
