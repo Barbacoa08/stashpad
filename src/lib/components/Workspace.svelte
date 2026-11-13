@@ -1597,7 +1597,10 @@
       >{/if}
   </section>
 {/snippet}
-<main class:native-chrome={nativeChrome}>
+<main
+  class:native-chrome={nativeChrome}
+  class:color-save-pending={viewState.operation === 'color' && !modal}
+>
   <header class="app-header">
     <div class="native-controls-inset" aria-hidden="true"></div>
     <button
@@ -1605,6 +1608,7 @@
       aria-label="Back"
       title="Back"
       disabled={navigationBlocked || !backVisit}
+      data-unavailable={!backVisit ? '' : undefined}
       onclick={() => traverseHistory(-1)}><Icon name="back" /></button
     >
     <button
@@ -1612,6 +1616,7 @@
       aria-label="Forward"
       title="Forward"
       disabled={navigationBlocked || !forwardVisit}
+      data-unavailable={!forwardVisit ? '' : undefined}
       onclick={() => traverseHistory(1)}><Icon name="chevron" /></button
     >
     <h1 class="sr-only" title={destination}>{destination}</h1>
@@ -1709,7 +1714,11 @@
             onclick={() => void undoDelete()}
             disabled={!viewState.snapshot.undoDeleteIds.length ||
               undoPending ||
-              blocked}><Icon name="undo" /> Undo delete</button
+              blocked}
+            data-unavailable={!viewState.snapshot.undoDeleteIds.length ||
+            undoPending
+              ? ''
+              : undefined}><Icon name="undo" /> Undo delete</button
           >
         </div>
       </aside>

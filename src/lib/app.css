@@ -102,8 +102,12 @@ button:hover:enabled {
   background: #353535;
 }
 button:disabled {
-  opacity: 0.5;
   cursor: default;
+}
+/* A color write still blocks commands, without dimming the entire workspace.
+   Controls unavailable for their own reason retain their disabled appearance. */
+button:disabled:where(:not(.color-save-pending button), [data-unavailable]) {
+  opacity: 0.5;
 }
 :focus-visible,
 .cm-focused {
