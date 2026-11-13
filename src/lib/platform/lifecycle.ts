@@ -2,7 +2,7 @@ export interface CloseAdapter {
   onCloseRequested(
     handler: (event: { preventDefault(): void }) => void | Promise<void>,
   ): Promise<() => void>;
-  destroy(): Promise<void>;
+  hide(): Promise<void>;
 }
 export function attachCloseGuard(
   adapter: CloseAdapter,
@@ -19,7 +19,7 @@ export function attachCloseGuard(
       busy = true;
       try {
         if (await flush()) {
-          if (!disposed) await adapter.destroy();
+          if (!disposed) await adapter.hide();
         } else if (!disposed) failed();
       } catch {
         if (!disposed) failed();

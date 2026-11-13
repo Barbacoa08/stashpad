@@ -18,7 +18,7 @@ _Current source preview with synthetic notes; see the download compatibility not
 
 ## Download and install
 
-**Latest release:** alpha.4 includes the Root navigation tree and custom Dock icon.
+**Latest release:** alpha.4 includes the Root navigation tree and custom Dock icon. Current source additionally keeps the Mac app running when its window is closed and restores it through Command+Tab or the Dock; alpha.4 predates these lifecycle changes.
 
 **Compatibility:** alpha.3, alpha.4, and current source use schema 6/BackupV6. Alpha.2 uses schema 4 and cannot reopen an upgraded schema-6 library or import BackupV6. Schema-5-only builds also cannot reopen an upgraded schema-6 library. Export a backup and quit older Preview copies before upgrading, and use compatible app versions when transferring backups between Macs.
 
@@ -88,7 +88,7 @@ Kit 3 config lives in `vite.config.ts`; `src/routes/+layout.ts` disables SSR. Th
 
 ## Persistence and backups
 
-Capture saving is explicit. Capture drafts checkpoint after 300 ms idle; existing-item source commits after the same idle interval without leaving the editor. Pending source flushes before deliberate navigation, export, restore, deletion, and normal close. “Saved” appears only after native acknowledgment. Input typed during a save remains in its own context and is included in the next commit or checkpoint. Failed note saves retain visible source and attempt a recovery checkpoint; retry must succeed before finishing or navigation. Forced termination or power loss can lose input before its checkpoint; ordinary close failures keep the window open with retry or an explicit discard-and-close choice.
+Capture saving is explicit. Capture drafts checkpoint after 300 ms idle; existing-item source commits after the same idle interval without leaving the editor. Pending source flushes before deliberate navigation, export, restore, deletion, and normal close. “Saved” appears only after native acknowledgment. Input typed during a save remains in its own context and is included in the next commit or checkpoint. Failed note saves retain visible source and attempt a recovery checkpoint; retry must succeed before finishing or navigation. Forced termination or power loss can lose input before its checkpoint; window-close failures keep the window open with Retry and hide, Keep window open, or Hide without saving. Hiding without saving retains input in memory, without claiming it reached disk.
 
 Completion waits for the latest source flush, then persists an explicit desired boolean. Repeating the same desired state is a no-op, including its timestamp. A failed source flush or completion write retains the source and completion intent; Workspace status offers Retry completion for that exact item and state, without submitting capture.
 
@@ -105,6 +105,8 @@ Current ceilings are 20,000 items, 40,002 drafts, 1 MiB UTF-8 per source field, 
 Client rendering errors show a readable diagnostic panel and an explicit Reload view control. Submitted notes may already be saved; uncheckpointed input may be lost on reload. Diagnostics retain only a reference, app version, time, error class/status, and sanitized app-module locations. At most three small records stay in browser local storage, with three write attempts per page load; storage failure does not block the panel. Select the displayed details to copy them when reporting a problem. Note contents, raw error messages, arbitrary paths, and query strings are excluded, and nothing is sent to a service.
 
 ## Native acceptance
+
+Closing the Mac window (red close control or Command+W) flushes pending edits and hides the application without destroying its window or workspace. Switch back with Command+Tab or click the Dock icon to show that same window, preserving its location, drafts, selection, editor history, and frame. Command+Q and the native Quit menu still fully quit. Direct Quit retains its existing native behavior; input that has not reached its 300 ms checkpoint can be lost, so closing the window first provides the explicit flush safeguard.
 
 The normal native window frame is saved separately in `window-geometry.json` under the Preview app-config directory. Position and dimensions restore after page load; a reachable titlebar permits exact spanning/partial-offscreen placement, while inaccessible placements clamp to available work areas. Minimized, maximized, and fullscreen states reopen normally at the last captured normal frame. Corrupt or unavailable preferences do not block the note library.
 

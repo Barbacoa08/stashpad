@@ -3,7 +3,6 @@
   import type { ColorToken, Location } from '../domain/notes';
   import type { EditorState } from '@codemirror/state';
   import { isTauri } from '@tauri-apps/api/core';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ItemCard from './ItemCard.svelte';
   import ColorPalette from './ColorPalette.svelte';
@@ -40,13 +39,16 @@
   import { copyMarkdown, openExternal } from '../platform/actions';
   import { filterNotes } from '../domain/search';
   import { timestampPresentation } from '../domain/timestamps';
-  import { attachCloseGuard } from '../platform/lifecycle';
+  import { attachCloseGuard, type CloseAdapter } from '../platform/lifecycle';
+  import { nativeCloseAdapter } from '../platform/native-lifecycle';
   import { attachMouseHistory } from '../platform/mouse-history';
   let {
     repository = nativeRepository,
     onready,
+    windowAdapter,
   }: {
     repository?: Repository;
+    windowAdapter?: CloseAdapter;
     onready?: (controller: WorkspaceController) => void;
   } = $props();
   const controller = new WorkspaceController(untrack(() => repository));
@@ -163,6 +165,7 @@
   let stream = $state<HTMLElement>();
   let reorderMotion: ReturnType<typeof createReorderMotion> | undefined;
   let closeFailed = $state(false);
+  let closeReturnFocus: HTMLElement | null = null;
   let detailsOpen = $state(false);
   let detailsChoice: boolean | null = null;
   let nativeChrome = $state(false);
@@ -510,6 +513,13 @@
     let focused: HTMLElement | null = null;
     function rememberFocus(event: FocusEvent) {
       if (
+        closeFailed &&
+        event.target instanceof HTMLElement &&
+        event.target !== document.body &&
+        !event.target.closest('[data-close-recovery]')
+      )
+        closeReturnFocus = event.target;
+      if (
         event.target instanceof HTMLElement &&
         (event.target !== document.body || detailsMedia.matches === narrow)
       )
@@ -562,11 +572,15 @@
     document.addEventListener('focusout', forgetFocus);
     detailsMedia.addEventListener('change', respondToDetailsWidth);
     let detach = () => {};
-    if (isTauri())
+    if (windowAdapter || isTauri())
       detach = attachCloseGuard(
-        getCurrentWindow(),
+        {
+          onCloseRequested: (handler) =>
+            (windowAdapter ?? nativeCloseAdapter).onCloseRequested(handler),
+          hide: hideWindow,
+        },
         () => controller.flush(),
-        () => (closeFailed = true),
+        showCloseFailure,
       );
     return () => {
       disposed = true;
@@ -1551,10 +1565,48 @@
         true,
       );
   }
+  function showCloseFailure() {
+    if (!closeFailed)
+      closeReturnFocus =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    closeFailed = true;
+  }
+  async function dismissCloseFailure() {
+    const active = document.activeElement;
+    const target = closeReturnFocus;
+    const restore =
+      closeFailed &&
+      (active === document.body || active?.closest('[data-close-recovery]'));
+    const focus = observeSubmissionFocus();
+    closeFailed = false;
+    closeReturnFocus = null;
+    try {
+      // The recovery panel makes editors read-only; re-enable before focusing.
+      await tick();
+      if (restore && target?.isConnected && focus.mayRestore())
+        target.focus({ preventScroll: true });
+    } finally {
+      focus.stop();
+    }
+  }
+  async function hideWindow() {
+    await (windowAdapter ?? nativeCloseAdapter).hide();
+    await dismissCloseFailure();
+  }
   async function retryClose() {
-    if (await controller.flush()) {
-      closeFailed = false;
-      if (isTauri()) await getCurrentWindow().destroy();
+    try {
+      if (await controller.flush()) await hideWindow();
+    } catch {
+      showCloseFailure();
+    }
+  }
+  async function hideWithoutSaving() {
+    try {
+      await hideWindow();
+    } catch {
+      showCloseFailure();
     }
   }
 </script>
@@ -2082,18 +2134,19 @@
         />{/if}
     {/each}
     {#if closeFailed}<section
+        data-close-recovery
         class="confirmation"
-        aria-label="Draft could not be saved"
+        aria-label="Could not hide window"
       >
-        <h2>Draft could not be saved</h2>
+        <h2>Could not hide window</h2>
         <p>
-          The window stays open. Retry the checkpoint, or explicitly discard
-          uncheckpointed input and close.
+          Your notes and drafts are still here. Retry saving and hiding, or keep
+          the window open. If you hide without saving, unsaved input stays in
+          memory until you quit.
         </p>
-        <button use:focusChoice onclick={retryClose}>Retry and close</button
-        ><button onclick={() => (closeFailed = false)}>Keep window open</button
-        ><button onclick={() => getCurrentWindow().destroy()}
-          >Discard and close</button
+        <button use:focusChoice onclick={retryClose}>Retry and hide</button
+        ><button onclick={dismissCloseFailure}>Keep window open</button><button
+          onclick={hideWithoutSaving}>Hide without saving</button
         >
       </section>{/if}
   {/if}

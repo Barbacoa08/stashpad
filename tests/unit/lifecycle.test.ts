@@ -2,10 +2,10 @@ import { WorkspaceController } from '../../src/lib/workspace/controller';
 import { MemoryRepository } from '../fixtures/memory';
 import { it, expect } from 'vitest';
 import { attachCloseGuard } from '../../src/lib/platform/lifecycle';
-it('failed close retains window; retry closes, and late listener registration cleans once', async () => {
+it('failed close retains window; retry hides, and late listener registration cleans once', async () => {
   let handler: any;
   let removed = 0,
-    destroyed = 0,
+    hidden = 0,
     failed = 0;
   let ok = false;
   const adapter = {
@@ -13,8 +13,8 @@ it('failed close retains window; retry closes, and late listener registration cl
       handler = fn;
       return () => removed++;
     },
-    destroy: async () => {
-      destroyed++;
+    hide: async () => {
+      hidden++;
     },
   };
   const cleanup = attachCloseGuard(
@@ -27,10 +27,10 @@ it('failed close retains window; retry closes, and late listener registration cl
   await handler({ preventDefault: () => prevented++ });
   expect(prevented).toBe(1);
   expect(failed).toBe(1);
-  expect(destroyed).toBe(0);
+  expect(hidden).toBe(0);
   ok = true;
   await handler({ preventDefault: () => prevented++ });
-  expect(destroyed).toBe(1);
+  expect(hidden).toBe(1);
   cleanup();
   cleanup();
   expect(removed).toBe(1);
@@ -41,7 +41,7 @@ it('dispose before close listener resolves unregisters it', async () => {
   const cleanup = attachCloseGuard(
     {
       onCloseRequested: () => new Promise((r) => (resolve = r)),
-      destroy: async () => {},
+      hide: async () => {},
     },
     async () => true,
     () => {},
@@ -61,7 +61,7 @@ it('remount removes the first close listener before attaching another', async ()
         handlers.delete(fn);
       };
     },
-    destroy: async () => {},
+    hide: async () => {},
   };
   const first = attachCloseGuard(
     adapter,
@@ -83,7 +83,7 @@ it('remount removes the first close listener before attaching another', async ()
 });
 
 for (const failFollowup of [false, true])
-  it(`normal close waits for latest pending checkpoint; follow-up failure=${failFollowup}`, async () => {
+  it(`window close waits for latest pending checkpoint; follow-up failure=${failFollowup}`, async () => {
     const repo = new MemoryRepository();
     const c = new WorkspaceController(repo);
     await c.start();
@@ -92,7 +92,7 @@ for (const failFollowup of [false, true])
     repo.delayCheckpoint = new Promise<void>((resolve) => (release = resolve));
     if (failFollowup) repo.failCheckpointCall = 2;
     let handler!: (e: { preventDefault(): void }) => void | Promise<void>;
-    let destroyedSource: string | undefined,
+    let hiddenSource: string | undefined,
       failed = 0;
     const cleanup = attachCloseGuard(
       {
@@ -100,8 +100,8 @@ for (const failFollowup of [false, true])
           handler = fn;
           return () => {};
         },
-        destroy: async () => {
-          destroyedSource = repo.snapshot.drafts.find(
+        hide: async () => {
+          hiddenSource = repo.snapshot.drafts.find(
             (d) => d.key === 'compose',
           )?.markdown;
         },
@@ -118,11 +118,11 @@ for (const failFollowup of [false, true])
       release();
       await closing;
       if (failFollowup) {
-        expect(destroyedSource).toBeUndefined();
+        expect(hiddenSource).toBeUndefined();
         expect(failed).toBe(1);
         expect(c.state.source).toBe('latest');
       } else {
-        expect(destroyedSource).toBe('latest');
+        expect(hiddenSource).toBe('latest');
         expect(failed).toBe(0);
       }
     } finally {
@@ -130,3 +130,105 @@ for (const failFollowup of [false, true])
       c.dispose();
     }
   });
+
+it('hides only after the newest flush succeeds, never destroys, and deduplicates pending close', async () => {
+  let handler!: (event: { preventDefault(): void }) => void | Promise<void>;
+  let release!: (ok: boolean) => void;
+  const operations: string[] = [];
+  const adapter = {
+    onCloseRequested: async (fn: typeof handler) => {
+      handler = fn;
+      return () => {};
+    },
+    hide: async () => {
+      operations.push('hide');
+    },
+    destroy: async () => {
+      operations.push('destroy');
+    },
+  };
+  const cleanup = attachCloseGuard(
+    adapter,
+    () => {
+      operations.push('flush');
+      return new Promise<boolean>((resolve) => {
+        release = resolve;
+      });
+    },
+    () => operations.push('failed'),
+  );
+  await Promise.resolve();
+  const closing = handler({ preventDefault() {} });
+  await handler({ preventDefault() {} });
+  expect(operations).toEqual(['flush']);
+  release(true);
+  await closing;
+  expect(operations).toEqual(['flush', 'hide']);
+  cleanup();
+});
+
+it('does not hide a disposed view when its pending flush completes', async () => {
+  let handler!: (event: { preventDefault(): void }) => void | Promise<void>;
+  let release!: (ok: boolean) => void;
+  let hidden = 0,
+    failed = 0;
+  const cleanup = attachCloseGuard(
+    {
+      onCloseRequested: async (fn) => {
+        handler = fn;
+        return () => {};
+      },
+      hide: async () => {
+        hidden++;
+      },
+    },
+    () =>
+      new Promise<boolean>((resolve) => {
+        release = resolve;
+      }),
+    () => {
+      failed++;
+    },
+  );
+  await Promise.resolve();
+  const closing = handler({ preventDefault() {} });
+  cleanup();
+  release(true);
+  await closing;
+  expect(hidden).toBe(0);
+  expect(failed).toBe(0);
+});
+
+it('retains the view on hide failure and allows a subsequent close attempt', async () => {
+  let handler!: (event: { preventDefault(): void }) => void | Promise<void>;
+  let attempts = 0,
+    failed = 0,
+    flushed = 0;
+  const cleanup = attachCloseGuard(
+    {
+      onCloseRequested: async (fn) => {
+        handler = fn;
+        return () => {};
+      },
+      hide: async () => {
+        if (++attempts === 1) throw new Error('synthetic hide failure');
+      },
+    },
+    async () => {
+      flushed++;
+      return true;
+    },
+    () => {
+      failed++;
+    },
+  );
+  await Promise.resolve();
+  await handler({ preventDefault() {} });
+  expect(attempts).toBe(1);
+  expect(failed).toBe(1);
+  await handler({ preventDefault() {} });
+  expect(attempts).toBe(2);
+  expect(flushed).toBe(2);
+  expect(failed).toBe(1);
+  cleanup();
+});
