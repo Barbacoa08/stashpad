@@ -65,7 +65,7 @@ test('M stages destinations without writing, traps focus, and cancels from Escap
   const list = dialog.getByRole('listbox', { name: 'Destination' });
   await expect(list).toBeFocused();
   await dialog
-    .getByRole('option', { name: 'destination alpha, Home', exact: true })
+    .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
   expect(await snapshot(page)).toEqual(before);
   await page.keyboard.press('ArrowDown');
@@ -108,12 +108,12 @@ test('Enter confirms the captured selected source block once and excludes select
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await expect(
     dialog.getByRole('option', {
-      name: 'destination alpha, Home',
+      name: 'destination alpha, Root',
       exact: true,
     }),
   ).toHaveCount(0);
   await dialog
-    .getByRole('option', { name: 'destination beta, Home', exact: true })
+    .getByRole('option', { name: 'destination beta, Root', exact: true })
     .click();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
@@ -139,7 +139,7 @@ test('failed modal movement retains the exact destination for Retry and ignores 
   await page.keyboard.press('m');
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await dialog
-    .getByRole('option', { name: 'destination alpha, Home', exact: true })
+    .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'move';
@@ -149,16 +149,16 @@ test('failed modal movement retains the exact destination for Retry and ignores 
     dialog.getByRole('button', { name: 'Retry move', exact: true }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole('option', { name: 'destination beta, Home', exact: true }),
+    dialog.getByRole('option', { name: 'destination beta, Root', exact: true }),
   ).toBeDisabled();
   await dialog
-    .getByRole('option', { name: 'destination beta, Home', exact: true })
+    .getByRole('option', { name: 'destination beta, Root', exact: true })
     .dispatchEvent('click');
   await dialog.getByRole('listbox', { name: 'Destination' }).focus();
   await page.keyboard.press('ArrowDown');
   await expect(
     dialog.getByRole('option', {
-      name: 'destination alpha, Home',
+      name: 'destination alpha, Root',
       exact: true,
     }),
   ).toHaveAttribute('aria-selected', 'true');
@@ -196,7 +196,7 @@ test('pending modal movement commits once and cannot be presented as cancelled',
   await page.keyboard.press('m');
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await dialog
-    .getByRole('option', { name: 'destination alpha, Home', exact: true })
+    .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
   await page.keyboard.press('Enter');
   await expect(
@@ -274,7 +274,7 @@ test('a stale staged destination explains the failure inside the modal without m
   await page.keyboard.press('m');
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await dialog
-    .getByRole('option', { name: 'destination alpha, Home', exact: true })
+    .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
   await page.evaluate(async (id) => {
     const t = (window as any).__test;
@@ -291,7 +291,7 @@ test('a stale staged destination explains the failure inside the modal without m
   await expect(dialog).toHaveCount(0);
 });
 
-test('Trash movement offers both roots and moves directly to Home', async ({
+test('Trash movement offers both roots and moves directly to Root', async ({
   page,
 }) => {
   const ids = await seed(page);
@@ -305,7 +305,7 @@ test('Trash movement offers both roots and moves directly to Home', async ({
   await page.keyboard.press('m');
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await expect(
-    dialog.getByRole('option', { name: 'Home', exact: true }),
+    dialog.getByRole('option', { name: 'Root', exact: true }),
   ).toBeVisible();
   await expect(
     dialog.getByRole('option', { name: 'Trash', exact: true }),
@@ -326,10 +326,10 @@ test('Trash movement offers both roots and moves directly to Home', async ({
   await page.keyboard.press('ArrowRight');
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  await dialog.getByRole('option', { name: 'Home', exact: true }).click();
+  await dialog.getByRole('option', { name: 'Root', exact: true }).click();
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await expect(card(page, ids[0])).toBeVisible();
 });
 
@@ -358,11 +358,11 @@ test('duplicate destination names expose their ancestry, stage without writing, 
   await page.keyboard.press('m');
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   const alpha = dialog.getByRole('option', {
-    name: 'Shared destination, Home / destination alpha',
+    name: 'Shared destination, Root / destination alpha',
     exact: true,
   });
   const beta = dialog.getByRole('option', {
-    name: 'Shared destination, Home / destination beta',
+    name: 'Shared destination, Root / destination beta',
     exact: true,
   });
   await expect(alpha).toBeVisible();
@@ -456,7 +456,7 @@ test('both-area duplicate destinations expose their scoped paths and restoring a
   const dialog = page.getByRole('dialog', { name: 'Move items' });
   await expect(
     dialog.getByRole('option', {
-      name: 'Shared destination, Home',
+      name: 'Shared destination, Root',
       exact: true,
     }),
   ).toBeVisible();
@@ -476,7 +476,7 @@ test('both-area duplicate destinations expose their scoped paths and restoring a
     }),
   ).toHaveCount(0);
   await dialog
-    .getByRole('option', { name: 'Shared destination, Home', exact: true })
+    .getByRole('option', { name: 'Shared destination, Root', exact: true })
     .click();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);

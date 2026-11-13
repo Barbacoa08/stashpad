@@ -165,7 +165,7 @@ export interface HierarchyPresentation {
 /** Index once; cache only bounded labels, never every ancestor prefix/path string. */
 export function createHierarchyPresentation(
   stashes: Item[],
-  rootLabel = 'Home',
+  rootLabel = 'Root',
 ): HierarchyPresentation {
   const index = hierarchyIndex(stashes),
     children = stashChildren(stashes),

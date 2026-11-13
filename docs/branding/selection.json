@@ -1,0 +1,48 @@
+{
+  "updated": "2026-11-13",
+  "status": "current selections; exploration continues; not production assets",
+  "workingName": "Scratchtree",
+  "description": "Fast Markdown notes, organized into note trees.",
+  "selections": [
+    {
+      "size": "greater than 128px",
+      "design": "Fuller rounded contour - tighter framing",
+      "reference": "reference-artwork/large-fuller-rounded-contour.png",
+      "sha256": "41c85be38d572bc9d23dc6d42f21f964d5eb2fe25629c3e654cfe203af2a0750"
+    },
+    {
+      "size": "128px",
+      "design": "Compact study - tighter framing",
+      "reference": "reference-artwork/compact-128.png",
+      "sha256": "8f69b44322d7f9ff727aa02e13fc9a187c8133c7f10bff0e09bab85cd3ef63cc"
+    },
+    {
+      "size": "64px",
+      "design": "D2 staggered branches - tighter framing",
+      "reference": "reference-artwork/d2-64.png",
+      "sha256": "5ec6a44b03dfb9e7e32b735adc639d33405cf3bf0de9d2fd342175b70b7a5893"
+    },
+    {
+      "size": "32px",
+      "design": "Broad brush ribbon +3 S, edge-to-edge D2 micro tree",
+      "reference": "reference-artwork/ribbon-plus-3-32.png",
+      "sha256": "b8c4d2623b21580304926e2ae81fb741edff142864c5108605c0817bedc5c7e0"
+    },
+    {
+      "size": "24px",
+      "design": "Tree only, edge-to-edge D2 tree",
+      "reference": "reference-artwork/tree-only-small.png",
+      "sha256": "08ff1e5f3bf8947ec43a89cf69ebc68bd8ac1fe56f3c18576d9ed700c0c902ba"
+    },
+    {
+      "size": "16px",
+      "design": "Tree only, edge-to-edge D2 tree",
+      "reference": "reference-artwork/tree-only-small.png",
+      "sha256": "08ff1e5f3bf8947ec43a89cf69ebc68bd8ac1fe56f3c18576d9ed700c0c902ba"
+    }
+  ],
+  "openTopics": [
+    "Revisit the 24px and 16px tree-only treatments.",
+    "Finalize terminology, light/dark treatments, platform containers, and production exports."
+  ]
+}

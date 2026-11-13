@@ -106,7 +106,7 @@ for (const constrained of [false, true]) {
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
     ).toBeVisible();
     await expect(page.locator('.capture-destination')).toHaveCount(0);
-    await expect(page.locator('.app-header h1')).toContainText('Home');
+    await expect(page.locator('.app-header h1')).toContainText('Root');
     await expect(page.locator('.details-rail > h2')).toHaveText(
       'Details and shortcuts',
     );

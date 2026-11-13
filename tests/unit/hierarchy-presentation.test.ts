@@ -75,7 +75,7 @@ it('reuses bounded owner resolution for 10000 matches without building full pref
   expect(path).toHaveLength(5000);
   expect(path[0].id).toBe(stashes[0].id);
   expect(path.at(-1)?.id).toBe(notes[0].parentId);
-  expect(view.label(null).text).toBe('Home');
+  expect(view.label(null).text).toBe('Root');
 });
 it('keeps ordinary labels exact, handles Unicode boundaries, and rejects missing locations', () => {
   const stashes = [
@@ -93,7 +93,7 @@ it('keeps ordinary labels exact, handles Unicode boundaries, and rejects missing
   ];
   let view = hierarchy.createHierarchyPresentation(stashes);
   expect(view.label(stashes[1].id)).toMatchObject({
-    text: 'Home / Projects / Ideas',
+    text: 'Root / Projects / Ideas',
     abbreviated: false,
     depth: 2,
   });

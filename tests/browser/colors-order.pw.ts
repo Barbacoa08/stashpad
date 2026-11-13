@@ -353,7 +353,7 @@ test('moves child and Trash sibling groups, preserves handle focus, flushes edit
   await expect(
     page.getByRole('button', { name: 'Reorder item', exact: true }),
   ).toHaveCount(0);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[1]).click();
   await page.keyboard.press('Meta+Backspace');
   await card(page, ids[0]).click();
@@ -429,7 +429,7 @@ test('drag identity is handle-only, rejects cross-parent and cross-scope reuse a
   });
   expect(await snapshot(page)).toEqual(before);
   await expect(page.locator('.drop-before,.drop-after')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const pending = await drag(page, ids[0], ids[2], 'after', false);
   await card(page, ids[1]).click();
   await page.keyboard.press('Meta+Backspace');
@@ -439,7 +439,7 @@ test('drag identity is handle-only, rejects cross-parent and cross-scope reuse a
     dataTransfer: pending.dataTransfer,
   });
   expect(await snapshot(page)).toEqual(trashed);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   const source = card(page, ids[0]).getByRole('button', {
     name: 'Reorder item',
     exact: true,
@@ -464,7 +464,7 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   await page.keyboard.press('Escape');
   await page.keyboard.press('x');
   await page.keyboard.press('ArrowRight');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await expect(card(page, ids[0])).toHaveAttribute('data-kind', 'note');
   await expect(card(page, ids[0]).locator('.note-color')).toHaveCSS(
     'background-color',
@@ -482,7 +482,7 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   await card(page, ids[0]).click();
   await expect(card(page, ids[0])).toHaveClass(/done/);
   await page.getByRole('button', { name: 'Restore item', exact: true }).click();
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await page
     .getByRole('button', { name: 'Export backup', exact: true })
     .click();
@@ -665,7 +665,7 @@ test('held Command advertises only possible sibling directions, no singleton or 
   await page.keyboard.down('Meta');
   await expect(hints).toHaveText('⌘N New stash · ⌘⌫ Delete');
   await page.keyboard.up('Meta');
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[2]).click();
   await page.keyboard.press('ArrowRight');
   await capture(page).fill('only child');

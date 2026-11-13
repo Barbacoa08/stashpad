@@ -106,7 +106,7 @@ test('Trash opens retained trees with ordinary editing, capture, keyboard comman
   await expect(card(page, ids[1])).toHaveClass(/selected/);
   await restore(page).click();
   await expect(card(page, ids[1])).toHaveCount(0);
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[1]).click();
   await page.keyboard.press('ArrowRight');
   await expect(capture(page)).toHaveText('unsaved child capture');
@@ -141,7 +141,7 @@ test('deleting an inherited Trash child permanently removes it while parent Rest
   );
   expect(state.undoDeleteIds).toEqual([]);
 });
-test('Trash search stays scoped with bounded paths, restores inherited tree to Home, and preserves capture destination', async ({
+test('Trash search stays scoped with bounded paths, restores inherited tree to Root, and preserves capture destination', async ({
   page,
 }) => {
   const ids = await seed(page);
@@ -161,7 +161,7 @@ test('Trash search stays scoped with bounded paths, restores inherited tree to H
   await page.getByRole('searchbox').fill('parent');
   await expect(stream(page).getByRole('article')).toHaveCount(0);
 });
-test('restoring the open Trash tree through search follows its valid live location and Back returns Home', async ({
+test('restoring the open Trash tree through search follows its valid live location and Back returns Root', async ({
   page,
 }) => {
   const ids = await seed(page);
@@ -172,13 +172,13 @@ test('restoring the open Trash tree through search follows its valid live locati
   await card(page, ids[1]).dblclick();
   await edit(page).fill('parent revised');
   await restore(page).click();
-  await expect(page.locator('h1')).toHaveText('Home / parent revised');
+  await expect(page.locator('h1')).toHaveText('Root / parent revised');
   await card(page, ids[1]).click();
   await page.keyboard.press('e');
   await expect(edit(page)).toHaveText('parent revised');
   await edit(page).press('Escape');
   await stream(page).press('ArrowLeft');
-  await expect(page.locator('h1')).toHaveText('Home');
+  await expect(page.locator('h1')).toHaveText('Root');
   await expect(card(page, ids[1])).toHaveClass(/selected/);
 });
 test('Restore failure retries captured target, flushes source, keeps draft, and respects newer Search focus', async ({
@@ -230,7 +230,7 @@ for (const index of [0, 1, 2])
     );
     await expect(stream(page)).toBeFocused();
   });
-test('fresh Trash capture restores Home append; only item restore focuses capture', async ({
+test('fresh Trash capture restores Root append; only item restore focuses capture', async ({
   page,
 }) => {
   await seed(page);
@@ -261,7 +261,7 @@ test('Trash navigation failure retains its own destination and source for Retry 
   await edit(page).fill('unsaved live source');
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await trash(page).click();
-  await expect(page.locator('h1')).toHaveText('Home');
+  await expect(page.locator('h1')).toHaveText('Root');
   await expect(
     page.getByRole('button', { name: 'Retry action', exact: true }),
   ).toBeVisible();
@@ -312,7 +312,7 @@ test('Trash Command-N uses selected note parent, promotes atomically, and Back r
   await expect(page.locator('h1')).toHaveText('Trash');
   await expect(card(page, ids[1])).toHaveClass(/selected/);
 });
-test('Restore uses remembered live parent and clamps ordinal; unavailable parent falls back Home', async ({
+test('Restore uses remembered live parent and clamps ordinal; unavailable parent falls back Root', async ({
   page,
 }) => {
   const ids = await seed(page);

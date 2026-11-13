@@ -77,7 +77,7 @@ export interface Breadcrumb {
 /** At most root, omission, parent, and current; stop at an explicit Trash root. */
 export function breadcrumbs(items: Item[], at: Location): Breadcrumb[] {
   const root: Breadcrumb = {
-    label: at.scope === 'trash' ? 'Trash' : 'Home',
+    label: at.scope === 'trash' ? 'Trash' : 'Root',
     location: { scope: at.scope, itemId: null },
     current: at.itemId === null,
   };

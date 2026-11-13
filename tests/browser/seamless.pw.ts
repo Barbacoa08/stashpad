@@ -367,7 +367,7 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     'data-kind',
     'note',
   );
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await page.getByRole('searchbox').fill('owned');
   const found = page.getByRole('article', { name: 'Saved note' });
   await found.click();

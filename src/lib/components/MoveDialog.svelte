@@ -119,7 +119,7 @@
   <p id="move-summary">
     Choose a destination for {count}
     {count === 1 ? 'item' : 'items'}. Independently deleted descendants stay in
-    Trash when their parent moves to Home.
+    Trash when their parent moves to Root.
   </p>
   <!-- svelte-ignore a11y_interactive_supports_focus -->
   <div

@@ -65,6 +65,7 @@ it('projects root and final two ancestors with explicit omitted depth, within re
     '18',
     '19',
   ]);
+  expect(crumbs[0].label).toBe('Root');
   expect(crumbs[1].label).toBe('18 ancestors omitted');
   expect(crumbs.at(-1)!.label.length).toBeLessThanOrEqual(32);
   items[10].deletedAt = 10;

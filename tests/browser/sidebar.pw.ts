@@ -16,7 +16,7 @@ test('search leads navigation and status remains accessible in details', async (
   await expect(sidebar.getByText('Search saved notes')).toHaveCount(1);
   await expect(
     sidebar
-      .getByRole('button', { name: 'Home' })
+      .getByRole('button', { name: 'Root' })
       .locator('svg[aria-hidden=true]'),
   ).toHaveCount(1);
   await expect(
@@ -122,6 +122,7 @@ for (const constrained of [false, true])
 
 test('current and hovered stash rows retain one surface for both controls', async ({
   page,
+  browserName,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?fixture');
@@ -175,7 +176,8 @@ test('current and hovered stash rows retain one surface for both controls', asyn
     name: 'Collapse stash Current',
   });
   await currentChevron.focus();
-  await page.keyboard.press('Tab');
+  // WebKit uses Option-Tab to include buttons in sequential keyboard navigation.
+  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   const currentTitle = page.getByRole('button', {
     name: 'Open stash Current',
     exact: true,

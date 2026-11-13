@@ -115,7 +115,7 @@ for (const undoAvailable of [false, true])
           'true',
         );
       await expect(
-        page.getByRole('button', { name: 'Home', exact: true }),
+        page.getByRole('button', { name: 'Root', exact: true }),
       ).toBeDisabled();
       await expect(undo).toBeDisabled();
       await expect(capture).toHaveAttribute('aria-readonly', 'true');

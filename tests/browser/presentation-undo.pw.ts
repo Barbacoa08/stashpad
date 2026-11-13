@@ -70,7 +70,7 @@ test('concise local activity retains actual live status and error recovery', asy
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'checkpoint';
   });
-  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
   await expect(status.getByRole('alert')).toContainText('checkpoint failure');
   await expect(status.getByRole('status').first()).toHaveText(
     await page.evaluate(() => (window as any).__test.controller.state.status),
@@ -86,7 +86,7 @@ test('concise local activity retains actual live status and error recovery', asy
 });
 
 for (const scale of [100, 150])
-  test(`footer shares Search and Home icon and label columns at ${scale}% with one scroll surface`, async ({
+  test(`footer shares Search and Root icon and label columns at ${scale}% with one scroll surface`, async ({
     page,
   }) => {
     await page.setViewportSize({
@@ -98,7 +98,7 @@ for (const scale of [100, 150])
       await page.addStyleTag({ content: ':root{font-size:24px!important}' });
     const columns = await page.locator('.sidebar').evaluate((el) => {
       const search = el.querySelector('.sidebar-search')!,
-        home = el.querySelector('.home-link')!;
+        home = el.querySelector('.root-link')!;
       const columns = [
         search,
         home,
