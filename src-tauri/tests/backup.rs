@@ -20,7 +20,7 @@ fn snapshot() -> WorkspaceSnapshot {
             revision: 4,
             updated_at: 5,
         }],
-        undo_delete_id: None,
+        undo_delete_ids: vec![],
     }
 }
 #[test]
@@ -51,7 +51,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
     ] {
         let mut v = valid.clone();
         match case {
-            "future" => v["version"] = 6.into(),
+            "future" => v["version"] = 7.into(),
             "duplicate" => {
                 let n = v["workspace"]["items"][0].clone();
                 v["workspace"]["items"].as_array_mut().unwrap().push(n)
@@ -63,7 +63,7 @@ fn malformed_types_duplicate_future_dangling_missing_nullable() {
                 v["workspace"]
                     .as_object_mut()
                     .unwrap()
-                    .remove("undoDeleteId");
+                    .remove("undoDeleteIds");
             }
             "missingDeleted" => {
                 v["workspace"]["items"][0]
@@ -192,7 +192,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
             revision: 4,
             updated_at: 5,
         }],
-        undo_delete_id: Some(deleted.clone()),
+        undo_delete_ids: vec![deleted.clone()],
     };
     let bytes = backup::encode(&s).unwrap();
     let staged = backup::validate(&bytes).unwrap();
@@ -206,7 +206,7 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
         let mut malformed = staged.workspace.clone();
         match kind {
             "draft" => malformed.drafts[0].key = active.to_lowercase(),
-            "undo" => malformed.undo_delete_id = Some(deleted.to_lowercase()),
+            "undo" => malformed.undo_delete_ids = vec![deleted.to_lowercase()],
             _ => {
                 let mut duplicate = malformed.items[0].clone();
                 duplicate.id = active.to_lowercase();
@@ -244,7 +244,11 @@ fn uppercase_reference_spelling_and_actual_file_restore_recovery() {
             .workspace,
         s
     );
-    let undone = db.undo().unwrap();
+    let undone = {
+        let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+        db.undo(&r)
+    }
+    .unwrap();
     assert!(undone
         .items
         .iter()
@@ -296,7 +300,7 @@ fn hierarchy_reference_name_capacity_and_deep_chain_parity() {
             "empty" => v["workspace"]["stashes"][0]["name"] = "  ".into(),
             "extra" => v["workspace"]["stashes"][0]["unknown"] = true.into(),
             "orphanUndo" => v["workspace"]["undoDeleteId"] = b.into(),
-            "future" => v["version"] = 6.into(),
+            "future" => v["version"] = 7.into(),
             _ => {}
         }
         assert_eq!(

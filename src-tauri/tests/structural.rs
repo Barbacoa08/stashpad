@@ -45,11 +45,11 @@ fn v5_preserves_note_owned_composer_and_restore_capability_but_v4_stays_frozen()
             revision: 9,
             updated_at: 4,
         }],
-        undo_delete_id: Some(id(2)),
+        undo_delete_ids: vec![id(2)],
     };
     let bytes = backup::encode(&s).expect("current format accepts preserved note-owner capability");
     let mut v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(v["version"], 5);
+    assert_eq!(v["version"], 6);
     assert_eq!(backup::validate(&bytes).unwrap().workspace, s);
     v["version"] = 4.into();
     assert!(backup::validate(&serde_json::to_vec(&v).unwrap()).is_err());
@@ -66,7 +66,7 @@ fn schema_four_upgrade_validates_frozen_rules_and_preserves_unknown_settings() {
     db.replace(&s).unwrap();
     drop(db);
     let c = Connection::open(&p).unwrap();
-    c.execute_batch("INSERT INTO settings VALUES ('unknown','exact');PRAGMA user_version=4;")
+    c.execute_batch("INSERT INTO settings VALUES ('unknown','exact');DELETE FROM settings WHERE key='undoDeleteId';PRAGMA user_version=4;")
         .unwrap();
     drop(c);
     let mut db = Store::open(&p).unwrap();
@@ -76,7 +76,7 @@ fn schema_four_upgrade_validates_frozen_rules_and_preserves_unknown_settings() {
     assert_eq!(
         c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
     assert_eq!(
         c.query_row("SELECT value FROM settings WHERE key='unknown'", [], |r| {
@@ -131,7 +131,7 @@ fn purge_removes_only_parent_edges_and_owned_drafts_and_replays_after_reopen() {
                 updated_at: 8,
             },
         ],
-        undo_delete_id: Some(id(4)),
+        undo_delete_ids: vec![id(4)],
     };
     db.replace(&s).unwrap();
     let req = PurgeItem {
@@ -142,7 +142,7 @@ fn purge_removes_only_parent_edges_and_owned_drafts_and_replays_after_reopen() {
     let result = db.purge(&req).unwrap();
     assert_eq!(result.removed_ids, vec![id(2), id(3)]);
     assert_eq!(result.workspace.items.len(), 2);
-    assert_eq!(result.workspace.undo_delete_id, Some(id(4)));
+    assert_eq!(result.workspace.undo_delete_ids, vec![id(4)]);
     assert_eq!(result.workspace.drafts, vec![s.drafts[2].clone()]);
     let survivor = result
         .workspace
@@ -192,7 +192,7 @@ fn transition_demotes_only_empty_origin_preserving_every_independent_capability(
             revision: 9,
             updated_at: 4,
         }],
-        undo_delete_id: Some(id(2)),
+        undo_delete_ids: vec![id(2)],
     };
     db.replace(&s).unwrap();
     let stay = db
@@ -246,6 +246,8 @@ fn group_moves_are_atomic_replayable_and_preserve_only_changed_roots_timestamps(
     };
     db.replace(&s).unwrap();
     let req = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(3), id(5)],
         from: at(1, Scope::Live),
         to: at(2, Scope::Live),
@@ -284,6 +286,8 @@ fn trash_move_preserves_deletion_date_and_independently_deleted_nodes_on_restore
     };
     db.replace(&s).unwrap();
     let req = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(3)],
         from: at(1, Scope::Trash),
         to: at(2, Scope::Trash),
@@ -334,7 +338,7 @@ fn purge_sql_failure_rolls_back_rows_drafts_undo_and_unknown_settings() {
             revision: 1,
             updated_at: 2,
         }],
-        undo_delete_id: Some(id(1)),
+        undo_delete_ids: vec![id(1)],
     };
     db.replace(&s).unwrap();
     let c = Connection::open(&p).unwrap();
@@ -363,7 +367,7 @@ fn purge_sql_failure_rolls_back_rows_drafts_undo_and_unknown_settings() {
     let after = db.purge(&req).unwrap();
     assert!(after.workspace.items.is_empty());
     assert!(after.workspace.drafts.is_empty());
-    assert_eq!(after.workspace.undo_delete_id, None);
+    assert_eq!(after.workspace.undo_delete_ids, Vec::<String>::new());
 }
 #[test]
 fn stale_purge_membership_and_move_groups_reject_without_changes() {
@@ -397,6 +401,8 @@ fn stale_purge_membership_and_move_groups_reject_without_changes() {
     };
     db.replace(&s).unwrap();
     let base = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(2)],
         from: root(Scope::Live),
         to: at(1, Scope::Live),
@@ -435,6 +441,8 @@ fn whole_group_permutation_handles_noncontiguous_selection_and_exact_noop() {
         vec![id(2), id(1), id(4), id(3), id(5)],
     );
     let request = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(2), id(4)],
         from: root(Scope::Live),
         to: root(Scope::Live),
@@ -449,6 +457,8 @@ fn whole_group_permutation_handles_noncontiguous_selection_and_exact_noop() {
     }
     assert_eq!(db.move_items(&request).unwrap(), moved);
     let same = MoveItems {
+        proof: None,
+        deleted_at: None,
         before_from: request.after_from.clone(),
         before_to: request.after_to.clone(),
         ..request
@@ -469,7 +479,7 @@ fn twenty_thousand_deep_purge_is_iterative_and_backup_five_roundtrips() {
         ));
     }
     s.items[0].deleted_at = Some(3);
-    s.undo_delete_id = Some(id(1));
+    s.undo_delete_ids = vec![id(1)];
     db.replace(&s).unwrap();
     let r = PurgeItem {
         id: id(1),
@@ -570,7 +580,7 @@ fn move_capacity_failure_retains_both_groups_sources_drafts_and_settings() {
             revision: 9,
             updated_at: 4,
         }],
-        undo_delete_id: None,
+        undo_delete_ids: vec![],
     };
     for n in 2..=10 {
         let mut x = item(n, None, Kind::Note, n as i64 - 1);
@@ -586,6 +596,8 @@ fn move_capacity_failure_retains_both_groups_sources_drafts_and_settings() {
         .unwrap();
     drop(c);
     let request = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(2)],
         from: root(Scope::Live),
         to: at(1, Scope::Live),
@@ -622,6 +634,8 @@ fn move_sql_failure_rolls_back_both_groups_after_prospective_validation() {
     c.execute_batch("INSERT INTO settings VALUES ('unknown','retained');CREATE TRIGGER reject_move BEFORE INSERT ON items WHEN new.parent_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'synthetic');END;").unwrap();
     drop(c);
     let request = MoveItems {
+        proof: None,
+        deleted_at: None,
         ids: vec![id(2)],
         from: root(Scope::Live),
         to: at(1, Scope::Live),
@@ -647,7 +661,7 @@ fn soft_delete_and_empty_origin_demotion_share_one_commit() {
             revision: 4,
             updated_at: 3,
         }],
-        undo_delete_id: None,
+        undo_delete_ids: vec![],
     };
     db.replace(&s).unwrap();
     let after = db
@@ -655,13 +669,22 @@ fn soft_delete_and_empty_origin_demotion_share_one_commit() {
         .unwrap();
     assert_eq!(after.items[0].kind, Kind::Note);
     assert_eq!(after.drafts, s.drafts);
-    assert_eq!(after.undo_delete_id, Some(id(1)));
+    assert_eq!(after.undo_delete_ids, vec![id(1)]);
     assert_eq!(
         db.delete_leaving(&id(1), Some(&at(1, Scope::Live)))
             .unwrap(),
         after
     );
-    assert_eq!(db.undo().unwrap().items[0].kind, Kind::Note);
+    assert_eq!(
+        {
+            let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+            db.undo(&r)
+        }
+        .unwrap()
+        .items[0]
+            .kind,
+        Kind::Note
+    );
 }
 
 #[test]
@@ -682,7 +705,7 @@ fn broad_restore_batches_independent_roots_and_preserves_nested_facts_after_reop
                 revision: 7,
                 updated_at: 8,
             }],
-            undo_delete_id: Some(id(5)),
+            undo_delete_ids: vec![id(5)],
         };
         for i in 0..width {
             let n = 3 + i * 4;
@@ -740,7 +763,7 @@ fn broad_restore_batches_independent_roots_and_preserves_nested_facts_after_reop
             assert_eq!(index[original.id.as_str()], &expected);
         }
         assert_eq!(after.drafts, s.drafts);
-        assert_eq!(after.undo_delete_id, s.undo_delete_id);
+        assert_eq!(after.undo_delete_ids, s.undo_delete_ids);
         drop(db);
         assert_eq!(Store::open(&p).unwrap().load().unwrap(), after);
     }

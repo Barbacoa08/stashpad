@@ -3,6 +3,7 @@ mod external;
 pub mod legacy_backup;
 pub mod model;
 pub mod store;
+pub mod v5_backup;
 mod window_geometry;
 use model::*;
 use std::{
@@ -157,8 +158,11 @@ async fn item_delete(
     mutate(state, move |s| s.delete_leaving(&id, leave.as_ref())).await
 }
 #[tauri::command]
-async fn item_undo_delete(state: State<'_, NativeState>) -> Result<WorkspaceSnapshot> {
-    mutate(state, |s| s.undo()).await
+async fn item_undo_delete(
+    state: State<'_, NativeState>,
+    request: UndoDeleteRequest,
+) -> Result<WorkspaceSnapshot> {
+    mutate(state, move |s| s.undo(&request)).await
 }
 #[tauri::command]
 async fn item_restore(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {

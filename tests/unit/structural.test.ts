@@ -48,7 +48,7 @@ function seed(): WorkspaceSnapshot {
       item(6, 4, 'note', 0),
     ],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
 }
 it('V5 retains independent note composer and restore references while V4 remains strict', () => {
@@ -70,9 +70,9 @@ it('V5 retains independent note composer and restore references while V4 remains
       updatedAt: 4,
     },
   ];
-  s.undoDeleteId = id(2);
+  s.undoDeleteIds = [id(2)];
   const text = encodeBackup(s);
-  expect(JSON.parse(text).version).toBe(5);
+  expect(JSON.parse(text).version).toBe(6);
   expect(validateBackup(text)).toHaveProperty('workspace', s);
   const old = JSON.parse(text);
   old.version = 4;
@@ -86,7 +86,7 @@ it('purge retains independent roots and unrelated Undo, repairs restore refs, an
   s.items[1].position = 1;
   s.items[1].restoreParentId = id(4);
   s.items[1].restoreIndex = 7;
-  s.undoDeleteId = id(2);
+  s.undoDeleteIds = [id(2)];
   s.drafts = [
     { key: id(4), markdown: 'source', revision: 1, updatedAt: 2 },
     { key: `compose:${id(4)}`, markdown: 'capture', revision: 3, updatedAt: 4 },
@@ -111,7 +111,7 @@ it('purge retains independent roots and unrelated Undo, repairs restore refs, an
     restoreIndex: 7,
     updatedAt: 2,
   });
-  expect(result.workspace.undoDeleteId).toBe(id(2));
+  expect(result.workspace.undoDeleteIds).toEqual([id(2)]);
   expect(result.workspace.drafts).toEqual([s.drafts[2]]);
   expect((await r.purgeItem(request)).workspace).toEqual(result.workspace);
   await expect(
@@ -148,7 +148,7 @@ it('exit demotion preserves drafts and restore capability, and capture atomicall
         updatedAt: 4,
       },
     ],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -200,7 +200,7 @@ it('Command-N atomically exits and demotes an unrelated empty current stash whil
   r.snapshot = {
     items: [item(1, null, 'stash', 0), item(2, null, 'note', 1)],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -226,7 +226,7 @@ it('failed flush and same-location navigation never demote; successful captured 
   r.snapshot = {
     items: [item(1, null, 'stash', 0)],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -249,7 +249,7 @@ it('lost purge acknowledgment retains buffers until exact Retry and never recrea
   r.snapshot = {
     items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const capture = r.captureItem.bind(r);
   let loseCapture = true;
@@ -296,7 +296,7 @@ it('an uncertain capture is reconciled before moving it and its pending Save can
   r.snapshot = {
     items: [item(1, null, 'stash', 0), item(2, null, 'stash', 1)],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const capture = r.captureItem.bind(r);
   let lost = true;
@@ -326,7 +326,7 @@ it('an uncertain capture is reconciled before moving it and its pending Save can
   expect(c.state.source).toBe('newer draft');
   c.dispose();
 });
-it('stale purge membership rejects, and cross-scope, cycles, duplicate, and stale-order moves reject atomically', async () => {
+it('stale purge membership rejects, and cycles, duplicate, and stale-order moves reject atomically', async () => {
   const r = new MemoryRepository();
   r.snapshot = seed();
   r.snapshot.items[0].deletedAt = 3;
@@ -337,7 +337,7 @@ it('stale purge membership rejects, and cross-scope, cycles, duplicate, and stal
   expect(r.snapshot).toEqual(before);
   const c = new WorkspaceController(r);
   await c.start();
-  expect(() => c.captureMove([id(3)], at(2), 0)).toThrow();
+  expect(c.captureMove([id(3)], at(2), 0)).toHaveProperty('to', at(2));
   expect(() => c.captureMove([id(1)], at(4, 'trash'), 0)).toThrow();
   expect(() => c.captureMove([id(3), id(3)], trash, 0)).toThrow();
   const request = c.captureMove([id(3), id(5)], trash, 0);
@@ -353,7 +353,7 @@ it('20,000-deep purge is iterative and clears its Undo', async () => {
       item(i + 1, i === 0 ? null : i, 'stash', 0),
     ),
     drafts: [],
-    undoDeleteId: id(1),
+    undoDeleteIds: [id(1)],
   };
   r.snapshot.items[0].deletedAt = 3;
   const result = await r.purgeItem({
@@ -362,7 +362,7 @@ it('20,000-deep purge is iterative and clears its Undo', async () => {
     expectedSubtreeIds: r.snapshot.items.map((x) => x.id),
   });
   expect(result.workspace.items).toEqual([]);
-  expect(result.workspace.undoDeleteId).toBeNull();
+  expect(result.workspace.undoDeleteIds).toEqual([]);
   expect(result.removedIds).toHaveLength(20000);
 });
 it('explicit same-ID reopen promotes a demoted note while preserving its separate composer', async () => {
@@ -377,7 +377,7 @@ it('explicit same-ID reopen promotes a demoted note while preserving its separat
         updatedAt: 4,
       },
     ],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const after = await r.transitionLocation({
     from: at(1),
@@ -412,7 +412,7 @@ it('soft-deleting an open childless stash atomically demotes only the exited sou
   r.snapshot = {
     items: [item(1, null, 'stash', 0)],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -431,7 +431,7 @@ it('Retry acknowledges an already committed purge even when newer typing can no 
   r.snapshot = {
     items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -464,7 +464,7 @@ it('queued newer navigation demotes every actually exited empty origin without p
       item(3, null, 'stash', 2),
     ],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -520,7 +520,7 @@ it('neutral purge Retry preserves unrelated newer dirty root composers without a
   r.snapshot = {
     items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -563,7 +563,7 @@ it('Retry keeps its original destination but demotes the empty origin actually d
       item(3, null, 'stash', 2),
     ],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -590,7 +590,7 @@ it('queued Command-N captures its actual exit origin after prior navigation ACK 
       item(3, null, 'note', 2),
     ],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
@@ -637,7 +637,7 @@ for (const nextAction of ['Delete', 'Home', 'Home-clean'] as const)
     r.snapshot = {
       items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
       drafts: [],
-      undoDeleteId: null,
+      undoDeleteIds: [],
     };
     const c = new WorkspaceController(r);
     await c.start();
@@ -732,7 +732,7 @@ function broadDeletedTree(width: number): WorkspaceSnapshot {
         updatedAt: 8,
       },
     ],
-    undoDeleteId: id(5),
+    undoDeleteIds: [id(5)],
   };
 }
 it('broad ancestor Restore keeps nearest explicit deletion roots, dense sibling order, drafts, and metadata', async () => {
@@ -765,7 +765,7 @@ it('broad ancestor Restore keeps nearest explicit deletion roots, dense sibling 
     });
   }
   expect(after.drafts).toEqual(before.drafts);
-  expect(after.undoDeleteId).toBe(before.undoDeleteId);
+  expect(after.undoDeleteIds).toEqual(before.undoDeleteIds);
 });
 it('broad ancestor Restore has a bounded hierarchy-read budget at two widths', () => {
   for (const width of [100, 300]) {
@@ -798,7 +798,7 @@ it('uncertain purge requires every captured ID absent and repository acknowledgm
   const r = new MemoryRepository();
   const parent = { ...item(1, null, 'stash', 0), deletedAt: 3 };
   const child = item(2, 1, 'note', 0);
-  r.snapshot = { items: [parent, child], drafts: [], undoDeleteId: null };
+  r.snapshot = { items: [parent, child], drafts: [], undoDeleteIds: [] };
   const c = new WorkspaceController(r);
   await c.start();
   await c.openStash(id(1));
@@ -842,7 +842,7 @@ it('prioritized purge reconciliation preserves the newer exact color retry and i
       item(2, null, 'note', 0),
     ],
     drafts: [],
-    undoDeleteId: null,
+    undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();

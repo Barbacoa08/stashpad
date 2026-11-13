@@ -80,8 +80,13 @@ pub fn validate_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
     validate_version_snapshot(s, true)
 }
 pub fn validate_v4_snapshot(s: &WorkspaceSnapshot) -> Result<()> {
-    let _: V4Workspace = serde_json::from_value(serde_json::to_value(s).map_err(|_| invalid())?)
-        .map_err(|_| invalid())?;
+    let mut value = serde_json::to_value(s).map_err(|_| invalid())?;
+    value
+        .as_object_mut()
+        .ok_or_else(invalid)?
+        .remove("undoDeleteIds");
+    value["undoDeleteId"] = s.undo_delete_ids.first().cloned().into();
+    let _: V4Workspace = serde_json::from_value(value).map_err(|_| invalid())?;
     validate_version_snapshot(s, false)
 }
 fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()> {
@@ -196,11 +201,15 @@ fn validate_version_snapshot(s: &WorkspaceSnapshot, current: bool) -> Result<()>
             return Err(invalid());
         }
     }
-    if s.undo_delete_id.as_ref().is_some_and(|id| {
-        index
-            .get(id.as_str())
-            .is_none_or(|x| x.deleted_at.is_none())
-    }) {
+    let mut undo = HashSet::new();
+    if s.undo_delete_ids.len() > s.items.len()
+        || s.undo_delete_ids.iter().any(|id| {
+            !undo.insert(id)
+                || index
+                    .get(id.as_str())
+                    .is_none_or(|x| x.deleted_at.is_none())
+        })
+    {
         return Err(invalid());
     }
     Ok(())
@@ -282,14 +291,14 @@ pub fn convert_legacy(s: V3Workspace) -> WorkspaceSnapshot {
     WorkspaceSnapshot {
         items,
         drafts: s.drafts,
-        undo_delete_id: s.undo_delete_id,
+        undo_delete_ids: s.undo_delete_id.into_iter().collect(),
     }
 }
 pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     validate_snapshot(s)?;
-    let b = BackupV5 {
+    let b = BackupV6 {
         format: "stashpad-alpha".into(),
-        version: 5,
+        version: 6,
         exported_at: iso_now(),
         workspace: s.clone(),
     };
@@ -302,13 +311,22 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-pub fn validate(bytes: &[u8]) -> Result<BackupV5> {
+pub fn validate(bytes: &[u8]) -> Result<BackupV6> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
     let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    let b: BackupV5 = match value.get("version").and_then(|x| x.as_i64()) {
-        Some(5) => serde_json::from_value(value).map_err(|_| invalid())?,
+    let b: BackupV6 = match value.get("version").and_then(|x| x.as_i64()) {
+        Some(6) => serde_json::from_value(value).map_err(|_| invalid())?,
+        Some(5) => {
+            let old = crate::v5_backup::validate(bytes)?;
+            BackupV6 {
+                format: old.format,
+                version: 6,
+                exported_at: old.exported_at,
+                workspace: old.workspace.into(),
+            }
+        }
         Some(4) => {
             let old: BackupV4 = serde_json::from_value(value).map_err(|_| invalid())?;
             if old.format != "stashpad-alpha" || !timestamp(&old.exported_at) {
@@ -316,24 +334,24 @@ pub fn validate(bytes: &[u8]) -> Result<BackupV5> {
             }
             let workspace: WorkspaceSnapshot = old.workspace.into();
             validate_v4_snapshot(&workspace)?;
-            BackupV5 {
+            BackupV6 {
                 format: old.format,
-                version: 5,
+                version: 6,
                 exported_at: old.exported_at,
                 workspace,
             }
         }
         _ => {
             let old = crate::legacy_backup::validate(bytes)?;
-            BackupV5 {
+            BackupV6 {
                 format: old.format,
-                version: 5,
+                version: 6,
                 exported_at: old.exported_at,
                 workspace: convert_legacy(old.workspace),
             }
         }
     };
-    if b.format != "stashpad-alpha" || b.version != 5 || !timestamp(&b.exported_at) {
+    if b.format != "stashpad-alpha" || b.version != 6 || !timestamp(&b.exported_at) {
         return Err(invalid());
     }
     validate_snapshot(&b.workspace)?;

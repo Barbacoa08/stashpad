@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use stashpad_alpha_kit::{model::*, store::Store};
 const A: &str = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
 #[test]
-fn empty_profile_is_schema_five() {
+fn empty_profile_is_schema_six() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("test.sqlite3");
     let mut db = Store::open(&p).unwrap();
@@ -14,7 +14,7 @@ fn empty_profile_is_schema_five() {
     assert_eq!(
         c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        5
+        6
     );
 }
 #[test]
@@ -54,7 +54,11 @@ fn actual_all_legacy_schemas_preserve_bytes_settings_drafts_and_undo() {
         assert_eq!(value["items"][0]["done"], v == 3);
         assert_eq!(value["items"][0]["restoreIndex"], 0);
         assert_eq!(value["drafts"][0]["markdown"], "capture\r\n");
-        db.undo().unwrap();
+        {
+            let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+            db.undo(&r)
+        }
+        .unwrap();
         db.replace(&WorkspaceSnapshot::default()).unwrap();
         drop(db);
         let c = Connection::open(&p).unwrap();
@@ -180,7 +184,7 @@ fn inherited_trash_detachment_independent_descendants_fallback_and_undo_interlea
         stashpad_alpha_kit::store::effective_scope(&deleted, &id(4)).unwrap(),
         Scope::Trash
     );
-    assert_eq!(deleted.undo_delete_id, Some(id(1)));
+    assert_eq!(deleted.undo_delete_ids, vec![id(1)]);
     let restored = db.restore(&id(3)).unwrap();
     assert_eq!(
         restored
@@ -191,7 +195,7 @@ fn inherited_trash_detachment_independent_descendants_fallback_and_undo_interlea
             .parent_id,
         None
     );
-    assert_eq!(restored.undo_delete_id, Some(id(1)));
+    assert_eq!(restored.undo_delete_ids, vec![id(1)]);
     let detached = db.delete(&id(4)).unwrap();
     assert!(detached
         .items
@@ -201,18 +205,22 @@ fn inherited_trash_detachment_independent_descendants_fallback_and_undo_interlea
         .deleted_at
         .is_some());
     let restored = db.restore(&id(1)).unwrap();
-    assert_eq!(restored.undo_delete_id, Some(id(4)));
+    assert_eq!(restored.undo_delete_ids, vec![id(4)]);
     assert_eq!(
         stashpad_alpha_kit::store::effective_scope(&restored, &id(2)).unwrap(),
         Scope::Live
     );
-    let undo = db.undo().unwrap();
+    let undo = {
+        let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+        db.undo(&r)
+    }
+    .unwrap();
     assert_eq!(
         undo.items.iter().find(|x| x.id == id(4)).unwrap().parent_id,
         Some(id(2))
     );
     assert_eq!(undo.drafts.len(), 2);
-    assert_eq!(undo.undo_delete_id, None);
+    assert_eq!(undo.undo_delete_ids, Vec::<String>::new());
     assert_eq!(db.restore(&id(1)).unwrap(), undo);
     drop(db);
     let mut db = Store::open(&path).unwrap();
@@ -235,7 +243,7 @@ fn inherited_child_restore_to_home_carries_its_children() {
         s.items.iter().find(|x| x.id == id(3)).unwrap().parent_id,
         Some(id(2))
     );
-    assert_eq!(s.undo_delete_id, Some(id(1)));
+    assert_eq!(s.undo_delete_ids, vec![id(1)]);
     assert_eq!(
         stashpad_alpha_kit::store::effective_scope(&s, &id(3)).unwrap(),
         Scope::Live
@@ -484,7 +492,17 @@ fn shared_current_fixture_roundtrips_exactly_including_trash_drafts() {
     let bytes = include_bytes!("../../tests/fixtures/valid-v4.json");
     let b = stashpad_alpha_kit::backup::validate(bytes).unwrap();
     let mut expected = serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
-    expected["version"] = 5.into();
+    expected["version"] = 6.into();
+    let singleton = expected["workspace"]
+        .as_object_mut()
+        .unwrap()
+        .remove("undoDeleteId")
+        .unwrap();
+    expected["workspace"]["undoDeleteIds"] = if singleton.is_null() {
+        serde_json::json!([])
+    } else {
+        serde_json::json!([singleton])
+    };
     assert_eq!(serde_json::to_value(b).unwrap(), expected);
 }
 #[test]

@@ -118,7 +118,8 @@
   <h2>Move items</h2>
   <p id="move-summary">
     Choose a destination for {count}
-    {count === 1 ? 'item' : 'items'}.
+    {count === 1 ? 'item' : 'items'}. Independently deleted descendants stay in
+    Trash when their parent moves to Home.
   </p>
   <!-- svelte-ignore a11y_interactive_supports_focus -->
   <div
@@ -154,7 +155,7 @@
       </div>
     {/each}
   </div>
-  {#if !destinations.length}<p>No eligible destinations in this area.</p>{/if}
+  {#if !destinations.length}<p>No eligible destinations.</p>{/if}
   {#if error}<p role="alert">{error}</p>{/if}
   <div class="actions">
     <button disabled={pending} onclick={oncancel}>Cancel</button>
@@ -177,6 +178,15 @@
     color: #e7e7e7;
     box-shadow: 0 1rem 4rem #0009;
   }
+  dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+  h2,
+  p,
+  .actions {
+    flex-shrink: 0;
+  }
   dialog::backdrop {
     background: #0009;
   }
@@ -188,6 +198,7 @@
     margin: 0.75rem 0;
   }
   .destinations {
+    min-height: 0;
     max-height: min(22rem, 50dvh);
     overflow: auto;
     border: 1px solid #555;

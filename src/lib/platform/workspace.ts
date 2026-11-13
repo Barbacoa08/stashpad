@@ -41,7 +41,27 @@ export interface TransitionLocation {
   to: Location;
   promoteDestination: boolean;
 }
+export type StructuralItem = Pick<
+  import('../domain/notes').Item,
+  | 'id'
+  | 'parentId'
+  | 'kind'
+  | 'position'
+  | 'deletedAt'
+  | 'restoreParentId'
+  | 'restoreIndex'
+>;
+export interface StructuralProof {
+  before: StructuralItem[];
+  after: StructuralItem[];
+}
+export interface UndoDeleteRequest {
+  ids: string[];
+  proof: StructuralProof;
+}
 export interface MoveItems {
+  proof?: StructuralProof;
+  deletedAt?: number;
   ids: string[];
   from: Location;
   to: Location;
@@ -71,7 +91,7 @@ export interface Repository {
   transitionLocation(request: TransitionLocation): Promise<WorkspaceSnapshot>;
   moveItems(request: MoveItems): Promise<WorkspaceSnapshot>;
   restoreItem(id: string): Promise<WorkspaceSnapshot>;
-  undoDelete(): Promise<WorkspaceSnapshot>;
+  undoDelete(request: UndoDeleteRequest): Promise<WorkspaceSnapshot>;
   setItemDone(id: string, done: boolean): Promise<WorkspaceSnapshot>;
   setItemColor(
     id: string,
@@ -100,7 +120,7 @@ export const nativeRepository: Repository = {
   transitionLocation: (request) => invoke('workspace_transition', { request }),
   moveItems: (request) => invoke('items_move', { request }),
   restoreItem: (id) => invoke('item_restore', { id }),
-  undoDelete: () => invoke('item_undo_delete'),
+  undoDelete: (request) => invoke('item_undo_delete', { request }),
   setItemDone: (id, done) => invoke('item_set_done', { id, done }),
   setItemColor: (id, color) => invoke('item_set_color', { id, color }),
   reorderItem: (request) => invoke('item_reorder', { request }),

@@ -35,7 +35,7 @@ async function deleted(page: Page) {
   return ids;
 }
 const marker = (page: Page) =>
-  page.evaluate(() => (window as any).__test.repo.snapshot.undoDeleteId);
+  page.evaluate(() => (window as any).__test.repo.snapshot.undoDeleteIds);
 async function workspaceZ(
   page: Page,
   overrides: Partial<
@@ -207,7 +207,7 @@ test('palette renders swatches and a reset glyph while retaining names, saved ch
   await expect(
     palette.getByRole('button', { name: 'Pink', exact: true }),
   ).toBeFocused();
-  expect(await marker(page)).toBeNull();
+  expect(await marker(page)).toEqual([]);
   await page.keyboard.press('Enter');
   await expect(palette).toHaveCount(0);
   await expect
@@ -230,7 +230,7 @@ test('workspace Command-Z restores the exact persistent deletion once and select
   expect(await workspaceZ(page)).toBe(true);
   await expect(card(page, ids[0])).toHaveClass(/selected/);
   await expect(stream(page)).toBeFocused();
-  expect(await marker(page)).toBeNull();
+  expect(await marker(page)).toEqual([]);
   expect(await workspaceZ(page)).toBe(false);
   expect(
     await page.evaluate(
@@ -251,7 +251,7 @@ for (const guard of [
   }) => {
     const ids = await deleted(page);
     expect(await workspaceZ(page, guard)).toBe(false);
-    expect(await marker(page)).toBe(ids[0]);
+    expect(await marker(page)).toEqual([ids[0]]);
   });
 
 test('document selection, palette, modal, busy state, and focused controls retain their Undo boundary', async ({
@@ -276,7 +276,7 @@ test('document selection, palette, modal, busy state, and focused controls retai
     .getByRole('button', { name: 'Export backup', exact: true })
     .focus();
   await page.keyboard.press('Meta+z');
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
       format: 'stashpad-alpha',
@@ -308,7 +308,7 @@ test('document selection, palette, modal, busy state, and focused controls retai
     .toBe('completion');
   expect(await workspaceZ(page)).toBe(false);
   await page.evaluate(() => (window as any).__test.releaseCheckpoint());
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
 });
 
 test('capture, inline editor, and Search preserve text Undo and Shift Command-Z remains untouched', async ({
@@ -333,7 +333,7 @@ test('capture, inline editor, and Search preserve text Undo and Shift Command-Z 
   await search.press('a');
   await search.press('Meta+z');
   await expect(search).toHaveValue('');
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
 });
 
 test('failed workspace Undo keeps exact marker and draft; retrying command preserves newer Search focus', async ({
@@ -347,23 +347,23 @@ test('failed workspace Undo keeps exact marker and draft; retrying command prese
   });
   expect(await workspaceZ(page)).toBe(true);
   await expect(page.getByRole('alert')).toContainText('undo failure');
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
   await expect(capture(page)).toHaveText('unsubmitted draft');
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.fail = null;
     const original = t.repo.undoDelete.bind(t.repo);
-    t.repo.undoDelete = async () => {
+    t.repo.undoDelete = async (request: any) => {
       await new Promise<void>((resolve) => {
         t.releaseUndo = resolve;
       });
-      return original();
+      return original(request);
     };
   });
   expect(await workspaceZ(page)).toBe(true);
   await page.getByRole('searchbox').fill('newer search');
   await page.evaluate(() => (window as any).__test.releaseUndo());
-  await expect.poll(() => marker(page)).toBeNull();
+  await expect.poll(() => marker(page)).toEqual([]);
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(capture(page)).toHaveText('unsubmitted draft');
   expect(
@@ -395,7 +395,7 @@ test('capture save in progress leaves workspace Command-Z unhandled', async ({
     )
     .toBe('save');
   expect(await workspaceZ(page)).toBe(false);
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
   await page.evaluate(() => (window as any).__test.releaseCapture());
   await expect(capture(page)).toHaveText('');
 });
@@ -411,7 +411,7 @@ test('Command-Z from Trash restores the exact marker without submitting its scop
   await expect(card(page, ids[0])).toHaveCount(0);
   await expect(capture(page)).toBeFocused();
   await expect(capture(page)).toHaveText('Trash draft retained');
-  expect(await marker(page)).toBeNull();
+  expect(await marker(page)).toEqual([]);
   expect(
     await page.evaluate(
       () => (window as any).__test.repo.snapshot.items.length,
@@ -438,17 +438,17 @@ test('pending workspace Undo accepts only one request across released Command-Z 
       t.undoRequests++;
       return originalRequest();
     };
-    t.repo.undoDelete = async () => {
+    t.repo.undoDelete = async (request: any) => {
       t.undoWrites++;
       await pending;
-      return originalWrite();
+      return originalWrite(request);
     };
   });
   expect(await workspaceZ(page)).toBe(true);
   await expect
     .poll(() => page.evaluate(() => (window as any).__test.undoWrites))
     .toBe(1);
-  expect(await marker(page)).toBe(ids[0]);
+  expect(await marker(page)).toEqual([ids[0]]);
   await expect(capture(page)).toHaveText('unsubmitted pending Undo draft');
   // A fresh keydown models a released/repressed shortcut, rather than auto-repeat.
   expect(await workspaceZ(page, { repeat: false })).toBe(false);
@@ -464,7 +464,7 @@ test('pending workspace Undo accepts only one request across released Command-Z 
     t.releaseUndo();
     await t.controller.flush();
   });
-  await expect.poll(() => marker(page)).toBeNull();
+  await expect.poll(() => marker(page)).toEqual([]);
   expect(await page.evaluate(() => (window as any).__test.undoWrites)).toBe(1);
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(page.getByRole('searchbox')).toHaveValue('newer Search focus');

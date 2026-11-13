@@ -103,7 +103,7 @@ export interface Location {
 export interface WorkspaceSnapshot {
   items: Item[];
   drafts: Draft[];
-  undoDeleteId: string | null;
+  undoDeleteIds: string[];
 }
 // Frozen V4 wire fields and semantic validation must remain independent of current Item.
 export interface V4Item {
@@ -141,16 +141,51 @@ export interface BackupV4 {
   exportedAt: string;
   workspace: V4Workspace;
 }
+export interface V5Item {
+  id: string;
+  parentId: string | null;
+  kind: 'note' | 'stash';
+  markdown: string;
+  done: boolean;
+  color:
+    | 'red'
+    | 'orange'
+    | 'yellow'
+    | 'green'
+    | 'teal'
+    | 'blue'
+    | 'purple'
+    | 'pink'
+    | 'gray'
+    | null;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+  restoreParentId: string | null;
+  restoreIndex: number | null;
+}
+export interface V5Workspace {
+  items: V5Item[];
+  drafts: Draft[];
+  undoDeleteId: string | null;
+}
 export interface BackupV5 {
   format: 'stashpad-alpha';
   version: 5;
+  exportedAt: string;
+  workspace: V5Workspace;
+}
+export interface BackupV6 {
+  format: 'stashpad-alpha';
+  version: 6;
   exportedAt: string;
   workspace: WorkspaceSnapshot;
 }
 export const emptyWorkspace = (): WorkspaceSnapshot => ({
   items: [],
   drafts: [],
-  undoDeleteId: null,
+  undoDeleteIds: [],
 });
 export const MAX_SOURCE = 1024 * 1024,
   MAX_ENVELOPE = 10 * 1024 * 1024;

@@ -113,7 +113,7 @@ const dragSnapshot = {
     item({ id: e, parentId: a }),
   ],
   drafts: [],
-  undoDeleteId: null,
+  undoDeleteIds: [],
 };
 for (const [source, target, edge, want] of [
   [a, d, 'after', 2],

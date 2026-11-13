@@ -60,6 +60,12 @@
       : emptyMouseSelection();
   }
   let undoPending = $state(false);
+  let undoRetry: {
+    ids: string[];
+    identity: object;
+    epoch: number;
+    interaction: number;
+  } | null = null;
   const selection = new LocationSelection();
   let editHeights = $state<Record<string, number>>({});
   let expandedNotes = $state<Record<string, boolean>>({});
@@ -820,13 +826,21 @@
     }
   }
   async function retryAction() {
-    if (blocked) return;
+    if (blocked || undoPending) return;
     clearDrag();
     const ordinal = shownEntries.findIndex((x) => x.id === selected),
       before = JSON.stringify(controller.state.location),
       request = ++interaction,
       focus = observeSubmissionFocus();
+    let undoing = false;
     try {
+      const undo =
+        undoRetry?.identity === controller.mutationRetryIdentity &&
+        undoRetry.epoch === workspaceEpoch
+          ? undoRetry
+          : null;
+      const ownsUndoSelection = undo?.interaction === request - 1;
+      if (undo) undoPending = undoing = true;
       const retry =
         paletteRetry?.identity === controller.mutationRetryIdentity &&
         paletteRetry.epoch === workspaceEpoch
@@ -837,6 +851,15 @@
         palette.error = '';
       }
       const ok = await controller.retryMutation();
+      if (undo) {
+        if (ok) undoRetry = null;
+        else if (controller.commandRetryIdentity)
+          undoRetry = {
+            ...undo,
+            identity: controller.commandRetryIdentity,
+            interaction: ownsUndoSelection ? request : undo.interaction,
+          };
+      }
       if (retry) {
         if (palette?.session === retry.session) {
           palette.pending = false;
@@ -858,7 +881,11 @@
       if (!ok || request !== interaction) return;
       if (navigation.acknowledge(controller.state.location)) historyRevision++;
       const entries = currentEntries();
-      if (before !== JSON.stringify(controller.state.location))
+      const restored = ownsUndoSelection
+        ? undo?.ids.find((id) => entries.some((entry) => entry.id === id))
+        : undefined;
+      if (restored) setSelected(restored);
+      else if (before !== JSON.stringify(controller.state.location))
         setSelected(
           selection.open(
             controller.state.location,
@@ -877,6 +904,7 @@
       }
       scrollSelection();
     } finally {
+      if (undoing) undoPending = false;
       focus.stop();
     }
   }
@@ -911,14 +939,25 @@
     if (blocked || undoPending) return;
     undoPending = true;
     clearDrag();
-    const id = controller.state.snapshot.undoDeleteId,
+    const ids = [...controller.state.snapshot.undoDeleteIds],
+      epoch = workspaceEpoch,
       ordinal = shownEntries.findIndex((x) => x.id === selected),
       request = ++interaction,
       focus = observeSubmissionFocus();
     try {
-      if (!(await controller.undoRemove()) || request !== interaction) return;
+      const ok = await controller.undoRemove();
+      if (!ok && epoch === workspaceEpoch && controller.commandRetryIdentity)
+        undoRetry = {
+          ids,
+          identity: controller.commandRetryIdentity,
+          epoch,
+          interaction: request,
+        };
+      if (!ok || epoch !== workspaceEpoch || request !== interaction) return;
+      undoRetry = null;
       const entries = currentEntries();
-      if (id && entries.some((x) => x.id === id)) setSelected(id);
+      const restored = ids.find((id) => entries.some((x) => x.id === id));
+      if (restored) setSelected(restored);
       else if (!entries.some((x) => x.id === selected))
         setSelected(
           entries[Math.min(Math.max(ordinal, 0), entries.length - 1)]?.id ?? '',
@@ -1128,28 +1167,30 @@
           excluded.add(id);
           pending.push(id);
         }
-    const scope = viewState.location.scope;
-    const destinations: MoveDestination[] = [
-      {
-        key: 'root',
-        label: scope === 'trash' ? 'Trash' : 'Home',
-        path: '',
-        location: { scope, itemId: null },
-      },
-      ...snapshot.items
-        .filter(
-          (item) =>
-            item.kind === 'stash' &&
-            scopes.get(item.id) === scope &&
-            !excluded.has(item.id),
-        )
-        .map((item) => ({
-          key: item.id,
-          label: itemLabel(item),
-          path: locationHierarchy.label(item.parentId).text,
-          location: { scope, itemId: item.id },
-        })),
-    ];
+    const destinations: MoveDestination[] = [];
+    for (const scope of ['live', 'trash'] as const) {
+      const stashes = snapshot.items.filter(
+        (item) => item.kind === 'stash' && scopes.get(item.id) === scope,
+      );
+      const rootLabel = scope === 'live' ? 'Home' : 'Trash';
+      const presentation = createHierarchyPresentation(stashes, rootLabel);
+      destinations.push(
+        {
+          key: scope,
+          label: rootLabel,
+          path: '',
+          location: { scope, itemId: null },
+        },
+        ...stashes
+          .filter((item) => !excluded.has(item.id))
+          .map((item) => ({
+            key: item.id,
+            label: itemLabel(item),
+            path: presentation.label(item.parentId).text,
+            location: { scope, itemId: item.id },
+          })),
+      );
+    }
     palette = null;
     moveSession = {
       session: ++moveSequence,
@@ -1395,7 +1436,7 @@
         !event.repeat &&
         !isTyping(event.target) &&
         !window.getSelection()?.toString() &&
-        viewState.snapshot.undoDeleteId
+        viewState.snapshot.undoDeleteIds.length
       ) {
         event.preventDefault();
         void undoDelete();
@@ -1663,7 +1704,7 @@
             disabled={blocked}><Icon name="upload" /> Restore backup</button
           ><button
             onclick={() => void undoDelete()}
-            disabled={!viewState.snapshot.undoDeleteId ||
+            disabled={!viewState.snapshot.undoDeleteIds.length ||
               undoPending ||
               blocked}><Icon name="undo" /> Undo delete</button
           >

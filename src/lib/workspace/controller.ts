@@ -1,3 +1,4 @@
+import { captureMoveProof, captureUndoDelete } from '../domain/items';
 import {
   emptyWorkspace,
   type WorkspaceSnapshot,
@@ -929,10 +930,6 @@ export class WorkspaceController {
     const source = this.captureGroup(ids),
       selected = new Set(source.ids),
       same = source.from.scope === to.scope && source.from.itemId === to.itemId;
-    if (source.from.scope !== to.scope)
-      throw new Error(
-        'Move within the current area. Use Delete or Restore to change areas.',
-      );
     if (to.itemId !== null) {
       const target = this.state.snapshot.items.find((x) => x.id === to.itemId);
       if (
@@ -964,7 +961,7 @@ export class WorkspaceController {
       ...source.ids,
       ...remaining.slice(toIndex),
     ];
-    return {
+    return captureMoveProof(this.state.snapshot, {
       ids: source.ids,
       from: { ...source.from },
       to: { ...to },
@@ -974,7 +971,7 @@ export class WorkspaceController {
         ? [...afterTo]
         : source.order.filter((id) => !selected.has(id)),
       afterTo,
-    };
+    });
   }
   captureReorder(ids: string[], finalOrder: string[]): MoveItems {
     const source = this.captureGroup(ids),
@@ -990,7 +987,7 @@ export class WorkspaceController {
         source.order.filter((id) => !selected.has(id)).join()
     )
       throw new Error('Invalid sibling order.');
-    return {
+    return captureMoveProof(this.state.snapshot, {
       ids: source.ids,
       from: { ...source.from },
       to: { ...source.from },
@@ -998,7 +995,7 @@ export class WorkspaceController {
       beforeTo: [...source.order],
       afterFrom: [...finalOrder],
       afterTo: [...finalOrder],
-    };
+    });
   }
   moveItems(request: MoveItems): Promise<boolean> {
     const captured = structuredClone(request);
@@ -1132,19 +1129,20 @@ export class WorkspaceController {
       this.context(composeKey(at));
   }
   undoRemove() {
-    return this.run(async () => {
-      if (!(await this.checkpoint())) return false;
-      try {
-        this.snapshot(await this.repo.undoDelete());
-        this.reconcileScope();
-        this.patch({ status: 'Delete undone', error: '' });
-        return true;
-      } catch (e) {
-        this.error(e);
-        return false;
-      }
-    });
+    let captured: ReturnType<typeof captureUndoDelete>;
+    try {
+      captured = captureUndoDelete(this.state.snapshot);
+    } catch (e) {
+      this.error(e);
+      return Promise.resolve(false);
+    }
+    return this.itemMetadata(
+      'restore-item',
+      () => this.repo.undoDelete(captured),
+      'Delete undone',
+    );
   }
+
   export() {
     return this.run(async () => {
       if (!(await this.checkpoint())) return false;

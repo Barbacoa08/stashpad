@@ -14,7 +14,7 @@ const ids = Array.from(
 const snapshot: WorkspaceSnapshot = {
   items: ids.map((id, position) => item({ id, position })),
   drafts: [],
-  undoDeleteId: null,
+  undoDeleteIds: [],
 };
 
 it('removes the whole noncontiguous selected group before computing the insertion gap', () => {

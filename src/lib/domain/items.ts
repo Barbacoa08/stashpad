@@ -7,6 +7,9 @@ import type {
   PurgeItem,
   TransitionLocation,
   MoveItems,
+  UndoDeleteRequest,
+  StructuralItem,
+  StructuralProof,
 } from '../platform/workspace';
 import {
   composeKey,
@@ -14,7 +17,7 @@ import {
   effectiveScope,
   itemLocation,
 } from './hierarchy';
-import { uuid } from './backup';
+import { uuid, validateBackup, encodeBackup } from './backup';
 const touch = (x: Item) =>
   (x.updatedAt = Math.max(Date.now(), x.updatedAt + 1));
 function find(s: WorkspaceSnapshot, id: string): Item {
@@ -150,7 +153,7 @@ export function deleteItem(s: WorkspaceSnapshot, id: string, leave?: Location) {
   x.restoreParentId = x.parentId;
   x.restoreIndex = ordinal;
   x.parentId = null;
-  x.deletedAt = Date.now();
+  x.deletedAt = Math.max(Date.now(), x.updatedAt + 1);
   const trash = directEntries(s, { scope: 'trash', itemId: null }).filter(
     (y) => y.id !== id,
   );
@@ -158,41 +161,13 @@ export function deleteItem(s: WorkspaceSnapshot, id: string, leave?: Location) {
   x.position = trash.length;
   touch(x);
   normalize(old.filter((y) => y.id !== id));
-  s.undoDeleteId = id;
+  s.undoDeleteIds = [id];
   if (leave?.itemId && !s.items.some((x) => x.parentId === leave.itemId))
     find(s, leave.itemId).kind = 'note';
 }
 export function restoreItem(s: WorkspaceSnapshot, id: string) {
-  const x = find(s, id);
   if (effectiveScope(s.items, id) === 'live') return;
-  const oldLocation = itemLocation(s.items, id);
-  const parent =
-    x.restoreParentId === null
-      ? null
-      : (s.items.find(
-          (y) =>
-            y.id === x.restoreParentId &&
-            effectiveScope(s.items, y.id) === 'live',
-        )?.id ?? null);
-  const roots = detachDeletedDescendants(s, id);
-  const old =
-    oldLocation.itemId === null ? roots : directEntries(s, oldLocation);
-  if (oldLocation.itemId !== null) normalize(roots);
-  if (parent !== null) promoteItem(s, parent);
-  const group = directEntries(s, { scope: 'live', itemId: parent });
-  const index = Math.min(x.restoreIndex ?? group.length, group.length);
-  x.parentId = parent;
-  x.deletedAt = null;
-  x.restoreParentId = null;
-  x.restoreIndex = null;
-  group.splice(index, 0, x);
-  normalize(old.filter((y) => y.id !== id));
-  normalize(group);
-  touch(x);
-  if (s.undoDeleteId === id) s.undoDeleteId = null;
-}
-export function undoDelete(s: WorkspaceSnapshot) {
-  if (s.undoDeleteId !== null) restoreItem(s, s.undoDeleteId);
+  restoreGroup(s, [id]);
 }
 export function setItemDone(s: WorkspaceSnapshot, id: string, done: boolean) {
   if (typeof done !== 'boolean') throw new Error('Invalid completion state.');
@@ -296,8 +271,7 @@ export function purgeItem(s: WorkspaceSnapshot, r: PurgeItem): string[] {
       !expected.has(d.key) &&
       !(d.key.startsWith('compose:') && expected.has(d.key.slice(8))),
   );
-  if (s.undoDeleteId !== null && expected.has(s.undoDeleteId))
-    s.undoDeleteId = null;
+  s.undoDeleteIds = s.undoDeleteIds.filter((id) => !expected.has(id));
   normalize(old.filter((x) => !expected.has(x.id)));
   return removed;
 }
@@ -335,10 +309,10 @@ function deletionDates(s: WorkspaceSnapshot): Map<string, number | null> {
   }
   return dates;
 }
-export function moveItems(s: WorkspaceSnapshot, r: MoveItems) {
+function applyMove(s: WorkspaceSnapshot, r: MoveItems) {
   location(s, r.from);
   location(s, r.to);
-  if (r.from.scope !== r.to.scope || !r.ids.length) throw stale();
+  if (!r.ids.length) throw stale();
   const selected = uniqueIds(r.ids);
   for (const ids of [r.beforeFrom, r.beforeTo, r.afterFrom, r.afterTo])
     uniqueIds(ids);
@@ -377,6 +351,10 @@ export function moveItems(s: WorkspaceSnapshot, r: MoveItems) {
     to = directEntries(s, r.to).map((x) => x.id);
   if (sameIds(from, r.afterFrom) && sameIds(to, r.afterTo)) return;
   if (!sameIds(from, r.beforeFrom) || !sameIds(to, r.beforeTo)) throw stale();
+  if (r.from.scope === 'trash' && r.to.scope === 'live') {
+    detachGroupDeletedDescendants(s, r.ids);
+    s.undoDeleteIds = s.undoDeleteIds.filter((id) => !selected.has(id));
+  }
   const dates = deletionDates(s);
   const destinationDate =
     r.to.itemId === null ? null : (dates.get(r.to.itemId) ?? null);
@@ -388,8 +366,19 @@ export function moveItems(s: WorkspaceSnapshot, r: MoveItems) {
     if (sameLocation(r.from, r.to) && oldIndex === newIndex) continue;
     const x = index.get(id)!,
       date = dates.get(id) ?? null;
+    if (r.from.scope === 'live' && r.to.scope === 'trash') {
+      if (!Number.isSafeInteger(r.deletedAt) || r.deletedAt! < 0) throw stale();
+      x.deletedAt = r.deletedAt!;
+      x.restoreParentId = x.parentId;
+      x.restoreIndex = oldIndex;
+    } else if (r.from.scope === 'trash' && r.to.scope === 'live') {
+      x.deletedAt = null;
+      x.restoreParentId = null;
+      x.restoreIndex = null;
+    }
     if (
       r.to.scope === 'trash' &&
+      r.from.scope === 'trash' &&
       x.deletedAt === null &&
       (r.to.itemId === null || date !== destinationDate)
     ) {
@@ -399,34 +388,60 @@ export function moveItems(s: WorkspaceSnapshot, r: MoveItems) {
     }
     x.parentId = r.to.itemId;
     touch(x);
+    if (r.from.scope === 'live' && r.to.scope === 'trash')
+      x.updatedAt = Math.max(x.updatedAt, r.deletedAt!);
   }
+  if (r.from.scope === 'live' && r.to.scope === 'trash')
+    s.undoDeleteIds = [...r.ids];
   normalize(r.afterFrom.map((id) => index.get(id)!));
   normalize(r.afterTo.map((id) => index.get(id)!));
+  if (r.from.scope === 'trash' && r.to.scope === 'live')
+    normalize(directEntries(s, { scope: 'trash', itemId: null }));
 }
-/** Restoring an ancestor does not restore independently deleted nested records. */
-function detachDeletedDescendants(s: WorkspaceSnapshot, id: string): Item[] {
+/** One children index and one normalization per affected group for the whole action. */
+function detachGroupDeletedDescendants(
+  s: WorkspaceSnapshot,
+  ids: string[],
+  historicalSingle = false,
+) {
   const children = new Map<string, Item[]>();
   for (const x of s.items)
     if (x.parentId !== null) {
-      const list = children.get(x.parentId) ?? [];
-      list.push(x);
-      children.set(x.parentId, list);
+      const group = children.get(x.parentId) ?? [];
+      group.push(x);
+      children.set(x.parentId, group);
     }
-  const pending = [...(children.get(id) ?? [])],
-    roots = directEntries(s, { scope: 'trash', itemId: null }),
-    detached = new Set<string>(),
-    affected = new Set<string>();
-  while (pending.length) {
-    const x = pending.pop()!;
-    if (x.deletedAt !== null) {
-      affected.add(x.parentId!);
-      detached.add(x.id);
-      x.parentId = null;
-      roots.push(x);
-    } else pending.push(...(children.get(x.id) ?? []));
+  // Native reads are exact-ID ordered. Keep singleton traversal identical when
+  // capture, proof derivation, or application receives another valid array order.
+  for (const group of children.values())
+    group.sort(
+      historicalSingle
+        ? (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+        : (a, b) => a.position - b.position,
+    );
+  const roots = directEntries(s, { scope: 'trash', itemId: null });
+  const detached = new Set<string>(),
+    affected = new Set<string>(),
+    seen = new Set<string>();
+  for (const id of ids) {
+    const pending = [...(children.get(id) ?? [])];
+    if (!historicalSingle) pending.reverse();
+    while (pending.length) {
+      const x = pending.pop()!;
+      if (seen.has(x.id)) continue;
+      seen.add(x.id);
+      if (x.deletedAt !== null) {
+        affected.add(x.parentId!);
+        detached.add(x.id);
+        x.parentId = null;
+        roots.push(x);
+      } else {
+        const next = [...(children.get(x.id) ?? [])];
+        if (!historicalSingle) next.reverse();
+        pending.push(...next);
+      }
+    }
   }
-  // Stop at each nearest explicit deletion root. Its descendants keep their own
-  // parent edges and deletion facts; each original sibling group is ranked once.
   for (const parent of affected)
     normalize(
       children
@@ -434,6 +449,253 @@ function detachDeletedDescendants(s: WorkspaceSnapshot, id: string): Item[] {
         .filter((x) => !detached.has(x.id))
         .sort((a, b) => a.position - b.position),
     );
-  // The caller removes the restored root and normalizes the final Trash group once.
-  return roots;
+  normalize(roots);
+}
+function restoreGroup(s: WorkspaceSnapshot, ids: string[]) {
+  const index = new Map(s.items.map((x) => [x.id, x]));
+  detachGroupDeletedDescendants(s, ids, ids.length === 1);
+  const groups = new Map<string, Item[]>();
+  const key = (x: Item) =>
+    x.parentId ?? (x.deletedAt === null ? 'live' : 'trash');
+  for (const x of s.items) {
+    const group = groups.get(key(x)) ?? [];
+    group.push(x);
+    groups.set(key(x), group);
+  }
+  for (const group of groups.values())
+    group.sort((a, b) => a.position - b.position);
+  const live = (id: string): boolean => {
+    let x = index.get(id);
+    while (x) {
+      if (x.deletedAt !== null) return false;
+      x = x.parentId === null ? undefined : index.get(x.parentId);
+    }
+    return index.has(id);
+  };
+  const affected = new Set<string>();
+  for (const id of ids) {
+    const x = index.get(id);
+    if (!x || live(id)) throw stale();
+    const oldKey = key(x),
+      old = groups.get(oldKey)!;
+    old.splice(
+      old.findIndex((y) => y.id === id),
+      1,
+    );
+    affected.add(oldKey);
+    const parent =
+      x.restoreParentId !== null && live(x.restoreParentId)
+        ? x.restoreParentId
+        : null;
+    if (parent !== null && index.get(parent)!.kind === 'note') {
+      index.get(parent)!.kind = 'stash';
+      touch(index.get(parent)!);
+    }
+    const newKey = parent ?? 'live',
+      group = groups.get(newKey) ?? [];
+    group.splice(Math.min(x.restoreIndex ?? group.length, group.length), 0, x);
+    groups.set(newKey, group);
+    affected.add(newKey);
+    x.parentId = parent;
+    x.deletedAt = null;
+    x.restoreParentId = null;
+    x.restoreIndex = null;
+    touch(x);
+  }
+  for (const key of affected) normalize(groups.get(key)!);
+  const restored = new Set(ids);
+  s.undoDeleteIds = s.undoDeleteIds.filter((id) => !restored.has(id));
+}
+export function structuralItems(s: WorkspaceSnapshot): StructuralItem[] {
+  return s.items
+    .map(
+      ({
+        id,
+        parentId,
+        kind,
+        position,
+        deletedAt,
+        restoreParentId,
+        restoreIndex,
+      }) => ({
+        id,
+        parentId,
+        kind,
+        position,
+        deletedAt,
+        restoreParentId,
+        restoreIndex,
+      }),
+    )
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+const equal = (a: unknown, b: unknown) =>
+  JSON.stringify(a) === JSON.stringify(b);
+function fromStructure(
+  before: StructuralItem[],
+  ids: string[],
+): WorkspaceSnapshot {
+  if (!Array.isArray(before) || before.length > 20000) throw stale();
+  const s: WorkspaceSnapshot = {
+    items: before.map((x) => ({
+      ...x,
+      markdown: '',
+      done: false,
+      color: null,
+      createdAt: 0,
+      updatedAt: 0,
+    })),
+    drafts: [],
+    undoDeleteIds: [...ids],
+  };
+  if (
+    !equal(structuralItems(s), before) ||
+    'code' in validateBackup(encodeBackup(s))
+  )
+    throw stale();
+  return s;
+}
+function proofFor(
+  s: WorkspaceSnapshot,
+  apply: (s: WorkspaceSnapshot) => void,
+): StructuralProof {
+  const before = structuralItems(s),
+    after = structuredClone(s);
+  apply(after);
+  if ('code' in validateBackup(encodeBackup(after))) throw stale();
+  return { before, after: structuralItems(after) };
+}
+export function captureMoveProof(
+  s: WorkspaceSnapshot,
+  r: MoveItems,
+): MoveItems {
+  const index = new Map(s.items.map((x) => [x.id, x]));
+  const request = {
+    ...r,
+    ...(r.from.scope === 'live' && r.to.scope === 'trash'
+      ? {
+          deletedAt: r.ids.reduce(
+            (time, id) => Math.max(time, index.get(id)!.updatedAt + 1),
+            Date.now(),
+          ),
+        }
+      : {}),
+  };
+  return { ...request, proof: proofFor(s, (x) => applyMove(x, request)) };
+}
+export function captureUndoDelete(s: WorkspaceSnapshot): UndoDeleteRequest {
+  const ids = [...s.undoDeleteIds];
+  if (!ids.length) throw stale();
+  return { ids, proof: proofFor(s, (x) => restoreGroup(x, ids)) };
+}
+/** State based replay: affected groups are exact; only unrelated appended Trash roots may coexist. */
+function replayMatches(
+  s: WorkspaceSnapshot,
+  before: WorkspaceSnapshot,
+  after: WorkspaceSnapshot,
+  ids: string[],
+): boolean {
+  const old = new Map(structuralItems(before).map((x) => [x.id, x]));
+  const expected = new Map(structuralItems(after).map((x) => [x.id, x]));
+  const actual = new Map(structuralItems(s).map((x) => [x.id, x]));
+  const groupKey = (x: StructuralItem) =>
+    JSON.stringify([x.parentId, x.parentId === null && x.deletedAt !== null]);
+  const groups = new Set<string>(),
+    roots = new Set(ids);
+  for (const [id, x] of expected)
+    if (!equal(x, old.get(id))) {
+      groups.add(groupKey(x));
+      groups.add(groupKey(old.get(id)!));
+      if (x.parentId !== old.get(id)!.parentId) roots.add(id);
+    }
+  for (const [id, x] of expected)
+    if (groups.has(groupKey(x)) || roots.has(id)) {
+      if (!equal(x, actual.get(id))) return false;
+    }
+  const orderedGroups = (records: Map<string, StructuralItem>) => {
+    const result = new Map<string, StructuralItem[]>();
+    for (const x of records.values()) {
+      const key = groupKey(x),
+        group = result.get(key) ?? [];
+      group.push(x);
+      result.set(key, group);
+    }
+    return new Map(
+      [...result].map(([key, group]) => [
+        key,
+        group.sort((a, b) => a.position - b.position).map((x) => x.id),
+      ]),
+    );
+  };
+  const expectedGroups = orderedGroups(expected),
+    actualGroups = orderedGroups(actual);
+  for (const group of groups) {
+    const wanted = expectedGroups.get(group) ?? [];
+    const found = actualGroups.get(group) ?? [];
+    const appendTrash = group === JSON.stringify([null, true]);
+    if (
+      appendTrash
+        ? !sameIds(found.slice(0, wanted.length), wanted)
+        : !sameIds(found, wanted)
+    )
+      return false;
+  }
+  // One traversal per workspace computes selected-subtree membership, including unchanged descendants.
+  const subtreeSets = (workspace: WorkspaceSnapshot) => {
+    const children = new Map<string, string[]>();
+    for (const x of workspace.items)
+      if (x.parentId !== null) {
+        const list = children.get(x.parentId) ?? [];
+        list.push(x.id);
+        children.set(x.parentId, list);
+      }
+    const result = new Set<string>(),
+      pending = [...roots];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (result.has(id)) continue;
+      result.add(id);
+      pending.push(...(children.get(id) ?? []));
+    }
+    return [...result].sort();
+  };
+  const wanted = subtreeSets(after),
+    found = subtreeSets(s);
+  return (
+    sameIds(wanted, found) &&
+    wanted.every((id) => equal(expected.get(id), actual.get(id)))
+  );
+}
+function structuralAction(
+  s: WorkspaceSnapshot,
+  ids: string[],
+  proof: StructuralProof,
+  undo: boolean,
+  apply: (s: WorkspaceSnapshot) => void,
+) {
+  uniqueIds(ids);
+  if (!ids.length || !proof || !Array.isArray(proof.after)) throw stale();
+  const before = fromStructure(proof.before, undo ? ids : []),
+    derived = structuredClone(before);
+  apply(derived);
+  if (!equal(structuralItems(derived), proof.after)) throw stale();
+  if (
+    equal(structuralItems(s), proof.before) &&
+    (!undo || sameIds(s.undoDeleteIds, ids))
+  ) {
+    apply(s);
+    return;
+  }
+  if (!replayMatches(s, before, derived, ids)) throw stale();
+}
+export function moveItems(s: WorkspaceSnapshot, r: MoveItems) {
+  if (r.proof)
+    structuralAction(s, r.ids, r.proof, false, (x) => applyMove(x, r));
+  else {
+    if (r.from.scope !== r.to.scope) throw stale();
+    applyMove(s, r);
+  }
+}
+export function undoDelete(s: WorkspaceSnapshot, r: UndoDeleteRequest) {
+  structuralAction(s, r.ids, r.proof, true, (x) => restoreGroup(x, r.ids));
 }

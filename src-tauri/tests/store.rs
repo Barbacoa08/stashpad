@@ -33,8 +33,17 @@ fn delete_undo_after_reopen() {
     db.delete(id).unwrap();
     drop(db);
     let mut db = Store::open(&dir.path().join("notes.sqlite3")).unwrap();
-    assert!(db.load().unwrap().undo_delete_id.is_some());
-    assert_eq!(db.undo().unwrap().items[0].deleted_at, None);
+    assert!(!db.load().unwrap().undo_delete_ids.is_empty());
+    assert_eq!(
+        {
+            let r = stashpad_alpha_kit::store::capture_undo(&db.load().unwrap()).unwrap();
+            db.undo(&r)
+        }
+        .unwrap()
+        .items[0]
+            .deleted_at,
+        None
+    );
 }
 #[test]
 fn atomic_failure_rolls_back() {
@@ -240,7 +249,7 @@ fn actual_v1_file_migrates_additively_and_failed_migration_rolls_back() {
             assert!(v["items"].as_array().unwrap().iter().any(|n| n["id"] == id
                 && n["markdown"] == "exact\r\n**source**"
                 && n["deletedAt"] == 0));
-            assert_eq!(v["undoDeleteId"], id);
+            assert_eq!(v["undoDeleteIds"][0], id);
             let snapshot = s.load().unwrap();
             assert!(snapshot.items.iter().any(|n| n.id == active
                 && n.parent_id.is_none()
@@ -346,7 +355,7 @@ fn future_schema_is_rejected_without_changing_existing_rows_or_file() {
     drop(db);
     let path = dir.path().join("notes.sqlite3");
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch("PRAGMA user_version=6;").unwrap();
+    c.execute_batch("PRAGMA user_version=7;").unwrap();
     drop(c);
     let before = std::fs::read(&path).unwrap();
     assert!(Store::open(&path).is_err());

@@ -14,7 +14,7 @@ impl Store {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(storage_error)?;
-        if !(0..=5).contains(&version) {
+        if !(0..=6).contains(&version) {
             return Err(error(
                 "schema_version",
                 "This workspace needs a newer app. No data were replaced.",
@@ -48,7 +48,7 @@ impl Store {
                 store
                     .connection
                     .execute_batch(
-                        "DROP TABLE notes;DROP TABLE stashes;PRAGMA user_version=5;COMMIT;",
+                        "DROP TABLE notes;DROP TABLE stashes;PRAGMA user_version=6;COMMIT;",
                     )
                     .map_err(storage_error)
             })();
@@ -57,18 +57,32 @@ impl Store {
                 return Err(e);
             }
         }
-        if version == 4 {
+        if version == 4 || version == 5 {
             store
                 .connection
                 .execute_batch("BEGIN IMMEDIATE;")
                 .map_err(storage_error)?;
             let result = (|| {
-                let current = store.load()?;
-                backup::validate_v4_snapshot(&current)?;
-                backup::encode(&current)?;
+                let value = serde_json::json!({"format":"stashpad-alpha","version":version,"exportedAt":backup::iso_now(),"workspace":{
+                    "items":store.read_items()?,"drafts":store.read_drafts()?,"undoDeleteId":store.read_undo()?
+                }});
+                // Deserialize and validate the exact source version before converting the envelope.
+                let current =
+                    backup::validate(&serde_json::to_vec(&value).map_err(storage_error)?)?
+                        .workspace;
                 store
                     .connection
-                    .execute_batch("PRAGMA user_version=5;COMMIT;")
+                    .execute(
+                        "INSERT OR REPLACE INTO settings VALUES ('undoDeleteId',?1)",
+                        [
+                            serde_json::to_string(&current.undo_delete_ids)
+                                .map_err(storage_error)?,
+                        ],
+                    )
+                    .map_err(storage_error)?;
+                store
+                    .connection
+                    .execute_batch("PRAGMA user_version=6;COMMIT;")
                     .map_err(storage_error)
             })();
             if let Err(e) = result {
@@ -157,11 +171,25 @@ impl Store {
         Ok(s)
     }
     pub fn load(&mut self) -> Result<WorkspaceSnapshot> {
-        let mut s = WorkspaceSnapshot {
-            items: vec![],
+        let raw: String = self
+            .connection
+            .query_row(
+                "SELECT value FROM settings WHERE key='undoDeleteId'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(storage_error)?;
+        let undo_delete_ids: Vec<String> = serde_json::from_str(&raw).map_err(storage_error)?;
+        let s = WorkspaceSnapshot {
+            items: self.read_items()?,
             drafts: self.read_drafts()?,
-            undo_delete_id: self.read_undo()?,
+            undo_delete_ids,
         };
+        backup::encode(&s)?;
+        Ok(s)
+    }
+    fn read_items(&self) -> Result<Vec<Item>> {
+        let mut items = vec![];
         let mut q=self.connection.prepare("SELECT id,parent_id,kind,markdown,done,color,position,created_at,updated_at,deleted_at,restore_parent_id,restore_index FROM items ORDER BY id").map_err(storage_error)?;
         for row in q
             .query_map([], |r| {
@@ -202,10 +230,9 @@ impl Store {
             })
             .map_err(storage_error)?
         {
-            s.items.push(row.map_err(storage_error)?);
+            items.push(row.map_err(storage_error)?);
         }
-        backup::encode(&s)?;
-        Ok(s)
+        Ok(items)
     }
     fn write_rows(c: &Connection, s: &WorkspaceSnapshot) -> Result<()> {
         c.execute("DELETE FROM drafts", []).map_err(storage_error)?;
@@ -251,10 +278,11 @@ impl Store {
         }
         c.execute("DELETE FROM settings WHERE key='undoDeleteId'", [])
             .map_err(storage_error)?;
-        if let Some(id) = &s.undo_delete_id {
-            c.execute("INSERT INTO settings VALUES ('undoDeleteId',?1)", [id])
-                .map_err(storage_error)?;
-        }
+        c.execute(
+            "INSERT INTO settings VALUES ('undoDeleteId',?1)",
+            [serde_json::to_string(&s.undo_delete_ids).map_err(storage_error)?],
+        )
+        .map_err(storage_error)?;
         Ok(())
     }
     pub fn replace(&mut self, s: &WorkspaceSnapshot) -> Result<WorkspaceSnapshot> {
@@ -419,14 +447,14 @@ impl Store {
         let x = find_mut(&mut s, id)?;
         x.restore_parent_id = x.parent_id.take();
         x.restore_index = Some(ordinal);
-        x.deleted_at = Some(now());
+        x.deleted_at = Some(now().max(x.updated_at.saturating_add(1)));
         x.position = rank;
         touch(x);
         normalize(
             &mut s,
             &old.into_iter().filter(|key| key != id).collect::<Vec<_>>(),
         );
-        s.undo_delete_id = Some(id.into());
+        s.undo_delete_ids = vec![id.into()];
         if let Some(owner) = leave.and_then(|at| at.item_id.as_deref()) {
             if !s
                 .items
@@ -443,10 +471,10 @@ impl Store {
         restore(&mut s, id)?;
         self.replace(&s)
     }
-    pub fn undo(&mut self) -> Result<WorkspaceSnapshot> {
+    pub fn undo(&mut self, r: &UndoDeleteRequest) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
-        if let Some(id) = s.undo_delete_id.clone() {
-            restore(&mut s, &id)?;
+        if !structural_action(&mut s, &r.ids, &r.proof, true, |s| restore_group(s, &r.ids))? {
+            return Ok(s);
         }
         self.replace(&s)
     }
@@ -522,12 +550,7 @@ impl Store {
                     .strip_prefix("compose:")
                     .is_some_and(|id| removed.contains(id))
         });
-        if s.undo_delete_id
-            .as_ref()
-            .is_some_and(|id| removed.contains(id))
-        {
-            s.undo_delete_id = None;
-        }
+        s.undo_delete_ids.retain(|id| !removed.contains(id));
         normalize(
             &mut s,
             &old.into_iter()
@@ -549,131 +572,16 @@ impl Store {
     }
     pub fn move_items(&mut self, r: &MoveItems) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
-        validate_location(&s, &r.from, false)?;
-        validate_location(&s, &r.to, false)?;
-        if r.from.scope != r.to.scope {
-            return Err(stale());
-        }
-        if r.ids.is_empty() {
-            return Err(stale());
-        }
-        let selected = unique_ids(&r.ids)?;
-        unique_ids(&r.before_from)?;
-        unique_ids(&r.before_to)?;
-        unique_ids(&r.after_from)?;
-        unique_ids(&r.after_to)?;
-        if r.before_from
-            .iter()
-            .filter(|id| selected.contains(id.as_str()))
-            .cloned()
-            .collect::<Vec<_>>()
-            != r.ids
-        {
-            return Err(stale());
-        }
-        let without = |xs: &[String]| {
-            xs.iter()
-                .filter(|id| !selected.contains(id.as_str()))
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-        if r.from == r.to {
-            if r.before_from != r.before_to
-                || r.after_from != r.after_to
-                || r.before_from.len() != r.after_from.len()
-                || without(&r.before_from) != without(&r.after_from)
-                || r.after_from
-                    .iter()
-                    .filter(|id| selected.contains(id.as_str()))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    != r.ids
-            {
-                return Err(stale());
+        if let Some(proof) = &r.proof {
+            if !structural_action(&mut s, &r.ids, proof, false, |s| apply_move(s, r))? {
+                return Ok(s);
             }
         } else {
-            if r.before_to.iter().any(|id| selected.contains(id.as_str()))
-                || r.after_from != without(&r.before_from)
-                || without(&r.after_to) != r.before_to
-                || r.after_to.len() != r.before_to.len() + r.ids.len()
-            {
+            if r.from.scope != r.to.scope {
                 return Err(stale());
             }
-            let Some(start) = r.after_to.iter().position(|id| id == &r.ids[0]) else {
-                return Err(stale());
-            };
-            if r.after_to.get(start..start + r.ids.len()) != Some(r.ids.as_slice()) {
-                return Err(stale());
-            }
+            apply_move(&mut s, r)?;
         }
-        let index: std::collections::HashMap<&str, &Item> =
-            s.items.iter().map(|x| (x.id.as_str(), x)).collect();
-        let mut parent = r.to.item_id.as_deref();
-        while let Some(id) = parent {
-            if selected.contains(id) {
-                return Err(stale());
-            }
-            parent = index.get(id).and_then(|x| x.parent_id.as_deref());
-        }
-        let actual_from = group(&s, &r.from);
-        let actual_to = group(&s, &r.to);
-        if actual_from == r.after_from && actual_to == r.after_to {
-            return Ok(s);
-        }
-        if actual_from != r.before_from || actual_to != r.before_to {
-            return Err(stale());
-        }
-        let all_dates = deletion_dates(&s);
-        let dates: Vec<_> = r
-            .ids
-            .iter()
-            .map(|id| all_dates.get(id.as_str()).copied().flatten())
-            .collect();
-        let destination_date =
-            r.to.item_id
-                .as_deref()
-                .and_then(|id| all_dates.get(id).copied().flatten());
-        let old_positions: std::collections::HashMap<&str, usize> = r
-            .before_from
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (id.as_str(), i))
-            .collect();
-        let new_positions: std::collections::HashMap<&str, usize> = r
-            .after_to
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (id.as_str(), i))
-            .collect();
-        let selected_dates: std::collections::HashMap<&str, Option<i64>> = r
-            .ids
-            .iter()
-            .zip(dates)
-            .map(|(id, date)| (id.as_str(), date))
-            .collect();
-        for x in &mut s.items {
-            if !selected.contains(x.id.as_str()) {
-                continue;
-            }
-            let old_index = old_positions[x.id.as_str()];
-            let new_index = new_positions[x.id.as_str()];
-            if r.from == r.to && old_index == new_index {
-                continue;
-            }
-            let date = selected_dates[x.id.as_str()];
-            if r.to.scope == Scope::Trash
-                && x.deleted_at.is_none()
-                && (r.to.item_id.is_none() || date != destination_date)
-            {
-                x.deleted_at = date;
-                x.restore_parent_id = x.parent_id.clone();
-                x.restore_index = Some(old_index as i64);
-            }
-            x.parent_id = r.to.item_id.clone();
-            touch(x);
-        }
-        normalize(&mut s, &r.after_from);
-        normalize(&mut s, &r.after_to);
         self.replace(&s)
     }
     pub fn restore_with_safety(
@@ -844,49 +752,7 @@ fn restore(s: &mut WorkspaceSnapshot, id: &str) -> Result<()> {
     if effective_scope(s, id)? == Scope::Live {
         return Ok(());
     }
-    let x = find(s, id)?;
-    let parent = x
-        .restore_parent_id
-        .as_ref()
-        .filter(|parent| effective_scope(s, parent).is_ok_and(|scope| scope == Scope::Live))
-        .cloned();
-    let index = x.restore_index;
-    let old_location = item_location(s, id)?;
-    let roots = detach_deleted_descendants(s, id);
-    let old = if old_location.item_id.is_none() {
-        roots
-    } else {
-        normalize(s, &roots);
-        group(s, &old_location)
-    };
-    if let Some(parent) = parent.as_deref() {
-        let owner = find_mut(s, parent)?;
-        if owner.kind == Kind::Note {
-            owner.kind = Kind::Stash;
-            touch(owner);
-        }
-    }
-    let mut target = group(
-        s,
-        &Location {
-            scope: Scope::Live,
-            item_id: parent.clone(),
-        },
-    );
-    let at = (index.unwrap_or(target.len() as i64) as usize).min(target.len());
-    target.insert(at, id.into());
-    let x = find_mut(s, id)?;
-    x.parent_id = parent;
-    x.deleted_at = None;
-    x.restore_parent_id = None;
-    x.restore_index = None;
-    touch(x);
-    normalize(s, &old.into_iter().filter(|x| x != id).collect::<Vec<_>>());
-    normalize(s, &target);
-    if s.undo_delete_id.as_deref() == Some(id) {
-        s.undo_delete_id = None;
-    }
-    Ok(())
+    restore_group(s, &[id.to_string()])
 }
 
 fn stale() -> AppError {
@@ -968,51 +834,536 @@ fn transition_snapshot(s: &mut WorkspaceSnapshot, r: &TransitionLocation) -> Res
     }
     Ok(())
 }
-fn detach_deleted_descendants(s: &mut WorkspaceSnapshot, id: &str) -> Vec<String> {
-    // Item indices remain stable: only parent edges and ranks change in this pass.
-    let mut children: std::collections::HashMap<String, Vec<usize>> =
-        std::collections::HashMap::new();
-    let mut roots: Vec<usize> = Vec::new();
-    for (index, x) in s.items.iter().enumerate() {
+fn apply_move(s: &mut WorkspaceSnapshot, r: &MoveItems) -> Result<()> {
+    validate_location(s, &r.from, false)?;
+    validate_location(s, &r.to, false)?;
+    if r.ids.is_empty() {
+        return Err(stale());
+    }
+    let selected = unique_ids(&r.ids)?;
+    unique_ids(&r.before_from)?;
+    unique_ids(&r.before_to)?;
+    unique_ids(&r.after_from)?;
+    unique_ids(&r.after_to)?;
+    if r.before_from
+        .iter()
+        .filter(|id| selected.contains(id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>()
+        != r.ids
+    {
+        return Err(stale());
+    }
+    let without = |xs: &[String]| {
+        xs.iter()
+            .filter(|id| !selected.contains(id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    if r.from == r.to {
+        if r.before_from != r.before_to
+            || r.after_from != r.after_to
+            || r.before_from.len() != r.after_from.len()
+            || without(&r.before_from) != without(&r.after_from)
+            || r.after_from
+                .iter()
+                .filter(|id| selected.contains(id.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+                != r.ids
+        {
+            return Err(stale());
+        }
+    } else {
+        if r.before_to.iter().any(|id| selected.contains(id.as_str()))
+            || r.after_from != without(&r.before_from)
+            || without(&r.after_to) != r.before_to
+            || r.after_to.len() != r.before_to.len() + r.ids.len()
+        {
+            return Err(stale());
+        }
+        let Some(start) = r.after_to.iter().position(|id| id == &r.ids[0]) else {
+            return Err(stale());
+        };
+        if r.after_to.get(start..start + r.ids.len()) != Some(r.ids.as_slice()) {
+            return Err(stale());
+        }
+    }
+    let index: std::collections::HashMap<&str, &Item> =
+        s.items.iter().map(|x| (x.id.as_str(), x)).collect();
+    let mut parent = r.to.item_id.as_deref();
+    while let Some(id) = parent {
+        if selected.contains(id) {
+            return Err(stale());
+        }
+        parent = index.get(id).and_then(|x| x.parent_id.as_deref());
+    }
+    let actual_from = group(s, &r.from);
+    let actual_to = group(s, &r.to);
+    if actual_from == r.after_from && actual_to == r.after_to {
+        return Ok(());
+    }
+    if actual_from != r.before_from || actual_to != r.before_to {
+        return Err(stale());
+    }
+    if r.from.scope == Scope::Trash && r.to.scope == Scope::Live {
+        detach_group_deleted_descendants(s, &r.ids, false);
+        s.undo_delete_ids
+            .retain(|id| !selected.contains(id.as_str()));
+    }
+    let all_dates = deletion_dates(s);
+    let dates: Vec<_> = r
+        .ids
+        .iter()
+        .map(|id| all_dates.get(id.as_str()).copied().flatten())
+        .collect();
+    let destination_date =
+        r.to.item_id
+            .as_deref()
+            .and_then(|id| all_dates.get(id).copied().flatten());
+    let old_positions: std::collections::HashMap<&str, usize> = r
+        .before_from
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    let new_positions: std::collections::HashMap<&str, usize> = r
+        .after_to
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    let selected_dates: std::collections::HashMap<&str, Option<i64>> = r
+        .ids
+        .iter()
+        .zip(dates)
+        .map(|(id, date)| (id.as_str(), date))
+        .collect();
+    for x in &mut s.items {
+        if !selected.contains(x.id.as_str()) {
+            continue;
+        }
+        let old_index = old_positions[x.id.as_str()];
+        let new_index = new_positions[x.id.as_str()];
+        if r.from == r.to && old_index == new_index {
+            continue;
+        }
+        let date = selected_dates[x.id.as_str()];
+        if r.from.scope == Scope::Live && r.to.scope == Scope::Trash {
+            let date = r
+                .deleted_at
+                .filter(|t| (0..=MAX_SAFE).contains(t))
+                .ok_or_else(stale)?;
+            x.deleted_at = Some(date);
+            x.restore_parent_id = x.parent_id.clone();
+            x.restore_index = Some(old_index as i64);
+        } else if r.from.scope == Scope::Trash && r.to.scope == Scope::Live {
+            x.deleted_at = None;
+            x.restore_parent_id = None;
+            x.restore_index = None;
+        }
+        if r.from.scope == Scope::Trash
+            && r.to.scope == Scope::Trash
+            && x.deleted_at.is_none()
+            && (r.to.item_id.is_none() || date != destination_date)
+        {
+            x.deleted_at = date;
+            x.restore_parent_id = x.parent_id.clone();
+            x.restore_index = Some(old_index as i64);
+        }
+        x.parent_id = r.to.item_id.clone();
+        touch(x);
+        if r.from.scope == Scope::Live && r.to.scope == Scope::Trash {
+            x.updated_at = x.updated_at.max(r.deleted_at.ok_or_else(stale)?);
+        }
+    }
+    if r.from.scope == Scope::Live && r.to.scope == Scope::Trash {
+        s.undo_delete_ids = r.ids.clone();
+    }
+    normalize(s, &r.after_from);
+    normalize(s, &r.after_to);
+    if r.from.scope == Scope::Trash && r.to.scope == Scope::Live {
+        let roots = group(
+            s,
+            &Location {
+                scope: Scope::Trash,
+                item_id: None,
+            },
+        );
+        normalize(s, &roots);
+    }
+
+    Ok(())
+}
+
+fn detach_group_deleted_descendants(
+    s: &mut WorkspaceSnapshot,
+    ids: &[String],
+    historical_single: bool,
+) {
+    use std::collections::{HashMap, HashSet};
+    let index: HashMap<String, usize> = s
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (x.id.clone(), i))
+        .collect();
+    let mut children: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, x) in s.items.iter().enumerate() {
         if let Some(parent) = &x.parent_id {
-            children.entry(parent.clone()).or_default().push(index);
-        } else if x.deleted_at.is_some() {
-            roots.push(index);
+            children.entry(parent.clone()).or_default().push(i);
         }
     }
-    roots.sort_by_key(|index| s.items[*index].position);
-    let mut pending = children.get(id).cloned().unwrap_or_default();
-    let mut detached = std::collections::HashSet::new();
-    let mut affected = std::collections::HashSet::new();
-    while let Some(index) = pending.pop() {
-        let x = &s.items[index];
-        if x.deleted_at.is_some() {
-            affected.insert(x.parent_id.clone().expect("descendant has parent"));
-            detached.insert(index);
-            roots.push(index);
-        } else if let Some(xs) = children.get(&x.id) {
-            pending.extend(xs.iter().copied());
+    // Preserve native exact-ID singleton traversal for any valid input array order.
+    for group in children.values_mut() {
+        if historical_single {
+            group.sort_by(|a, b| s.items[*a].id.cmp(&s.items[*b].id));
+        } else {
+            group.sort_by_key(|i| s.items[*i].position);
         }
     }
-    for index in &detached {
-        s.items[*index].parent_id = None;
+    let mut roots = group(
+        s,
+        &Location {
+            scope: Scope::Trash,
+            item_id: None,
+        },
+    );
+    let mut seen = HashSet::new();
+    let mut detached = HashSet::new();
+    let mut affected = HashSet::new();
+    for id in ids {
+        let mut pending = children.get(id).cloned().unwrap_or_default();
+        if !historical_single {
+            pending.reverse();
+        }
+        while let Some(i) = pending.pop() {
+            if !seen.insert(i) {
+                continue;
+            }
+            if s.items[i].deleted_at.is_some() {
+                affected.insert(s.items[i].parent_id.clone().expect("descendant parent"));
+                detached.insert(i);
+                s.items[i].parent_id = None;
+                roots.push(s.items[i].id.clone());
+            } else if let Some(xs) = children.get(&s.items[i].id) {
+                if historical_single {
+                    pending.extend(xs);
+                } else {
+                    pending.extend(xs.iter().rev());
+                }
+            }
+        }
     }
-    // Stop at nearest explicit deletion roots, and normalize each affected group
-    // once without repeatedly scanning the workspace or rebuilding its scope index.
     for parent in affected {
-        let mut remaining: Vec<usize> = children[&parent]
+        let mut remaining: Vec<_> = children[&parent]
             .iter()
             .copied()
-            .filter(|index| !detached.contains(index))
+            .filter(|i| !detached.contains(i))
             .collect();
-        remaining.sort_by_key(|index| s.items[*index].position);
-        for (position, index) in remaining.into_iter().enumerate() {
-            s.items[index].position = position as i64;
+        remaining.sort_by_key(|i| s.items[*i].position);
+        for (rank, i) in remaining.iter().enumerate() {
+            s.items[*i].position = rank as i64;
         }
     }
-    // Restore removes its root before ranking the final Trash-root group once.
-    roots
+    for (rank, id) in roots.iter().enumerate() {
+        s.items[index[id]].position = rank as i64;
+    }
+}
+fn group_key(x: &Item) -> String {
+    x.parent_id.clone().unwrap_or_else(|| {
+        if x.deleted_at.is_some() {
+            "trash".into()
+        } else {
+            "live".into()
+        }
+    })
+}
+fn restore_group(s: &mut WorkspaceSnapshot, ids: &[String]) -> Result<()> {
+    use std::collections::{HashMap, HashSet};
+    let index: HashMap<String, usize> = s
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (x.id.clone(), i))
+        .collect();
+    detach_group_deleted_descendants(s, ids, ids.len() == 1);
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, x) in s.items.iter().enumerate() {
+        groups.entry(group_key(x)).or_default().push(i);
+    }
+    for group in groups.values_mut() {
+        group.sort_by_key(|i| s.items[*i].position);
+    }
+    let mut affected = HashSet::new();
+    for id in ids {
+        let i = *index.get(id).ok_or_else(stale)?;
+        let mut cursor = Some(i);
+        let mut trashed = false;
+        while let Some(j) = cursor {
+            if s.items[j].deleted_at.is_some() {
+                trashed = true;
+                break;
+            }
+            cursor = s.items[j]
+                .parent_id
+                .as_ref()
+                .and_then(|id| index.get(id))
+                .copied();
+        }
+        if !trashed {
+            return Err(stale());
+        }
+        let old_key = group_key(&s.items[i]);
+        let old = groups.get_mut(&old_key).ok_or_else(stale)?;
+        let at = old.iter().position(|x| *x == i).ok_or_else(stale)?;
+        old.remove(at);
+        affected.insert(old_key);
+        let parent = s.items[i].restore_parent_id.clone().filter(|id| {
+            let mut cursor = index.get(id).copied();
+            while let Some(i) = cursor {
+                if s.items[i].deleted_at.is_some() {
+                    return false;
+                }
+                cursor = s.items[i]
+                    .parent_id
+                    .as_ref()
+                    .and_then(|id| index.get(id))
+                    .copied();
+            }
+            index.contains_key(id)
+        });
+        if let Some(parent) = &parent {
+            let owner = &mut s.items[index[parent]];
+            if owner.kind == Kind::Note {
+                owner.kind = Kind::Stash;
+                touch(owner);
+            }
+        }
+        let new_key = parent.clone().unwrap_or_else(|| "live".into());
+        let target = groups.entry(new_key.clone()).or_default();
+        let at = s.items[i]
+            .restore_index
+            .map(|v| v as usize)
+            .unwrap_or(target.len())
+            .min(target.len());
+        target.insert(at, i);
+        affected.insert(new_key);
+        let x = &mut s.items[i];
+        x.parent_id = parent;
+        x.deleted_at = None;
+        x.restore_parent_id = None;
+        x.restore_index = None;
+        touch(x);
+    }
+    for key in affected {
+        for (rank, i) in groups[&key].iter().enumerate() {
+            s.items[*i].position = rank as i64;
+        }
+    }
+    let restored: HashSet<_> = ids.iter().collect();
+    s.undo_delete_ids.retain(|id| !restored.contains(id));
+    Ok(())
+}
+pub fn structural_items(s: &WorkspaceSnapshot) -> Vec<StructuralItem> {
+    let mut items: Vec<_> = s
+        .items
+        .iter()
+        .map(|x| StructuralItem {
+            id: x.id.clone(),
+            parent_id: x.parent_id.clone(),
+            kind: x.kind.clone(),
+            position: x.position,
+            deleted_at: x.deleted_at,
+            restore_parent_id: x.restore_parent_id.clone(),
+            restore_index: x.restore_index,
+        })
+        .collect();
+    items.sort_by(|a, b| a.id.cmp(&b.id));
+    items
+}
+fn from_structure(items: &[StructuralItem], ids: &[String]) -> Result<WorkspaceSnapshot> {
+    if items.len() > 20000 {
+        return Err(stale());
+    }
+    let s = WorkspaceSnapshot {
+        items: items
+            .iter()
+            .map(|x| Item {
+                id: x.id.clone(),
+                parent_id: x.parent_id.clone(),
+                kind: x.kind.clone(),
+                markdown: String::new(),
+                done: false,
+                color: None,
+                position: x.position,
+                created_at: 0,
+                updated_at: 0,
+                deleted_at: x.deleted_at,
+                restore_parent_id: x.restore_parent_id.clone(),
+                restore_index: x.restore_index,
+            })
+            .collect(),
+        drafts: vec![],
+        undo_delete_ids: ids.to_vec(),
+    };
+    if structural_items(&s) != items {
+        return Err(stale());
+    }
+    backup::encode(&s)?;
+    Ok(s)
+}
+fn structural_key(x: &StructuralItem) -> String {
+    x.parent_id.clone().unwrap_or_else(|| {
+        if x.deleted_at.is_some() {
+            "trash".into()
+        } else {
+            "live".into()
+        }
+    })
+}
+fn subtree_union(
+    s: &WorkspaceSnapshot,
+    roots: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    use std::collections::{HashMap, HashSet};
+    let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+    for x in &s.items {
+        if let Some(parent) = x.parent_id.as_deref() {
+            children.entry(parent).or_default().push(&x.id);
+        }
+    }
+    let mut result = HashSet::new();
+    let mut pending: Vec<&str> = roots.iter().map(String::as_str).collect();
+    while let Some(id) = pending.pop() {
+        if result.insert(id.to_string()) {
+            if let Some(xs) = children.get(id) {
+                pending.extend(xs);
+            }
+        }
+    }
+    result
+}
+fn replay_matches(
+    s: &WorkspaceSnapshot,
+    before: &WorkspaceSnapshot,
+    after: &WorkspaceSnapshot,
+    ids: &[String],
+) -> bool {
+    use std::collections::{HashMap, HashSet};
+    let old: HashMap<_, _> = structural_items(before)
         .into_iter()
-        .map(|index| s.items[index].id.clone())
-        .collect()
+        .map(|x| (x.id.clone(), x))
+        .collect();
+    let expected: HashMap<_, _> = structural_items(after)
+        .into_iter()
+        .map(|x| (x.id.clone(), x))
+        .collect();
+    let actual: HashMap<_, _> = structural_items(s)
+        .into_iter()
+        .map(|x| (x.id.clone(), x))
+        .collect();
+    let mut groups = HashSet::new();
+    let mut roots: HashSet<String> = ids.iter().cloned().collect();
+    for (id, x) in &expected {
+        if old.get(id) != Some(x) {
+            groups.insert(structural_key(x));
+            groups.insert(structural_key(&old[id]));
+            if x.parent_id != old[id].parent_id {
+                roots.insert(id.clone());
+            }
+        }
+    }
+    for (id, x) in &expected {
+        if (groups.contains(&structural_key(x)) || roots.contains(id)) && actual.get(id) != Some(x)
+        {
+            return false;
+        }
+    }
+    let ordered_groups = |records: &HashMap<String, StructuralItem>| {
+        let mut result: HashMap<String, Vec<&StructuralItem>> = HashMap::new();
+        for x in records.values() {
+            result.entry(structural_key(x)).or_default().push(x);
+        }
+        result
+            .into_iter()
+            .map(|(key, mut group)| {
+                group.sort_by_key(|x| x.position);
+                (
+                    key,
+                    group.into_iter().map(|x| x.id.clone()).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<HashMap<_, _>>()
+    };
+    let expected_groups = ordered_groups(&expected);
+    let actual_groups = ordered_groups(&actual);
+    for key in groups {
+        let wanted = expected_groups.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+        let found = actual_groups.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+        if key == "trash" {
+            if found.get(..wanted.len()) != Some(wanted) {
+                return false;
+            }
+        } else if wanted != found {
+            return false;
+        }
+    }
+    let wanted = subtree_union(after, &roots);
+    let found = subtree_union(s, &roots);
+    wanted == found && wanted.iter().all(|id| actual.get(id) == expected.get(id))
+}
+fn structural_action<F>(
+    s: &mut WorkspaceSnapshot,
+    ids: &[String],
+    proof: &StructuralProof,
+    undo: bool,
+    apply: F,
+) -> Result<bool>
+where
+    F: Fn(&mut WorkspaceSnapshot) -> Result<()>,
+{
+    unique_ids(ids)?;
+    if ids.is_empty() {
+        return Err(stale());
+    }
+    let before = from_structure(&proof.before, if undo { ids } else { &[] })?;
+    let mut after = before.clone();
+    apply(&mut after)?;
+    if structural_items(&after) != proof.after {
+        return Err(stale());
+    }
+    if structural_items(s) == proof.before && (!undo || s.undo_delete_ids == ids) {
+        apply(s)?;
+        return Ok(true);
+    }
+    if !replay_matches(s, &before, &after, ids) {
+        return Err(stale());
+    }
+    Ok(false)
+}
+pub fn capture_undo(s: &WorkspaceSnapshot) -> Result<UndoDeleteRequest> {
+    let mut after = s.clone();
+    restore_group(&mut after, &s.undo_delete_ids)?;
+    backup::encode(&after)?;
+    if s.undo_delete_ids.is_empty() {
+        return Err(stale());
+    }
+    Ok(UndoDeleteRequest {
+        ids: s.undo_delete_ids.clone(),
+        proof: StructuralProof {
+            before: structural_items(s),
+            after: structural_items(&after),
+        },
+    })
+}
+pub fn capture_move(s: &WorkspaceSnapshot, mut r: MoveItems) -> Result<MoveItems> {
+    let mut after = s.clone();
+    apply_move(&mut after, &r)?;
+    backup::encode(&after)?;
+    r.proof = Some(StructuralProof {
+        before: structural_items(s),
+        after: structural_items(&after),
+    });
+    Ok(r)
 }

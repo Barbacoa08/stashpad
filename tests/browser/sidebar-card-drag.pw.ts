@@ -307,7 +307,7 @@ for (const kind of ['note', 'stash'] as const)
       }));
     expect(content(after)).toEqual(content(before));
     expect(after.drafts).toEqual(before.drafts);
-    expect(after.undoDeleteId).toBe(before.undoDeleteId);
+    expect(after.undoDeleteIds).toEqual(before.undoDeleteIds);
   });
 test('view cancellation keeps owned rejection feedback until dragend without reviving movement authority', async ({
   page,

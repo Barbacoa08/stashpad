@@ -58,7 +58,7 @@ test('Trash Delete permanently removes exactly the captured tree, leaves detache
     )
     .toEqual([ids[1], ids[2], ids[4]].sort());
   await expect(card(page, ids[4])).toHaveClass(/selected/);
-  expect((await snapshot(page)).undoDeleteId).toBeNull();
+  expect((await snapshot(page)).undoDeleteIds).toEqual([]);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   await card(page, ids[1]).click();
   await page.keyboard.press('Meta+Backspace');

@@ -14,7 +14,7 @@ The current interface uses locally authored CSS; no styling library is selected.
 
 ## Cross-parent movement
 
-The accepted first increment uses M for a staged destination dialog and moves selected siblings together; dragging and Command-Up/Down rearrange siblings. Moves stay within the current live-library or Trash area, and Restore remains the way out of Trash. Revisit cross-area movement and cross-owner selection only after evaluating this bounded workflow.
+M uses a staged destination dialog for moving selected siblings together within or between the live library and Trash. A live-to-Trash move creates one persistent group Undo action. Dragging and Command-Up/Down rearrange siblings. Decide whether dragging should also move items between parents, and discuss cross-owner selection separately.
 
 ## Keyboard selection and batch actions
 

@@ -15,6 +15,7 @@ import type {
   PurgeItem,
   MoveItems,
   TransitionLocation,
+  UndoDeleteRequest,
 } from '../../src/lib/platform/workspace';
 import type { ColorToken, Location } from '../../src/lib/domain/notes';
 import { validateBackup, encodeBackup } from '../../src/lib/domain/backup';
@@ -134,9 +135,9 @@ export class MemoryRepository implements Repository {
     this.check('restore-item');
     return this.mutate((s) => items.restoreItem(s, id));
   }
-  async undoDelete() {
+  async undoDelete(request: UndoDeleteRequest) {
     this.check('undo');
-    return this.mutate((s) => items.undoDelete(s));
+    return this.mutate((s) => items.undoDelete(s, request));
   }
   async exportBackup() {
     this.check('export');

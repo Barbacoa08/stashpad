@@ -139,7 +139,7 @@ test('deleting an inherited Trash child permanently removes it while parent Rest
   expect(state.items.find((item: any) => item.id === ids[4]).parentId).toBe(
     ids[1],
   );
-  expect(state.undoDeleteId).toBeNull();
+  expect(state.undoDeleteIds).toEqual([]);
 });
 test('Trash search stays scoped with bounded paths, restores inherited tree to Home, and preserves capture destination', async ({
   page,
