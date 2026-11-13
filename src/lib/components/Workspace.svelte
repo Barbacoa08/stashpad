@@ -3,7 +3,6 @@
   import type { ColorToken, Location } from '../domain/notes';
   import type { EditorState } from '@codemirror/state';
   import { isTauri } from '@tauri-apps/api/core';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ItemCard from './ItemCard.svelte';
   import ColorPalette from './ColorPalette.svelte';
@@ -41,6 +40,7 @@
   import { filterNotes } from '../domain/search';
   import { timestampPresentation } from '../domain/timestamps';
   import { attachCloseGuard, type CloseAdapter } from '../platform/lifecycle';
+  import { nativeCloseAdapter } from '../platform/native-lifecycle';
   import { attachMouseHistory } from '../platform/mouse-history';
   let {
     repository = nativeRepository,
@@ -576,9 +576,7 @@
       detach = attachCloseGuard(
         {
           onCloseRequested: (handler) =>
-            windowAdapter
-              ? windowAdapter.onCloseRequested(handler)
-              : getCurrentWindow().onCloseRequested(handler),
+            (windowAdapter ?? nativeCloseAdapter).onCloseRequested(handler),
           hide: hideWindow,
         },
         () => controller.flush(),
@@ -1594,8 +1592,7 @@
     }
   }
   async function hideWindow() {
-    if (windowAdapter) await windowAdapter.hide();
-    else await getCurrentWindow().hide();
+    await (windowAdapter ?? nativeCloseAdapter).hide();
     await dismissCloseFailure();
   }
   async function retryClose() {

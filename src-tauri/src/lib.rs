@@ -359,6 +359,7 @@ pub fn run() {
             // Reuse the hidden webview: rebuilding it would lose session/editor state.
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Reopen { .. }) {
+                let _ = app.show();
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.unminimize();
                     let _ = window.show();

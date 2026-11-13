@@ -4,7 +4,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-close",
-    "core:window:allow-hide",
+    "core:app:allow-app-hide",
     "core:window:allow-start-dragging"
   ]
 }

@@ -18,7 +18,7 @@ _Current source preview with synthetic notes; see the download compatibility not
 
 ## Download and install
 
-**Latest release:** alpha.4 includes the Root navigation tree and custom Dock icon. Current source additionally keeps the Mac app running when its window is closed; alpha.4 predates that lifecycle change.
+**Latest release:** alpha.4 includes the Root navigation tree and custom Dock icon. Current source additionally keeps the Mac app running when its window is closed and restores it through Command+Tab or the Dock; alpha.4 predates these lifecycle changes.
 
 **Compatibility:** alpha.3, alpha.4, and current source use schema 6/BackupV6. Alpha.2 uses schema 4 and cannot reopen an upgraded schema-6 library or import BackupV6. Schema-5-only builds also cannot reopen an upgraded schema-6 library. Export a backup and quit older Preview copies before upgrading, and use compatible app versions when transferring backups between Macs.
 
@@ -106,7 +106,7 @@ Client rendering errors show a readable diagnostic panel and an explicit Reload 
 
 ## Native acceptance
 
-Closing the Mac window (red close control or Command+W) flushes pending edits and hides the existing window without destroying its workspace. Click the Dock icon to show that same window, preserving its location, drafts, selection, editor history, and frame. Command+Q and the native Quit menu still fully quit. Direct Quit retains its existing native behavior; input that has not reached its 300 ms checkpoint can be lost, so closing the window first provides the explicit flush safeguard.
+Closing the Mac window (red close control or Command+W) flushes pending edits and hides the application without destroying its window or workspace. Switch back with Command+Tab or click the Dock icon to show that same window, preserving its location, drafts, selection, editor history, and frame. Command+Q and the native Quit menu still fully quit. Direct Quit retains its existing native behavior; input that has not reached its 300 ms checkpoint can be lost, so closing the window first provides the explicit flush safeguard.
 
 The normal native window frame is saved separately in `window-geometry.json` under the Preview app-config directory. Position and dimensions restore after page load; a reachable titlebar permits exact spanning/partial-offscreen placement, while inaccessible placements clamp to available work areas. Minimized, maximized, and fullscreen states reopen normally at the last captured normal frame. Corrupt or unavailable preferences do not block the note library.
 
