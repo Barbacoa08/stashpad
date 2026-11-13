@@ -149,14 +149,14 @@ it('failed latest-source delete leaves the original note alive, retains the revi
     },
   );
 });
-it('normal close drains late inline input before destroying and keeps the window open on commit failure', async () => {
+it('window close drains late inline input before hiding and keeps the window open on commit failure', async () => {
   const { attachCloseGuard } = await import('../../src/lib/platform/lifecycle');
   const { repo, c } = await setup();
   c.editSource('pending');
   let release!: () => void;
   repo.delaySave = new Promise<void>((r) => (release = r));
   let handler!: (e: { preventDefault(): void }) => void | Promise<void>;
-  let destroyed: string | undefined,
+  let hidden: string | undefined,
     failed = 0;
   const detach = attachCloseGuard(
     {
@@ -164,8 +164,8 @@ it('normal close drains late inline input before destroying and keeps the window
         handler = fn;
         return () => {};
       },
-      destroy: async () => {
-        destroyed = repo.snapshot.items.filter((x) => x.kind === 'note')[0]
+      hide: async () => {
+        hidden = repo.snapshot.items.filter((x) => x.kind === 'note')[0]
           .markdown;
       },
     },
@@ -178,12 +178,12 @@ it('normal close drains late inline input before destroying and keeps the window
   c.editSource('latest close\r\n');
   release();
   await closing;
-  expect(destroyed).toBe('latest close\r\n');
+  expect(hidden).toBe('latest close\r\n');
   c.editSource('retained after failed close');
   repo.fail = 'save';
-  destroyed = undefined;
+  hidden = undefined;
   await handler({ preventDefault() {} });
-  expect(destroyed).toBeUndefined();
+  expect(hidden).toBeUndefined();
   expect(failed).toBe(1);
   expect(c.state.source).toBe('retained after failed close');
   detach();

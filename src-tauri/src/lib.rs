@@ -356,6 +356,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Cannot start local workspace")
         .run(|app, event| {
+            // Reuse the hidden webview: rebuilding it would lose session/editor state.
+            #[cfg(target_os = "macos")]
+            if matches!(event, tauri::RunEvent::Reopen { .. }) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
             if matches!(
                 event,
                 tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
