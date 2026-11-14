@@ -13,6 +13,14 @@
   import Icon from './Icon.svelte';
   import TreeSidebar from './TreeSidebar.svelte';
   import ThemeSelector from './ThemeSelector.svelte';
+  import SignInDialog from './SignInDialog.svelte';
+  import SyncStatus from './SyncStatus.svelte';
+  import type {
+    AuthPort,
+    AuthState,
+    SyncPort,
+    SyncState,
+  } from '../sync/service-types';
   import type { AppearancePreference } from '../platform/appearance';
   import {
     composeKey,
@@ -46,17 +54,38 @@
   import { attachMouseHistory } from '../platform/mouse-history';
   let {
     repository = nativeRepository,
+    auth,
+    sync,
     onready,
     windowAdapter,
     appearance = 'system',
     onappearancechange = () => {},
   }: {
     repository?: Repository;
+    auth?: AuthPort;
+    sync?: SyncPort;
     windowAdapter?: CloseAdapter;
     appearance?: AppearancePreference;
     onappearancechange?: (preference: AppearancePreference) => void;
     onready?: (controller: WorkspaceController) => void;
   } = $props();
+  let authState = $state<AuthState>({
+    phase: 'signed-out',
+    open: false,
+    email: '',
+    error: null,
+    canCancel: true,
+    authenticated: false,
+    configured: false,
+  });
+  let syncState = $state<SyncState>({
+    state: 'local-only',
+    lastConfirmed: null,
+    detail: null,
+    recoveries: 0,
+  });
+  let authTrigger = $state<HTMLButtonElement>();
+  let dialogWasOpen = false;
   const controller = new WorkspaceController(untrack(() => repository));
   let viewState: ViewState = $state(controller.state);
   let mouseSelection = $state<MouseSelection>(emptyMouseSelection());
@@ -286,7 +315,9 @@
         mouseSelection = next;
     });
   });
-  let modal = $derived(!!viewState.preview || closeFailed || !!moveSession);
+  let modal = $derived(
+    !!viewState.preview || closeFailed || !!moveSession || authState.open,
+  );
   let blocked = $derived(
     (viewState.operation !== null && viewState.operation !== 'save') || modal,
   );
@@ -424,6 +455,15 @@
     node.focus();
   }
   onMount(() => {
+    const unsubscribeAuth = auth?.subscribe((next) => {
+      const closed = dialogWasOpen && !next.open;
+      dialogWasOpen = next.open;
+      authState = next;
+      if (closed) void tick().then(() => authTrigger?.focus());
+    });
+    const unsubscribeSync = sync?.subscribe((next) => {
+      syncState = next;
+    });
     const detachMouseHistory = attachMouseHistory(window, traverseHistory);
     reorderMotion = createReorderMotion(() => stream);
     let previous = controller.state;
@@ -611,6 +651,8 @@
       document.removeEventListener('focusout', forgetFocus);
       detailsMedia.removeEventListener('change', respondToDetailsWidth);
       detach();
+      unsubscribeAuth?.();
+      unsubscribeSync?.();
       unsubscribe();
       controller.dispose();
     };
@@ -1631,11 +1673,21 @@
     class:sr-only={compact &&
       !viewState.error &&
       !viewState.completionRetry &&
-      !viewState.mutationRetry}
+      !viewState.mutationRetry &&
+      !(
+        sync &&
+        (syncState.state === 'needs-sync' ||
+          syncState.detail ||
+          syncState.recoveries)
+      )}
     aria-label="Editor status"
   >
     <h2 class:sr-only={compact}><Icon name="info" /> Local activity</h2>
     {#if !compact}<p>Notes and drafts on this Mac.</p>{/if}
+    {#if sync && (!compact || syncState.state === 'needs-sync' || syncState.detail || syncState.recoveries)}<SyncStatus
+        {sync}
+        value={syncState}
+      />{/if}
     <p role="status" aria-live="polite">{viewState.status}</p>
     <p role="alert">{viewState.error}</p>
     {#if paletteRetry && viewState.mutationRetry && paletteRetry.epoch === workspaceEpoch && paletteRetry.identity === controller.mutationRetryIdentity}
@@ -1783,6 +1835,38 @@
               ? ''
               : undefined}><Icon name="undo" /> Undo delete</button
           >
+        </div>
+        <div class="auth-footer">
+          <button
+            bind:this={authTrigger}
+            disabled={!auth ||
+              !authState.configured ||
+              authState.phase === 'signing-out' ||
+              blocked}
+            title={!auth || !authState.configured
+              ? 'Sign in is not configured'
+              : undefined}
+            aria-describedby={!auth || !authState.configured
+              ? 'auth-unavailable'
+              : undefined}
+            onclick={() => {
+              if (
+                blocked ||
+                !auth ||
+                !authState.configured ||
+                authState.phase === 'signing-out'
+              )
+                return;
+              if (authState.authenticated) void auth.signOut();
+              else auth.showSignIn();
+            }}
+            ><Icon name="account" />
+            {authState.authenticated ? 'Sign out' : 'Sign in / sign up'}</button
+          >
+          {#if !auth || !authState.configured}<span
+              id="auth-unavailable"
+              class="auth-unavailable">Sign in is not configured.</span
+            >{/if}
         </div>
         <ThemeSelector preference={appearance} onchange={onappearancechange} />
       </aside>
@@ -2179,3 +2263,5 @@
     oncancel={cancelMove}
   />
 {/if}
+
+{#if auth && authState.open}<SignInDialog {auth} value={authState} />{/if}
