@@ -1541,16 +1541,66 @@ main:has(.workspace) .sidebar {
 
 /* Appearance stays compact alongside the sidebar's existing footer controls. */
 .appearance-setting {
+  min-inline-size: 0;
+  border: 0;
+  margin: 0.75rem 0 0;
   padding: 0 calc(24px + 2px);
 }
-.sidebar .appearance-setting label {
-  margin: 0.75rem 0 0.35rem;
+.appearance-setting legend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
 }
-.appearance-setting select {
+.appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.15rem;
+  padding: 0.15rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--control);
+}
+.sidebar .appearance-option {
+  display: block;
+  position: relative;
+  margin: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.appearance-option input {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-width: 0;
-  padding: 0.3rem;
-  font-size: 0.8rem;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.appearance-segment {
+  display: grid;
+  place-items: center;
+  min-height: 2rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.appearance-segment .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.appearance-option:hover .appearance-segment {
+  background: var(--control-hover);
+}
+.appearance-option input:checked + .appearance-segment {
+  color: var(--nav-text);
+  background: var(--nav-background);
+  border-color: var(--nav-border);
+}
+.appearance-option input:focus + .appearance-segment {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .markdown-view a {

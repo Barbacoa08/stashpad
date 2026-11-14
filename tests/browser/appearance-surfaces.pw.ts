@@ -19,8 +19,11 @@ for (const theme of ['light', 'dark']) {
   }) => {
     await page.setViewportSize({ width: 800, height: 600 });
     await page.goto('/?fixture');
-    const appearance = page.getByRole('combobox', { name: 'Appearance' });
-    await appearance.selectOption(theme);
+    const appearance = page.getByRole('radio', {
+      name: theme === 'light' ? 'Light' : 'Dark',
+      exact: true,
+    });
+    await appearance.check();
     await page.addStyleTag({ content: ':root { font-size: 24px !important }' });
     await appearance.focus();
     await expect(appearance).toBeFocused();

@@ -44,7 +44,7 @@ The sections below describe editing, navigation, persistence, and development in
 
 ## Appearance
 
-Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark**. System follows your Mac's appearance, including changes while Scratchtree is open. An explicit choice is remembered on that device. Appearance is separate from your note library and backups; changing it keeps unfinished Markdown and editor Undo history. These controls describe current source; the alpha.5 download above predates light mode.
+Use the three-part **Appearance** control at the bottom of the sidebar: **Light** (sun), **System** (computer), and **Dark** (moon). System is the default and follows your Mac's appearance, including changes while Scratchtree is open. An explicit choice is remembered on that device. Use Tab to focus the selected option, arrow keys to change it, and Tab to leave the group. Appearance is separate from your note library and backups; changing it keeps unfinished Markdown and editor Undo history. These controls describe current source; the alpha.5 download above predates light mode.
 
 ## Capture and edit
 

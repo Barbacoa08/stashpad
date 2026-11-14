@@ -6,8 +6,11 @@ for (const theme of ['light', 'dark']) {
   }) => {
     await page.goto('/?fixture');
     await page
-      .getByRole('combobox', { name: 'Appearance' })
-      .selectOption(theme);
+      .getByRole('radio', {
+        name: theme === 'light' ? 'Light' : 'Dark',
+        exact: true,
+      })
+      .check();
     const contrasts = await page
       .locator('.shortcut-list kbd, .composer kbd')
       .evaluateAll((keys) => {

@@ -26,9 +26,7 @@ test('saved appearance is applied before the application starts', async ({
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
-  await expect(page.getByRole('combobox', { name: 'Appearance' })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole('group', { name: 'Appearance' })).toHaveCount(0);
 });
 
 test('appearance follows the system and explicit choices persist across reload', async ({
@@ -36,20 +34,24 @@ test('appearance follows the system and explicit choices persist across reload',
 }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await openEditor(page);
-  const appearance = page.getByRole('combobox', {
+  const appearance = page.getByRole('group', {
     name: 'Appearance',
     exact: true,
   });
-  await expect(appearance).toHaveValue('system');
+  await expect(
+    appearance.getByRole('radio', { name: 'System', exact: true }),
+  ).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await appearance.selectOption('light');
+  await appearance.getByRole('radio', { name: 'Light', exact: true }).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.reload();
-  await expect(appearance).toHaveValue('light');
+  await expect(
+    appearance.getByRole('radio', { name: 'Light', exact: true }),
+  ).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await appearance.selectOption('system');
+  await appearance.getByRole('radio', { name: 'System', exact: true }).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
@@ -64,12 +66,14 @@ test('switching appearance preserves composer source and its Undo history', asyn
   // CodeMirror can legitimately combine into a single history entry.
   await editor.press('Meta+b');
   const original = await editor.elementHandle();
-  const appearance = page.getByRole('combobox', {
+  const appearance = page.getByRole('group', {
     name: 'Appearance',
     exact: true,
   });
   for (const theme of ['light', 'dark']) {
-    await appearance.selectOption(theme);
+    await appearance
+      .getByRole('radio', { name: new RegExp('^' + theme + '$', 'i') })
+      .check();
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     await expect(editor).toHaveText('**Unfinished Markdown**');
     expect(
@@ -88,8 +92,11 @@ for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width: 1440, height: 960 });
     await openEditor(page);
     await page
-      .getByRole('combobox', { name: 'Appearance', exact: true })
-      .selectOption(theme);
+      .getByRole('radio', {
+        name: theme === 'light' ? 'Light' : 'Dark',
+        exact: true,
+      })
+      .check();
     const root = page.locator('html');
     await expect(root).toHaveAttribute('data-theme', theme);
     await expect(root).toHaveCSS('color-scheme', theme);
