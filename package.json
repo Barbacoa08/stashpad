@@ -11,9 +11,10 @@
     "test:unit": "vitest run",
     "test:browser": "playwright test",
     "build:web": "vite build",
+    "build:site": "node website/build.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build --bundles app --target aarch64-apple-darwin",
-    "verify": "pnpm check && pnpm test:unit && pnpm test:browser && pnpm build:web && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml"
+    "verify": "pnpm check && pnpm test:unit && pnpm test:browser && pnpm build:web && pnpm build:site && cargo fmt --manifest-path src-tauri/Cargo.toml --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -33,6 +34,7 @@
     "svelte": "5.57.3"
   },
   "devDependencies": {
+    "@barbajoe/css-lib": "0.7.0",
     "@playwright/test": "1.65.0",
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.2.0",

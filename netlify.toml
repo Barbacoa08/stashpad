@@ -1,0 +1,17 @@
+[build]
+  command = "pnpm build:site"
+  publish = "website/dist"
+
+[build.environment]
+  NODE_VERSION = "24.21.0"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Content-Security-Policy = "default-src 'self'; style-src 'self'; img-src 'self'; script-src 'none'; base-uri 'none'; frame-ancestors 'none'"

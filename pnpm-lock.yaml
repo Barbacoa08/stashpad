@@ -212,6 +212,9 @@ importers:
         specifier: 5.57.3
         version: 5.57.3
     devDependencies:
+      '@barbajoe/css-lib':
+        specifier: 0.7.0
+        version: 0.7.0
       '@playwright/test':
         specifier: 1.65.0
         version: 1.65.0
@@ -253,6 +256,9 @@ importers:
         version: 5.1.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(vite@8.3.7(@types/node@24.19.2))
 
 packages:
+
+  '@barbajoe/css-lib@0.7.0':
+    resolution: {integrity: sha512-Pmt6KFi6fkUIYyACD3xth3HsFu52Y51yWohPNCwNQlOL+ZdVf81f2BeqRvhXRy1z0+RjW9ECyDzobpq6BuTkXg==}
 
   '@codemirror/autocomplete@6.20.4':
     resolution: {integrity: sha512-yF8RhOf2SXlg00+qtupzLhrglcas61boqaONiNcbPIebHCpJocpqTBA6dyrtUrQO47hqyTdeob/3XnYilT7TaQ==}
@@ -1060,6 +1066,8 @@ packages:
     resolution: {integrity: sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==}
 
 snapshots:
+
+  '@barbajoe/css-lib@0.7.0': {}
 
   '@codemirror/autocomplete@6.20.4':
     dependencies:

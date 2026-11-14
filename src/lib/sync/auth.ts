@@ -15,6 +15,7 @@ type Join = NonNullable<AuthState['join']>;
 /** The session owns durable data, account binding, transport, and lifecycle serialization. */
 export interface AuthHost {
   configured: boolean;
+  accountExists(email: string): Promise<boolean>;
   prepareSignIn(): Promise<CloudLogin>;
   cancelSignIn(): Promise<void>;
   finishSignIn(): Promise<Join | null>;
@@ -152,6 +153,18 @@ export class CloudAuthController implements AuthPort {
       return;
     }
     if (generation !== this.generation || !this.state.open) return;
+    try {
+      const exists = await this.host.accountExists(email);
+      if (generation !== this.generation || !this.state.open) return;
+      if (!exists) {
+        this.patch({ phase: 'email', error: unknownAccount, canCancel: true });
+        return;
+      }
+    } catch (error) {
+      if (generation === this.generation && this.state.open)
+        this.patch({ phase: 'email', error: message(error), canCancel: true });
+      return;
+    }
     const attempt: Attempt = {
       generation,
       cancelled: false,

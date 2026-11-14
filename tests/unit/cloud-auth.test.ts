@@ -46,6 +46,7 @@ function setup() {
   let signedOut = 0;
   const host: AuthHost = {
     configured: true,
+    accountExists: async () => true,
     prepareSignIn: async () => api,
     cancelSignIn: async () => {
       cancelled++;
@@ -275,6 +276,7 @@ describe('public Dexie login flow', () => {
   it('keeps authenticated state if preserving notes during sign-out fails', async () => {
     const host: AuthHost = {
       configured: true,
+      accountExists: async () => true,
       prepareSignIn: async () => {
         throw Error('Unused');
       },
@@ -424,5 +426,64 @@ describe('public Dexie login flow', () => {
     await f.auth.retrySync();
     expect(f.auth.state).toMatchObject({ phase: 'signed-in', open: false });
     expect(f.counts().finishCount).toBe(2);
+  });
+
+  it('rejects an unlisted account before opening Dexie authentication or sending a code', async () => {
+    const f = setup();
+    f.host.accountExists = async () => false;
+    f.auth.showSignIn();
+    const pending = f.auth.submitEmail('unknown@example.invalid');
+    await f.tick();
+    expect(f.auth.state).toMatchObject({
+      phase: 'email',
+      error: 'That account does not exist. Sign-up is coming soon.',
+    });
+    expect(f.hints).toHaveLength(0);
+    await pending;
+  });
+
+  it('retains email and blocks OTP when the account endpoint fails', async () => {
+    const f = setup();
+    f.host.accountExists = async () => {
+      throw Error('Account check failed. Try again later.');
+    };
+    f.auth.showSignIn();
+    const pending = f.auth.submitEmail('dev@example.com');
+    await f.tick();
+    expect(f.auth.state).toMatchObject({
+      phase: 'email',
+      email: 'dev@example.com',
+      error: 'Account check failed. Try again later.',
+    });
+    expect(f.hints).toHaveLength(0);
+    await pending;
+  });
+
+  it('cannot let a late account-check response change a newer login', async () => {
+    const f = setup();
+    let release!: (allowed: boolean) => void;
+    f.host.accountExists = (email) =>
+      email === 'old@example.invalid'
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : Promise.resolve(true);
+    f.auth.showSignIn();
+    const old = f.auth.submitEmail('old@example.invalid');
+    await f.tick();
+    f.auth.dismiss();
+    f.auth.showSignIn();
+    const current = f.auth.submitEmail('dev@example.com');
+    await f.tick();
+    f.otp();
+    await current;
+    release(false);
+    await old;
+    expect(f.auth.state).toMatchObject({
+      phase: 'code',
+      email: 'dev@example.com',
+      error: null,
+    });
+    expect(f.hints).toHaveLength(1);
   });
 });
