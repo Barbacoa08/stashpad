@@ -4,7 +4,7 @@ export interface RestorePreview {
   token: string;
   notes: number;
   drafts: number;
-  stashes: number;
+  trees: number;
   warning: string;
 }
 export interface DraftAck {
@@ -17,7 +17,7 @@ export interface CaptureItem {
   markdown: string;
   draft: DraftAck;
 }
-export interface CreateChildStash {
+export interface CreateChildTree {
   id: string;
   parent: Location;
   leave?: Location;
@@ -84,7 +84,7 @@ export interface Repository {
     draft: DraftAck,
   ): Promise<WorkspaceSnapshot>;
   captureItem(request: CaptureItem): Promise<WorkspaceSnapshot>;
-  createChildStash(request: CreateChildStash): Promise<WorkspaceSnapshot>;
+  createChildTree(request: CreateChildTree): Promise<WorkspaceSnapshot>;
   promoteItem(id: string): Promise<WorkspaceSnapshot>;
   deleteItem(id: string, leave?: Location): Promise<WorkspaceSnapshot>;
   purgeItem(request: PurgeItem): Promise<PurgeResult>;
@@ -113,7 +113,7 @@ export const nativeRepository: Repository = {
   saveItemSource: (id, markdown, draft) =>
     invoke('item_save_source', { id, markdown, draft }),
   captureItem: (request) => invoke('item_capture', { request }),
-  createChildStash: (request) => invoke('item_create_child_stash', { request }),
+  createChildTree: (request) => invoke('item_create_child_tree', { request }),
   promoteItem: (id) => invoke('item_promote', { id }),
   deleteItem: (id, leave) => invoke('item_delete', { id, leave }),
   purgeItem: (request) => invoke('item_purge', { request }),

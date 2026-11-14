@@ -1,9 +1,7 @@
 pub mod backup;
 mod external;
-pub mod legacy_backup;
 pub mod model;
 pub mod store;
-pub mod v5_backup;
 mod window_geometry;
 use model::*;
 use std::{
@@ -29,7 +27,7 @@ impl NativeState {
             let parent = self
                 .path
                 .parent()
-                .ok_or_else(|| error("storage_error", "Workspace folder unavailable."))?;
+                .ok_or_else(|| error("storage_error", "Library folder unavailable."))?;
             std::fs::create_dir_all(parent).map_err(storage_error)?;
             inner.store = Some(store::Store::open(&self.path)?);
         }
@@ -39,7 +37,7 @@ impl NativeState {
 fn fail_operation(operation: &str) -> Result<()> {
     #[cfg(debug_assertions)]
     {
-        if let Ok(path) = std::env::var("STASHPAD_ALPHA_TEST_FAILURE_FILE") {
+        if let Ok(path) = std::env::var("SCRATCHTREE_ALPHA_TEST_FAILURE_FILE") {
             if std::fs::read_to_string(path).is_ok_and(|value| value.trim() == operation) {
                 return Err(error(
                     "synthetic_failure",
@@ -100,11 +98,11 @@ async fn item_capture(
     mutate(state, move |s| s.capture(&request)).await
 }
 #[tauri::command]
-async fn item_create_child_stash(
+async fn item_create_child_tree(
     state: State<'_, NativeState>,
-    request: CreateChildStash,
+    request: CreateChildTree,
 ) -> Result<WorkspaceSnapshot> {
-    mutate(state, move |s| s.create_child_stash(&request)).await
+    mutate(state, move |s| s.create_child_tree(&request)).await
 }
 #[tauri::command]
 async fn item_promote(state: State<'_, NativeState>, id: String) -> Result<WorkspaceSnapshot> {
@@ -194,9 +192,42 @@ struct Preview {
     token: String,
     notes: usize,
     drafts: usize,
-    stashes: usize,
+    trees: usize,
     warning: String,
 }
+impl Preview {
+    fn new(token: String, library: &WorkspaceSnapshot) -> Self {
+        Self {
+            token,
+            notes: library.items.len(),
+            drafts: library.drafts.len(),
+            trees: library
+                .items
+                .iter()
+                .filter(|x| x.kind == Kind::Tree)
+                .count(),
+            warning:
+                "Replace the entire local library, including Trash and drafts. A safety backup will be written first."
+                    .into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    #[test]
+    fn all_source_bearing_notes_are_counted_once_including_trash() {
+        let backup =
+            backup::validate(include_bytes!("../../tests/fixtures/valid-v7.json")).unwrap();
+        let preview = Preview::new("captured-token".into(), &backup.library);
+        assert_eq!(preview.notes, 5);
+        assert_eq!(preview.trees, 2);
+        assert_eq!(preview.drafts, 3);
+        assert_eq!(preview.token, "captured-token");
+    }
+}
+
 #[tauri::command]
 async fn backup_export(
     app: tauri::AppHandle,
@@ -210,8 +241,8 @@ async fn backup_export(
         let path = app
             .dialog()
             .file()
-            .add_filter("Stashpad backup", &["json"])
-            .set_file_name("stashpad-backup.json")
+            .add_filter("Scratchtree backup", &["json"])
+            .set_file_name("scratchtree-backup.json")
             .blocking_save_file();
         let Some(path) = path else { return Ok(None) };
         let path = path.into_path().map_err(storage_error)?;
@@ -231,7 +262,7 @@ async fn backup_preview_restore(
         let path = app
             .dialog()
             .file()
-            .add_filter("Stashpad backup", &["json"])
+            .add_filter("Scratchtree backup", &["json"])
             .blocking_pick_file();
         let Some(path) = path else { return Ok(None) };
         let path = path.into_path().map_err(storage_error)?;
@@ -243,15 +274,8 @@ async fn backup_preview_restore(
             .map_err(storage_error)?;
         let b = backup::validate(&bytes)?;
         let token = uuid::Uuid::new_v4().to_string();
-        let result = Preview {
-            token: token.clone(),
-            notes: b.workspace.items.iter().filter(|x|x.kind==Kind::Note).count(),
-            drafts: b.workspace.drafts.len(),
-            stashes: b.workspace.items.iter().filter(|x|x.kind==Kind::Stash).count(),
-            warning: "Replace all local notes, stashes, and drafts. A safety backup will be written first."
-                .into(),
-        };
-        inner.lock().map_err(storage_error)?.preview = Some((token, b.workspace));
+        let result = Preview::new(token.clone(), &b.library);
+        inner.lock().map_err(storage_error)?.preview = Some((token, b.library));
         Ok(Some(result))
     })
     .await
@@ -338,7 +362,7 @@ pub fn run() {
             clipboard_write_text,
             item_save_source,
             item_capture,
-            item_create_child_stash,
+            item_create_child_tree,
             item_promote,
             item_set_done,
             item_set_color,
@@ -354,7 +378,7 @@ pub fn run() {
             backup_confirm_restore
         ])
         .build(tauri::generate_context!())
-        .expect("Cannot start local workspace")
+        .expect("Cannot start local library")
         .run(|app, event| {
             // Reuse the hidden webview: rebuilding it would lose session/editor state.
             #[cfg(target_os = "macos")]

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (page: Page) =>
@@ -128,7 +128,7 @@ test('Command slash searches and Command 1 goes Root from an editor without losi
   await stream(page).dispatchEvent('click');
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
-  await capture(page).fill('stash draft');
+  await capture(page).fill('tree draft');
   await capture(page).press('Meta+1');
   await expect(page.locator('h1')).toHaveText('Root');
   await expect(stream(page)).toBeFocused();
@@ -139,7 +139,7 @@ test('Command slash searches and Command 1 goes Root from an editor without losi
   await expect(demoted).toHaveAttribute('data-kind', 'note');
   await demoted.click();
   await page.keyboard.press('ArrowRight');
-  await expect(capture(page)).toHaveText('stash draft');
+  await expect(capture(page)).toHaveText('tree draft');
   expect(
     await page.evaluate(
       () => (window as any).__test.controller.state.location.itemId,
@@ -169,7 +169,7 @@ for (const scale of [100, 150])
       page.evaluate(() =>
         [
           ...document.querySelectorAll(
-            '.sidebar-search,.stash-navigation,.note-stream,.composer',
+            '.sidebar-search,.tree-navigation,.note-stream,.composer',
           ),
         ].map((n) => ({
           rect: n.getBoundingClientRect().toJSON(),

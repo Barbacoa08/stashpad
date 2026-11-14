@@ -8,13 +8,13 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     const search = page.getByRole('searchbox', { name: 'Search saved notes' });
     const wrapper = sidebar.locator('.sidebar-search');
@@ -69,13 +69,13 @@ for (const large of [false, true]) {
     await search.blur();
     expect(await measure()).toEqual(before);
     await expect(
-      sidebar.getByRole('button', { name: 'New stash', exact: true }),
+      sidebar.getByRole('button', { name: 'New tree', exact: true }),
     ).toHaveCount(0);
     await expect(
       sidebar.getByRole('button', { name: 'New note', exact: true }),
     ).toHaveCount(0);
     await expect(page.getByLabel('Keyboard shortcuts')).toContainText(
-      'New stash',
+      'New tree',
     );
     await expect(page.getByLabel('Keyboard shortcuts')).toContainText('Space');
   });
@@ -89,7 +89,7 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
@@ -97,8 +97,8 @@ for (const large of [false, true]) {
     await page.keyboard.press('Meta+n');
     await page.keyboard.press('Meta+n');
     const row = page
-      .locator('.stash-row')
-      .filter({ has: page.getByRole('button', { name: /Collapse stash/ }) })
+      .locator('.tree-row')
+      .filter({ has: page.getByRole('button', { name: /Collapse tree/ }) })
       .first();
     const dimensions = await row.evaluate((el) => {
       const box = (selector: string) => {
@@ -106,9 +106,9 @@ for (const large of [false, true]) {
         return { width: r.width, height: r.height, center: r.y + r.height / 2 };
       };
       return {
-        chevron: box('.stash-expand svg'),
-        stack: box('.stash-link svg'),
-        label: box('.stash-name'),
+        chevron: box('.tree-expand svg'),
+        stack: box('.tree-link svg'),
+        label: box('.tree-name'),
       };
     });
     expect(dimensions.chevron.width).toBe(dimensions.stack.width);
@@ -120,11 +120,11 @@ for (const large of [false, true]) {
       Math.abs(dimensions.label.center - dimensions.stack.center),
     ).toBeLessThanOrEqual(1);
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     for (const selector of [
       '.sidebar-search',
-      '.stash-navigation > button',
+      '.tree-navigation > button',
       '.backup-actions button:last-child',
     ]) {
       const centers = await sidebar.locator(selector).evaluate((el) => {
@@ -161,17 +161,17 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
     for (let i = 0; i < 5; i++) await page.keyboard.press('Meta+n');
     const row = page
-      .locator('.stash-row')
-      .filter({ has: page.locator('.stash-level', { hasText: 'Level 4' }) });
+      .locator('.tree-row')
+      .filter({ has: page.locator('.tree-level', { hasText: 'Level 4' }) });
     await expect(
-      row.getByRole('button', { name: /Collapse stash/ }),
+      row.getByRole('button', { name: /Collapse tree/ }),
     ).toBeVisible();
     const centers = await row.evaluate((el) => {
       const center = (selector: string) => {
@@ -179,9 +179,9 @@ for (const large of [false, true]) {
         return r.y + r.height / 2;
       };
       return {
-        chevron: center('.stash-expand svg'),
-        stack: center('.stash-link svg'),
-        name: center('.stash-name'),
+        chevron: center('.tree-expand svg'),
+        stack: center('.tree-link svg'),
+        name: center('.tree-name'),
       };
     });
     expect(Math.abs(centers.chevron - centers.stack)).toBeLessThanOrEqual(1);
@@ -192,3 +192,42 @@ for (const large of [false, true]) {
     });
   });
 }
+
+test('tree creation and note capture have distinct shortcuts and preserve the draft', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto('/?fixture');
+  const editor = page.getByRole('region', {
+    name: 'Notes editor',
+    exact: true,
+  });
+  const capture = editor.getByRole('textbox', {
+    name: 'New note Markdown',
+    exact: true,
+  });
+  await capture.fill('unfinished **draft');
+  await expect(page.getByRole('status')).toHaveText('Draft saved');
+  await expect(page.getByRole('article')).toHaveCount(0);
+  const shortcuts = page.getByLabel('Keyboard shortcuts');
+  await expect(
+    shortcuts.locator('div').filter({ hasText: 'New tree' }),
+  ).toContainText('N');
+  await expect(
+    shortcuts.locator('div').filter({ hasText: 'Write a note' }),
+  ).toContainText('Space');
+  await page.getByRole('region', { name: 'Note stream', exact: true }).focus();
+  await page.keyboard.press('Space');
+  await expect(capture).toBeFocused();
+  await expect(capture).toHaveText('unfinished **draft');
+  await page.keyboard.press('Meta+n');
+  await expect(
+    page.getByRole('button', { name: 'Open tree Untitled', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('searchbox', { name: 'Search saved notes' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
+  await expect(capture).toHaveText('unfinished **draft');
+  await expect(editor.locator('.stream-header')).toContainText('1 note');
+});

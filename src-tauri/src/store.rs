@@ -4,7 +4,7 @@ use std::path::Path;
 pub struct Store {
     connection: Connection,
 }
-const TABLE:&str="CREATE TABLE items(id TEXT PRIMARY KEY,parent_id TEXT,kind TEXT NOT NULL CHECK(kind IN ('note','stash')),markdown TEXT NOT NULL,done INTEGER NOT NULL CHECK(done IN (0,1)),color TEXT CHECK(color IN ('red','orange','yellow','green','teal','blue','purple','pink','gray')),position INTEGER NOT NULL CHECK(position>=0),created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER,restore_parent_id TEXT,restore_index INTEGER);";
+const TABLE:&str="CREATE TABLE items(id TEXT PRIMARY KEY,parent_id TEXT,kind TEXT NOT NULL CHECK(kind IN ('note','tree')),markdown TEXT NOT NULL,done INTEGER NOT NULL CHECK(done IN (0,1)),color TEXT CHECK(color IN ('red','orange','yellow','green','teal','blue','purple','pink','gray')),position INTEGER NOT NULL CHECK(position>=0),created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER,restore_parent_id TEXT,restore_index INTEGER);";
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         let connection = Connection::open(path).map_err(storage_error)?;
@@ -14,76 +14,27 @@ impl Store {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(storage_error)?;
-        if !(0..=6).contains(&version) {
+        let objects: i64 = connection
+            .query_row("SELECT COUNT(*) FROM sqlite_master", [], |r| r.get(0))
+            .map_err(storage_error)?;
+        if version != 7 && (version != 0 || objects != 0) {
             return Err(error(
                 "schema_version",
-                "This workspace needs a newer app. No data were replaced.",
+                "This library uses an unsupported schema. No data were replaced.",
             ));
         }
         let mut store = Self { connection };
-        if version < 4 {
+        if version == 0 {
             store
                 .connection
                 .execute_batch("BEGIN IMMEDIATE;")
                 .map_err(storage_error)?;
             let result = (|| {
-                if version == 0 {
-                    store.connection.execute_batch("CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY,markdown TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,deleted_at INTEGER);CREATE TABLE IF NOT EXISTS drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);").map_err(storage_error)?;
-                }
-                if version < 2 {
-                    store.connection.execute_batch("CREATE TABLE stashes(id TEXT PRIMARY KEY,name TEXT NOT NULL,parent_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);ALTER TABLE notes ADD COLUMN stash_id TEXT;").map_err(storage_error)?;
-                }
-                if version < 3 {
-                    store.connection.execute_batch("ALTER TABLE notes ADD COLUMN done INTEGER NOT NULL DEFAULT 0 CHECK(done IN (0,1));").map_err(storage_error)?;
-                }
-                let old = store.read_legacy()?;
-                crate::legacy_backup::encode(&old)?;
-                let current = backup::convert_legacy(old);
-                backup::encode(&current).map_err(|e|if e.code=="capacity_exceeded"{error("capacity_exceeded","The converted workspace exceeds the 10 MiB backup capacity. All prior data and settings are retained.")}else{e})?;
                 store
                     .connection
                     .execute_batch(TABLE)
                     .map_err(storage_error)?;
-                Self::write_rows(&store.connection, &current)?;
-                store
-                    .connection
-                    .execute_batch(
-                        "DROP TABLE notes;DROP TABLE stashes;PRAGMA user_version=6;COMMIT;",
-                    )
-                    .map_err(storage_error)
-            })();
-            if let Err(e) = result {
-                let _ = store.connection.execute_batch("ROLLBACK;");
-                return Err(e);
-            }
-        }
-        if version == 4 || version == 5 {
-            store
-                .connection
-                .execute_batch("BEGIN IMMEDIATE;")
-                .map_err(storage_error)?;
-            let result = (|| {
-                let value = serde_json::json!({"format":"stashpad-alpha","version":version,"exportedAt":backup::iso_now(),"workspace":{
-                    "items":store.read_items()?,"drafts":store.read_drafts()?,"undoDeleteId":store.read_undo()?
-                }});
-                // Deserialize and validate the exact source version before converting the envelope.
-                let current =
-                    backup::validate(&serde_json::to_vec(&value).map_err(storage_error)?)?
-                        .workspace;
-                store
-                    .connection
-                    .execute(
-                        "INSERT OR REPLACE INTO settings VALUES ('undoDeleteId',?1)",
-                        [
-                            serde_json::to_string(&current.undo_delete_ids)
-                                .map_err(storage_error)?,
-                        ],
-                    )
-                    .map_err(storage_error)?;
-                store
-                    .connection
-                    .execute_batch("PRAGMA user_version=6;COMMIT;")
-                    .map_err(storage_error)
+                store.connection.execute_batch("CREATE TABLE drafts(key TEXT PRIMARY KEY,markdown TEXT NOT NULL,revision INTEGER NOT NULL,updated_at INTEGER NOT NULL);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT);INSERT INTO settings VALUES ('undoDeleteIds','[]');PRAGMA user_version=7;COMMIT;").map_err(storage_error)
             })();
             if let Err(e) = result {
                 let _ = store.connection.execute_batch("ROLLBACK;");
@@ -110,71 +61,11 @@ impl Store {
             .map_err(storage_error)?;
         rows.map(|r| r.map_err(storage_error)).collect()
     }
-    fn read_undo(&self) -> Result<Option<String>> {
-        use rusqlite::OptionalExtension;
-        self.connection
-            .query_row(
-                "SELECT value FROM settings WHERE key='undoDeleteId'",
-                [],
-                |r| r.get(0),
-            )
-            .optional()
-            .map(|x: Option<Option<String>>| x.flatten())
-            .map_err(storage_error)
-    }
-    fn read_legacy(&self) -> Result<V3Workspace> {
-        let mut s = V3Workspace {
-            stashes: vec![],
-            notes: vec![],
-            drafts: self.read_drafts()?,
-            undo_delete_id: self.read_undo()?,
-        };
-        let mut q = self
-            .connection
-            .prepare("SELECT id,name,parent_id,created_at,updated_at FROM stashes ORDER BY id")
-            .map_err(storage_error)?;
-        for r in q
-            .query_map([], |r| {
-                Ok(LegacyStash {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    parent_id: r.get(2)?,
-                    created_at: r.get(3)?,
-                    updated_at: r.get(4)?,
-                })
-            })
-            .map_err(storage_error)?
-        {
-            s.stashes.push(r.map_err(storage_error)?);
-        }
-        let mut q=self.connection.prepare("SELECT id,stash_id,markdown,done,created_at,updated_at,deleted_at FROM notes ORDER BY id").map_err(storage_error)?;
-        for r in q
-            .query_map([], |r| {
-                let raw: i64 = r.get(3)?;
-                if raw != 0 && raw != 1 {
-                    return Err(rusqlite::Error::IntegralValueOutOfRange(3, raw));
-                }
-                Ok(V3Note {
-                    id: r.get(0)?,
-                    stash_id: r.get(1)?,
-                    markdown: r.get(2)?,
-                    done: raw == 1,
-                    created_at: r.get(4)?,
-                    updated_at: r.get(5)?,
-                    deleted_at: r.get(6)?,
-                })
-            })
-            .map_err(storage_error)?
-        {
-            s.notes.push(r.map_err(storage_error)?);
-        }
-        Ok(s)
-    }
     pub fn load(&mut self) -> Result<WorkspaceSnapshot> {
         let raw: String = self
             .connection
             .query_row(
-                "SELECT value FROM settings WHERE key='undoDeleteId'",
+                "SELECT value FROM settings WHERE key='undoDeleteIds'",
                 [],
                 |r| r.get(0),
             )
@@ -238,11 +129,7 @@ impl Store {
         c.execute("DELETE FROM drafts", []).map_err(storage_error)?;
         c.execute("DELETE FROM items", []).map_err(storage_error)?;
         for x in &s.items {
-            let kind = if x.kind == Kind::Stash {
-                "stash"
-            } else {
-                "note"
-            };
+            let kind = if x.kind == Kind::Tree { "tree" } else { "note" };
             let color = x.color.as_ref().map(|c| {
                 serde_json::to_value(c)
                     .expect("color enum")
@@ -276,10 +163,10 @@ impl Store {
             )
             .map_err(storage_error)?;
         }
-        c.execute("DELETE FROM settings WHERE key='undoDeleteId'", [])
+        c.execute("DELETE FROM settings WHERE key='undoDeleteIds'", [])
             .map_err(storage_error)?;
         c.execute(
-            "INSERT INTO settings VALUES ('undoDeleteId',?1)",
+            "INSERT INTO settings VALUES ('undoDeleteIds',?1)",
             [serde_json::to_string(&s.undo_delete_ids).map_err(storage_error)?],
         )
         .map_err(storage_error)?;
@@ -366,9 +253,9 @@ impl Store {
         create(&mut s, &r.id, &r.location, Kind::Note, &r.markdown)?;
         self.replace(&s)
     }
-    pub fn create_child_stash(&mut self, r: &CreateChildStash) -> Result<WorkspaceSnapshot> {
+    pub fn create_child_tree(&mut self, r: &CreateChildTree) -> Result<WorkspaceSnapshot> {
         let mut s = self.load()?;
-        create(&mut s, &r.id, &r.parent, Kind::Stash, "Untitled")?;
+        create(&mut s, &r.id, &r.parent, Kind::Tree, "Untitled")?;
         if let Some(from) = &r.leave {
             let to = Location {
                 scope: r.parent.scope.clone(),
@@ -389,7 +276,7 @@ impl Store {
         let mut s = self.load()?;
         let x = find_mut(&mut s, id)?;
         if x.kind == Kind::Note {
-            x.kind = Kind::Stash;
+            x.kind = Kind::Tree;
             touch(x);
         }
         self.replace(&s)
@@ -600,7 +487,7 @@ fn find<'a>(s: &'a WorkspaceSnapshot, id: &str) -> Result<&'a Item> {
     s.items.iter().find(|x| x.id == id).ok_or_else(|| {
         error(
             "not_found",
-            "This item is unavailable. Your input is retained.",
+            "This note is unavailable. Your input is retained.",
         )
     })
 }
@@ -608,7 +495,7 @@ fn find_mut<'a>(s: &'a mut WorkspaceSnapshot, id: &str) -> Result<&'a mut Item> 
     s.items.iter_mut().find(|x| x.id == id).ok_or_else(|| {
         error(
             "not_found",
-            "This item is unavailable. Your input is retained.",
+            "This note is unavailable. Your input is retained.",
         )
     })
 }
@@ -623,7 +510,7 @@ pub fn effective_scope(s: &WorkspaceSnapshot, id: &str) -> Result<Scope> {
         let x = index.get(key).ok_or_else(|| {
             error(
                 "not_found",
-                "This item is unavailable. Your input is retained.",
+                "This note is unavailable. Your input is retained.",
             )
         })?;
         if x.deleted_at.is_some() {
@@ -645,7 +532,7 @@ fn item_location(s: &WorkspaceSnapshot, id: &str) -> Result<Location> {
 fn validate_location(s: &WorkspaceSnapshot, at: &Location, allow_note: bool) -> Result<()> {
     if let Some(id) = at.item_id.as_deref() {
         let x = find(s, id)?;
-        if (!allow_note && x.kind != Kind::Stash) || effective_scope(s, id)? != at.scope {
+        if (!allow_note && x.kind != Kind::Tree) || effective_scope(s, id)? != at.scope {
             return Err(error(
                 "invalid_context",
                 "This destination is unavailable. Your input is retained.",
@@ -723,7 +610,7 @@ fn create(
     if let Some(parent) = at.item_id.as_deref() {
         let x = find_mut(s, parent)?;
         if x.kind == Kind::Note {
-            x.kind = Kind::Stash;
+            x.kind = Kind::Tree;
             touch(x);
         }
     }
@@ -756,7 +643,7 @@ fn restore(s: &mut WorkspaceSnapshot, id: &str) -> Result<()> {
 }
 
 fn stale() -> AppError {
-    error("stale_structure", "The captured items or destination changed. Review the action again; your content is retained.")
+    error("stale_structure", "The captured notes or destination changed. Review the action again; your content is retained.")
 }
 fn unique_ids(ids: &[String]) -> Result<std::collections::HashSet<&str>> {
     let mut seen = std::collections::HashSet::new();
@@ -819,7 +706,7 @@ fn transition_snapshot(s: &mut WorkspaceSnapshot, r: &TransitionLocation) -> Res
         if let Some(id) = r.to.item_id.as_deref() {
             let x = find_mut(s, id)?;
             if x.kind == Kind::Note {
-                x.kind = Kind::Stash;
+                x.kind = Kind::Tree;
                 touch(x);
             }
         }
@@ -1136,7 +1023,7 @@ fn restore_group(s: &mut WorkspaceSnapshot, ids: &[String]) -> Result<()> {
         if let Some(parent) = &parent {
             let owner = &mut s.items[index[parent]];
             if owner.kind == Kind::Note {
-                owner.kind = Kind::Stash;
+                owner.kind = Kind::Tree;
                 touch(owner);
             }
         }

@@ -7,7 +7,7 @@ test('stream scrolls independently and constrained text remains reachable', asyn
   await page.goto('/?fixture&visual');
   await page.addStyleTag({ content: ':root { font-size: 24px !important; }' });
   const stream = page.getByRole('region', { name: 'Note stream' });
-  const composer = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const composer = page.getByRole('textbox', { name: 'New note Markdown' });
   await expect(composer).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save note' })).toBeVisible();
   const bounds = await page.evaluate(() => ({

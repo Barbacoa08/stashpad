@@ -1,6 +1,6 @@
 # Mac application icon
 
-`icon.icns` is the native Dock/Finder app icon configured by `tauri.conf.json`. It is generated from the five selected concept references and their exact SHA-256 identities in [the branding record](../../docs/branding/README.md) and [selection ledger](../../docs/branding/selection.json), originating in source commit `149b2c6ba2314685933aebe2c711c7b833d3282b`. References are independently generated project artwork, not original Stashpad assets.
+`icon.icns` is the native Dock/Finder app icon configured by `tauri.conf.json`. It is generated from the five selected concept references and their exact SHA-256 identities in [the branding record](../../docs/branding/README.md) and [selection ledger](../../docs/branding/selection.json), originating in source commit `149b2c6ba2314685933aebe2c711c7b833d3282b`. References are independently generated project artwork.
 
 Run from the repository root on macOS with the Xcode command-line tools:
 

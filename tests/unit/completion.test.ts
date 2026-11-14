@@ -113,18 +113,18 @@ it('completion preserves exact target ownership after a queued navigation', asyn
   const c = new WorkspaceController(repo);
   try {
     await c.start();
-    await c.createStash();
-    const owner = c.state.stashId;
+    await c.createTree();
+    const owner = c.state.ownerId;
     c.editSource('owned');
     await c.save();
     const id = repo.snapshot.items.filter((x) => x.kind === 'note')[0].id;
     await c.selectNote(id);
     c.editSource('latest owned');
-    const navigation = c.openStash(null);
+    const navigation = c.openTree(null);
     const completion = c.setNoteDone(id, true);
     await navigation;
     await completion;
-    expect(c.state.stashId).toBeNull();
+    expect(c.state.ownerId).toBeNull();
     expect(c.state.activeKey).toBe('compose');
     expect(
       repo.snapshot.items.filter((x) => x.kind === 'note')[0],

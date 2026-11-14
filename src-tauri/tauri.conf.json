@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Stashpad Preview",
+  "productName": "Scratchtree",
   "version": "0.1.0",
-  "identifier": "tech.barbajoe.stashpad.preview",
+  "identifier": "tech.barbajoe.scratchtree.preview",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:4511",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Stashpad Preview",
+        "title": "Scratchtree",
         "width": 1100,
         "height": 760,
         "dragDropEnabled": false,
@@ -29,6 +29,7 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
+    "copyright": "Created by Joe. Inspired by Stashpad Lists. Scratchtree is independently developed and is not affiliated with the original Stashpad team.",
     "icon": ["icons/icon.icns"]
   }
 }

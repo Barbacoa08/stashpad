@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const cards = (page: Page) => page.getByRole('article', { name: 'Saved note' });
@@ -18,21 +18,28 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
   await expect(capture(page)).toBeVisible();
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 1,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-10T00:00:00.000Z',
-      workspace: {
-        notes: [
+      library: {
+        items: [
           {
             id: '00000000-0000-4000-8000-000000000001',
             markdown: '**boundary source**  ',
+            parentId: null,
+            kind: 'note',
+            done: false,
+            color: null,
+            position: 0,
+            restoreParentId: null,
+            restoreIndex: null,
             createdAt: Number.MAX_SAFE_INTEGER,
             updatedAt: Number.MAX_SAFE_INTEGER,
             deletedAt: null,
           },
         ],
         drafts: [],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       },
     });
   });
@@ -40,10 +47,10 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await expect(
-    page.getByRole('region', { name: 'Replace workspace?' }),
+    page.getByRole('region', { name: 'Replace library?' }),
   ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page)).toContainText('Date unavailable');
@@ -120,7 +127,7 @@ for (const constrained of [false, true])
         .getByRole('button', { name: 'Select note', exact: true })
         .focus();
       for (const name of [
-        'Reorder item',
+        'Reorder note',
         'Edit note',
         'Mark done',
         'Copy Markdown',

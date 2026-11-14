@@ -283,6 +283,6 @@
 
 <div
   class="markdown-editor"
-  class:empty-capture={label === 'Capture Markdown' && !source}
+  class:empty-capture={label === 'New note Markdown' && !source}
   bind:this={host}
 ></div>

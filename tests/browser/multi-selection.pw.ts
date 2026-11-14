@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 const card = (page: Page, id: string) =>
   page.locator(`[data-entry-id="${id}"]`);
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(page: Page) {
   await page.goto('/?fixture');
   await capture(page).waitFor();
@@ -16,7 +16,7 @@ async function seed(page: Page) {
         markdown: `selection ${index}`,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: crypto.randomUUID(),
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -38,11 +38,11 @@ test('mouse ranges retain the original anchor across modifier release, shrink, r
   const ids = await seed(page);
   await card(page, ids[1]).hover();
   await card(page, ids[1])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .click();
   await card(page, ids[4]).hover();
   await card(page, ids[4])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .click({ modifiers: ['Shift'] });
   await expect.poll(() => selected(page)).toEqual(ids.slice(1));
   await card(page, ids[2]).click({ modifiers: ['Shift'] });
@@ -60,7 +60,7 @@ test('Command toggles membership while only the primary exposes single-item acti
   await card(page, ids[0]).click();
   await card(page, ids[2]).hover();
   await card(page, ids[2])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .click({ modifiers: ['Meta'] });
   await expect.poll(() => selected(page)).toEqual([ids[0], ids[2]]);
   await expect(
@@ -85,7 +85,7 @@ test('Command toggles membership while only the primary exposes single-item acti
   await card(page, ids[2]).click({ modifiers: ['Meta'] });
   await card(page, ids[2]).hover();
   await card(page, ids[2])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .click({ modifiers: ['Meta'] });
   await expect.poll(() => selected(page)).toEqual([ids[0]]);
   await card(page, ids[3]).click({ modifiers: ['Shift'] });
@@ -155,7 +155,7 @@ test('noncontiguous Command arrows collect a block and drag inserts the captured
   ).toHaveCount(0);
   const transfer = await page.evaluateHandle(() => new DataTransfer());
   await card(page, ids[1])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .dispatchEvent('dragstart', { dataTransfer: transfer });
   await expect.poll(() => selected(page)).toEqual([ids[1], ids[3]]);
   const bounds = (await card(page, ids[4]).boundingBox())!;
@@ -253,7 +253,7 @@ test('an all-sibling selection has neutral keyboard boundaries and no unavailabl
   );
   await page.keyboard.down('Meta');
   await expect(page.locator('.stream-command-hint')).toHaveText(
-    '⌘N New stash · ⌘⌫ Delete',
+    '⌘N New tree · ⌘⌫ Delete',
   );
   await page.keyboard.up('Meta');
   await page.keyboard.press('Meta+ArrowUp');

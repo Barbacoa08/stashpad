@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function seed(page: Page, source: string) {
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.evaluate(async (markdown) => {
     const t = (window as any).__test;
     await t.repo.captureItem({

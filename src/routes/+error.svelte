@@ -3,7 +3,7 @@
   const details = diagnosticText();
 </script>
 
-<svelte:head><title>Stashpad Preview — View error</title></svelte:head>
+<svelte:head><title>Scratchtree — View error</title></svelte:head>
 <main class="error-page">
   <section aria-labelledby="error-heading">
     <h1 id="error-heading">The notes view encountered an error</h1>

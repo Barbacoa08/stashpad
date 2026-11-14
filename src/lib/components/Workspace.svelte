@@ -11,7 +11,7 @@
   import { createReorderMotion } from '../workspace/reorder-motion';
   import type { MoveItems } from '../platform/workspace';
   import Icon from './Icon.svelte';
-  import StashSidebar from './StashSidebar.svelte';
+  import TreeSidebar from './TreeSidebar.svelte';
   import {
     composeKey,
     composeOwner,
@@ -215,7 +215,7 @@
   let hierarchy = $derived(
     createHierarchyPresentation(
       viewState.snapshot.items.filter(
-        (x) => x.kind === 'stash' && scopes.get(x.id) === 'live',
+        (x) => x.kind === 'tree' && scopes.get(x.id) === 'live',
       ),
     ),
   );
@@ -223,24 +223,24 @@
     createHierarchyPresentation(
       viewState.snapshot.items.filter(
         (x) =>
-          x.kind === 'stash' && scopes.get(x.id) === viewState.location.scope,
+          x.kind === 'tree' && scopes.get(x.id) === viewState.location.scope,
       ),
       viewState.location.scope === 'trash' ? 'Trash' : 'Root',
     ),
   );
   let deletionRoot = $derived.by(() => {
-    let item = selectedNote ?? currentStash;
+    let item = selectedNote ?? currentTree;
     const index = new Map(viewState.snapshot.items.map((x) => [x.id, x]));
     while (item && item.deletedAt === null && item.parentId !== null)
       item = index.get(item.parentId);
     return item?.deletedAt !== null ? item : undefined;
   });
-  let currentStash = $derived(
-    viewState.stashId === null
+  let currentTree = $derived(
+    viewState.ownerId === null
       ? undefined
-      : viewState.snapshot.items.find((x) => x.id === viewState.stashId),
+      : viewState.snapshot.items.find((x) => x.id === viewState.ownerId),
   );
-  let destination = $derived(locationHierarchy.label(viewState.stashId).text);
+  let destination = $derived(locationHierarchy.label(viewState.ownerId).text);
   const editorStates = new Map<string, EditorState>();
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
@@ -249,7 +249,7 @@
       viewState.snapshot.items,
       viewState.query,
       viewState.location.scope,
-    ).filter((n) => viewState.query.trim() || n.parentId === viewState.stashId),
+    ).filter((n) => viewState.query.trim() || n.parentId === viewState.ownerId),
   );
   let activeNote = $derived(
     viewState.snapshot.items.find((n) => n.id === viewState.activeKey),
@@ -299,7 +299,7 @@
     commandHeld && viewState.loaded && !blocked && !palette,
   );
   let streamCommandHint = $derived.by(() => {
-    const hints = ['⌘N New stash'];
+    const hints = ['⌘N New tree'];
     const selectedVisible = shownEntries.some((x) => x.id === selected);
     const typing = isTyping(hintFocus);
     // Handles have their own Command-arrow binding; other controls use the
@@ -348,7 +348,7 @@
       ?.querySelector(`[data-entry-id="${selected}"]`)
       ?.scrollIntoView({ block: 'nearest' });
   }
-  async function openStash(
+  async function openTree(
     id: string | null,
     preferred?: string,
     scope: Location['scope'] = 'live',
@@ -391,7 +391,7 @@
       focus.stop();
     }
   }
-  async function createStash() {
+  async function createTree() {
     if (blocked || creating) return;
     navigation.cancel();
     creating = true;
@@ -400,7 +400,7 @@
     selection.remember(viewState.location, selected);
     try {
       if (
-        await controller.createStash(
+        await controller.createTree(
           shownEntries.some((x) => x.id === selected) ? selected : undefined,
         )
       ) {
@@ -1078,7 +1078,7 @@
     } catch {
       controller.feedback(
         '',
-        'These items can no longer move to that destination.',
+        'These notes can no longer move to that destination.',
       );
       return null;
     }
@@ -1161,16 +1161,14 @@
   function openMove() {
     if (blocked || !selected || viewState.query.trim()) {
       if (viewState.query.trim())
-        controller.feedback(
-          'Open the containing stash to move search results.',
-        );
+        controller.feedback('Open the containing tree to move search results.');
       return;
     }
     const ids = selectedGroup(selected),
       excluded = new Set(ids),
       snapshot = viewState.snapshot;
     if (!ids.length) {
-      controller.feedback('Open the containing stash to move this item.');
+      controller.feedback('Open the containing tree to move this note.');
       return;
     }
     const children = new Map<string, string[]>();
@@ -1189,11 +1187,11 @@
         }
     const destinations: MoveDestination[] = [];
     for (const scope of ['live', 'trash'] as const) {
-      const stashes = snapshot.items.filter(
-        (item) => item.kind === 'stash' && scopes.get(item.id) === scope,
+      const trees = snapshot.items.filter(
+        (item) => item.kind === 'tree' && scopes.get(item.id) === scope,
       );
       const rootLabel = scope === 'live' ? 'Root' : 'Trash';
-      const presentation = createHierarchyPresentation(stashes, rootLabel);
+      const presentation = createHierarchyPresentation(trees, rootLabel);
       destinations.push(
         {
           key: scope,
@@ -1201,7 +1199,7 @@
           path: '',
           location: { scope, itemId: null },
         },
-        ...stashes
+        ...trees
           .filter((item) => !excluded.has(item.id))
           .map((item) => ({
             key: item.id,
@@ -1280,7 +1278,7 @@
     event.stopPropagation();
     if (viewState.query.trim()) {
       controller.feedback(
-        'Open the containing stash to reorder search results.',
+        'Open the containing tree to reorder search results.',
       );
       return;
     }
@@ -1304,7 +1302,7 @@
     } catch {
       controller.feedback(
         '',
-        'These items can no longer be reordered together.',
+        'These notes can no longer be reordered together.',
       );
     }
   }
@@ -1417,7 +1415,7 @@
     } else if (event.key === '1') {
       event.preventDefault();
       event.stopPropagation();
-      void openStash(null);
+      void openTree(null);
     }
   }
   function commands(event: KeyboardEvent) {
@@ -1445,7 +1443,7 @@
         moveKey(event, selected);
       } else if (key === 'n') {
         event.preventDefault();
-        void createStash();
+        void createTree();
       } else if (key === 'f') {
         event.preventDefault();
         search?.focus();
@@ -1501,12 +1499,12 @@
       void copy(selected);
     } else if ((key === 'enter' || key === 'arrowright') && selectedNote) {
       event.preventDefault();
-      void openStash(selectedNote.id);
-    } else if (key === 'arrowleft' && viewState.stashId !== null) {
+      void openTree(selectedNote.id);
+    } else if (key === 'arrowleft' && viewState.ownerId !== null) {
       event.preventDefault();
-      void openStash(
-        currentStash?.parentId ?? null,
-        viewState.stashId,
+      void openTree(
+        currentTree?.parentId ?? null,
+        viewState.ownerId,
         viewState.location.scope,
       );
     } else if (key === 'arrowup' || key === 'arrowdown') {
@@ -1557,7 +1555,7 @@
     if (navigationBlocked) return;
     const visit = navigation.begin(direction, validVisit);
     if (visit)
-      void openStash(
+      void openTree(
         visit.location.itemId,
         undefined,
         visit.location.scope,
@@ -1620,7 +1618,7 @@
       !viewState.error &&
       !viewState.completionRetry &&
       !viewState.mutationRetry}
-    aria-label="Workspace status"
+    aria-label="Editor status"
   >
     <h2 class:sr-only={compact}><Icon name="info" /> Local activity</h2>
     {#if !compact}<p>Notes and drafts on this Mac.</p>{/if}
@@ -1643,7 +1641,7 @@
       >
     {:else if viewState.error}<button
         disabled={blocked}
-        onclick={() => controller.flush()}>Retry checkpoint</button
+        onclick={() => controller.flush()}>Retry saving changes</button
       ><button disabled={blocked} onclick={() => submit(viewState.activeKey)}
         >Retry save</button
       >{/if}
@@ -1683,7 +1681,7 @@
             disabled={navigationBlocked}
             title={crumb.label}
             onclick={() =>
-              void openStash(
+              void openTree(
                 crumb.location!.itemId,
                 undefined,
                 crumb.location!.scope,
@@ -1709,16 +1707,15 @@
       >{/if}
   </header>
   {#if !viewState.loaded}
-    <section aria-label="Workspace loading">
+    <section aria-label="Library loading">
       <p role="status">{viewState.status}</p>
       {#if viewState.error}<p role="alert">{viewState.error}</p>
-        <button onclick={() => controller.start()}
-          >Retry loading workspace</button
+        <button onclick={() => controller.start()}>Retry loading library</button
         >{/if}
     </section>
   {:else}
     <div class="workspace" class:details-open={detailsOpen}>
-      <aside class="sidebar" aria-label="Workspace navigation">
+      <aside class="sidebar" aria-label="Editor navigation">
         <div class="sidebar-search">
           <label class="sr-only" for="search">Search saved notes</label>
           <Icon name="search" />
@@ -1737,12 +1734,12 @@
             >{/if}
         </div>
         <div class="navigation-hint-anchor">
-          <StashSidebar
+          <TreeSidebar
             presentation={hierarchy}
-            currentId={viewState.stashId}
+            currentId={viewState.ownerId}
             live={viewState.location.scope === 'live'}
             disabled={navigationBlocked}
-            onopen={(id) => void openStash(id)}
+            onopen={(id) => void openTree(id)}
           />
           {#if showCommandHints}<span
               class="command-hint home-command-hint"
@@ -1751,17 +1748,17 @@
         </div>
         <div class="backup-actions">
           <button
-            onclick={() => void openStash(null, undefined, 'trash')}
+            onclick={() => void openTree(null, undefined, 'trash')}
             aria-current={viewState.location.scope === 'trash'
               ? 'page'
               : undefined}
             disabled={navigationBlocked}><Icon name="trash" /> Trash</button
           >
           <button onclick={() => controller.export()} disabled={blocked}
-            ><Icon name="download" /> Export backup</button
+            ><Icon name="upload" /> Export backup</button
           ><button
             onclick={() => controller.previewRestore()}
-            disabled={blocked}><Icon name="upload" /> Restore backup</button
+            disabled={blocked}><Icon name="download" /> Restore backup</button
           ><button
             onclick={() => void undoDelete()}
             disabled={!viewState.snapshot.undoDeleteIds.length ||
@@ -1774,7 +1771,7 @@
           >
         </div>
       </aside>
-      <section class="notes-column" aria-label="Notes workspace">
+      <section class="notes-column" aria-label="Notes editor">
         <div class="stream-header">
           {#if showCommandHints}<span
               class="command-hint stream-command-hint"
@@ -1787,7 +1784,7 @@
         </div>
         <p class="sr-only" aria-live="polite">
           {mouseSelection.ids.length}
-          {mouseSelection.ids.length === 1 ? 'item selected' : 'items selected'}
+          {mouseSelection.ids.length === 1 ? 'note selected' : 'notes selected'}
         </p>
         <!-- The focusable region is the keyboard navigation surface; card selection has named controls. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -1881,7 +1878,7 @@
           </div>
           <MarkdownEditor
             bind:this={composer}
-            label="Capture Markdown"
+            label="New note Markdown"
             contextKey={captureKey +
               ':workspace:' +
               workspaceEpoch +
@@ -1941,7 +1938,7 @@
           <h2>Details and shortcuts</h2>
           <p>
             {visibleNotes.length}
-            {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace
+            {visibleNotes.length === 1 ? 'note' : 'notes'} · On this Mac
           </p>
           {#if selectedNote}{@const created = timestampPresentation(
               selectedNote.createdAt,
@@ -1956,15 +1953,15 @@
             >
             <p>Color: {selectedNote.color ?? 'None'}</p>
             {#if viewState.query.trim()}<p>
-                Open the containing stash to reorder search results.
+                Open the containing tree to reorder search results.
               </p>{/if}
           {/if}
           {#if viewState.location.scope === 'trash'}
             <section aria-label="Trash details">
               <h2>Trash</h2>
               <p>
-                Items are retained for at least 90 days unless you permanently
-                delete them. Delete here permanently removes the item and its
+                Notes are retained for at least 90 days unless you permanently
+                delete them. Delete here permanently removes the note and its
                 children, with no Undo. Automatic permanent cleanup is not
                 enabled yet.
               </p>
@@ -1982,11 +1979,11 @@
               {#if selectedNote && scopes.get(selectedNote.id) === 'trash'}
                 <button
                   onclick={() => void restoreSelected()}
-                  disabled={blocked}>Restore item</button
+                  disabled={blocked}>Restore note</button
                 >
                 <p>
                   {selectedNote.deletedAt === null
-                    ? 'Restore this item and its children to Root.'
+                    ? 'Restore this note and its children to Root.'
                     : 'Restore to its remembered live parent, or Root if unavailable.'}
                 </p>
               {/if}
@@ -1994,7 +1991,7 @@
           {/if}
           <div class="shortcut-list" aria-label="Keyboard shortcuts">
             <div>
-              <span>New stash</span><span class="shortcut-keys"
+              <span>New tree</span><span class="shortcut-keys"
                 ><kbd>⌘</kbd><kbd>N</kbd></span
               >
             </div>
@@ -2009,7 +2006,7 @@
                 ></span
               >
             </div>
-            <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
+            <div><span>Write a note</span><kbd>Space</kbd></div>
             <div>
               <span aria-hidden="true">Search</span><span class="sr-only"
                 >Search: Command slash, Command F, or slash</span
@@ -2035,7 +2032,7 @@
             </div>
             <div><span>Mark done / not done</span><kbd>X</kbd></div>
             <div><span>Assign color</span><kbd>L</kbd></div>
-            <div><span>Move selected items</span><kbd>M</kbd></div>
+            <div><span>Move selected notes</span><kbd>M</kbd></div>
             <div>
               <span aria-hidden="true">Reorder siblings</span><span
                 class="sr-only"
@@ -2084,12 +2081,16 @@
     </div>
     {#if viewState.preview}<section
         class="confirmation"
-        aria-label="Replace workspace?"
+        aria-label="Replace library?"
       >
-        <h2>Replace workspace?</h2>
+        <h2>Replace library?</h2>
         <p>
-          {viewState.preview.notes} notes, {viewState.preview.stashes} stashes, and
-          {viewState.preview.drafts} drafts.
+          {viewState.preview.notes}
+          {viewState.preview.notes === 1 ? 'note' : 'notes'}, including
+          {viewState.preview.trees}
+          {viewState.preview.trees === 1 ? 'tree' : 'trees'}, and
+          {viewState.preview.drafts}
+          {viewState.preview.drafts === 1 ? 'draft' : 'drafts'}.
         </p>
         <p>{viewState.preview.warning}</p>
         <button
@@ -2117,7 +2118,7 @@
               composer?.focus();
             }
           }}
-          disabled={viewState.operation !== null}>Replace workspace</button
+          disabled={viewState.operation !== null}>Replace library</button
         >
       </section>{/if}
     {#each palette ? [palette] : [] as session (session.session)}

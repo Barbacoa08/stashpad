@@ -1,5 +1,4 @@
-import type { Item, V3Workspace } from '../../src/lib/domain/notes';
-import { convertLegacy } from '../../src/lib/domain/backup';
+import type { Item } from '../../src/lib/domain/notes';
 export function item(fields: Partial<Item> & Pick<Item, 'id'>): Item {
   return {
     parentId: null,
@@ -16,5 +15,3 @@ export function item(fields: Partial<Item> & Pick<Item, 'id'>): Item {
     ...fields,
   };
 }
-/** Explicit frozen fixture conversion; never used by application repositories. */
-export const legacyFixture = (s: V3Workspace) => convertLegacy(s);

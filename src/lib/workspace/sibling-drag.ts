@@ -5,7 +5,7 @@ export interface SiblingDrop {
   group: Location;
   toIndex: number;
 }
-export const siblingDragType = 'application/x-stashpad-sibling';
+export const siblingDragType = 'application/x-scratchtree-sibling';
 const sameGroup = (a: Location, b: Location) =>
   a.scope === b.scope && a.itemId === b.itemId;
 /** A transfer string alone never grants movement: this workspace must own the drag. */

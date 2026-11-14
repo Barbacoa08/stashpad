@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 async function seed(p: Page, sources: string[]) {
@@ -102,7 +102,7 @@ test('click-away preserves actual new target after delayed save and failure reta
   await expect(page.getByRole('alert')).toContainText('failure');
   await expect(inline(page)).toHaveText('retained failure');
   await page.evaluate(() => ((window as any).__test.repo.fail = null));
-  await page.getByRole('button', { name: 'Retry checkpoint' }).click();
+  await page.getByRole('button', { name: 'Retry saving changes' }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -122,15 +122,15 @@ test('instant Untitled creation uses open parent, deduplicates pending request, 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(capture(page)).toBeFocused();
   const parent = await page.evaluate(
-    () => (window as any).__test.controller.state.stashId,
+    () => (window as any).__test.controller.state.ownerId,
   );
   await page.keyboard.press('Meta+n');
   const child = await page.evaluate(
-    () => (window as any).__test.controller.state.stashId,
+    () => (window as any).__test.controller.state.ownerId,
   );
   await page.keyboard.press('Meta+n');
   const leaf = await page.evaluate(
-    () => (window as any).__test.controller.state.stashId,
+    () => (window as any).__test.controller.state.ownerId,
   );
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowLeft');
@@ -148,7 +148,7 @@ test('instant Untitled creation uses open parent, deduplicates pending request, 
   await page.keyboard.press('ArrowRight');
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBe(leaf);
   await capture(page).press('Escape');
@@ -158,7 +158,7 @@ test('instant Untitled creation uses open parent, deduplicates pending request, 
   await expect(capture(page)).toBeFocused();
   const created = await page.evaluate(() =>
     (window as any).__test.repo.snapshot.items
-      .filter((x: any) => x.kind === 'stash')
+      .filter((x: any) => x.kind === 'tree')
       .at(-1),
   );
   expect(created.parentId).toBe(child);
@@ -253,7 +253,7 @@ test('pending instant creation is idempotent and honors a newer Search focus', a
     .poll(() =>
       page.evaluate(() => (window as any).__test.controller.state.operation),
     )
-    .toBe('create-stash');
+    .toBe('create-tree');
   await page.keyboard.press('Meta+n');
   await page.getByRole('searchbox').fill('new intent');
   await page.evaluate(() => (window as any).__test.releaseCreate());
@@ -262,7 +262,7 @@ test('pending instant creation is idempotent and honors a newer Search focus', a
       page.evaluate(
         () =>
           (window as any).__test.repo.snapshot.items.filter(
-            (x: any) => x.kind === 'stash',
+            (x: any) => x.kind === 'tree',
           ).length,
       ),
     )
@@ -273,7 +273,7 @@ test('pending instant creation is idempotent and honors a newer Search focus', a
     await page.evaluate(
       () =>
         (window as any).__test.repo.snapshot.items.filter(
-          (x: any) => x.kind === 'stash' && x.markdown !== 'Untitled',
+          (x: any) => x.kind === 'tree' && x.markdown !== 'Untitled',
         )[0].markdown,
     ),
   ).toBe('latest before creation');
@@ -286,12 +286,12 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     const t = (window as any).__test;
     const parent = crypto.randomUUID(),
       child = crypto.randomUUID();
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: parent,
       parent: { scope: 'live', itemId: null },
     });
     await t.repo.saveItemSource(parent, 'Parent', { key: parent, revision: 0 });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: child,
       parent: { scope: 'live', itemId: parent },
     });
@@ -304,20 +304,20 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
         draft: { key: `compose:${parent}`, revision: 1 },
       });
     t.repo.snapshot.items
-      .filter((x: any) => x.kind === 'stash')
+      .filter((x: any) => x.kind === 'tree')
       .forEach((s: any, i: number) => (s.createdAt = i));
     t.repo.snapshot.items
       .filter((x: any) => x.kind === 'note')
       .forEach((n: any, i: number) => (n.createdAt = i + 2));
     await t.controller.start();
   });
-  await page.locator('.note-card[data-kind="stash"]').click();
+  await page.locator('.note-card[data-kind="tree"]').click();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('article', { name: 'Stash Child' })).toHaveClass(
+  await expect(page.getByRole('article', { name: 'Tree Child' })).toHaveClass(
     /selected/,
   );
   const childId = await page
-    .getByRole('article', { name: 'Stash Child' })
+    .getByRole('article', { name: 'Tree Child' })
     .getAttribute('data-entry-id');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('.note-card[data-kind="note"]')).toHaveCount(0);
@@ -345,17 +345,17 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 6,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-11T00:00:00.000Z',
-      workspace: t.repo.snapshot,
+      library: t.repo.snapshot,
     });
   });
   await page
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowDown');
@@ -376,7 +376,7 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     const c = (window as any).__test.controller;
     return [
       c.state.snapshot.items.find(
-        (x: any) => x.kind === 'stash' && x.markdown === 'Parent',
+        (x: any) => x.kind === 'tree' && x.markdown === 'Parent',
       ).id,
       c.state.snapshot.items.find((n: any) => n.id === c.state.activeKey)
         .parentId,

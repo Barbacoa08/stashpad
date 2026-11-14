@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 async function seed(page: Page, sources: string[]) {
@@ -87,19 +87,19 @@ for (const mode of ['capture', 'inline'] as const) {
     ).toBe('```js\nconst x = 1;\n```\n');
   });
 }
-test('capture Up at zero selects last visible note, skips child stash, and retains draft history and Escape selection', async ({
+test('capture Up at zero selects last visible note, skips child tree, and retains draft history and Escape selection', async ({
   page,
 }) => {
   await seed(page, ['first', 'last']);
   await page.evaluate(async () => {
     const t = (window as any).__test;
     const id = crypto.randomUUID();
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id,
       parent: { scope: 'live', itemId: null },
     });
-    await t.repo.saveItemSource(id, 'Later stash', { key: id, revision: 0 });
-    t.repo.snapshot.items.filter((x: any) => x.kind === 'stash')[0].createdAt =
+    await t.repo.saveItemSource(id, 'Later tree', { key: id, revision: 0 });
+    t.repo.snapshot.items.filter((x: any) => x.kind === 'tree')[0].createdAt =
       100;
     await t.controller.start();
   });
@@ -315,17 +315,17 @@ test('expansion uses exact note identity across filters and survives deletion/Un
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 6,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-11T00:00:00.000Z',
-      workspace: t.repo.snapshot,
+      library: t.repo.snapshot,
     });
   });
   await page
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(
     first.getByRole('button', { name: 'Expand note', exact: true }),

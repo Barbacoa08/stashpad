@@ -16,9 +16,9 @@ it('M to Trash installs one ordered persistent action and one Undo restores nonc
   const move = c.captureMove([id(3), id(1)], trash, 0);
   expect(await c.moveItems(move)).toBe(true);
   expect(repo.snapshot.undoDeleteIds).toEqual([id(1), id(3)]);
-  expect(JSON.parse(encodeBackup(repo.snapshot)).version).toBe(6);
+  expect(JSON.parse(encodeBackup(repo.snapshot)).version).toBe(7);
   expect(validateBackup(encodeBackup(repo.snapshot))).toHaveProperty(
-    'workspace.undoDeleteIds',
+    'library.undoDeleteIds',
     [id(1), id(3)],
   );
   expect(await c.undoRemove()).toBe(true);
@@ -31,20 +31,20 @@ it('M to Trash installs one ordered persistent action and one Undo restores nonc
   ).toEqual([id(1), id(2), id(3)]);
   expect(repo.snapshot.items[0].markdown).toBe('**1**\r\n');
 });
-it('V6 rejects invalid group fields while frozen V5 converts the exact singleton', () => {
+it('version 7 rejects invalid ordered group fields', () => {
   const workspace = {
     items: [item({ id: id(1), deletedAt: 3 })],
     drafts: [],
     undoDeleteIds: [id(1)],
   };
   const backup = {
-    format: 'stashpad-alpha',
-    version: 6,
+    format: 'scratchtree-alpha',
+    version: 7,
     exportedAt: '2026-11-12T00:00:00.000Z',
-    workspace,
+    library: workspace,
   };
   expect(validateBackup(JSON.stringify(backup))).toHaveProperty(
-    'workspace',
+    'library',
     workspace,
   );
   for (const undoDeleteIds of [null, id(1), [id(1), id(1)], [id(2)]])
@@ -52,29 +52,16 @@ it('V6 rejects invalid group fields while frozen V5 converts the exact singleton
       validateBackup(
         JSON.stringify({
           ...backup,
-          workspace: { ...workspace, undoDeleteIds },
+          library: { ...workspace, undoDeleteIds },
         }),
       ),
     ).toHaveProperty('code');
-  const { undoDeleteIds: _ids, ...old } = workspace;
-  expect(
-    validateBackup(
-      JSON.stringify({
-        ...backup,
-        version: 5,
-        workspace: { ...old, undoDeleteId: id(1) },
-      }),
-    ),
-  ).toHaveProperty('workspace', workspace);
-  expect(
-    validateBackup(JSON.stringify({ ...backup, version: 5 })),
-  ).toHaveProperty('code');
 });
 it('lost move reply accepts an unrelated child deletion appended to Trash without replacing its marker', async () => {
   const repo = new MemoryRepository();
   repo.snapshot.items = [
     item({ id: id(1) }),
-    item({ id: id(2), kind: 'stash', position: 1 }),
+    item({ id: id(2), kind: 'tree', position: 1 }),
     item({ id: id(3), parentId: id(2) }),
   ];
   const c = new WorkspaceController(repo);
@@ -130,7 +117,7 @@ it('group Undo rejects partial, stale, and altered proof while retaining newer s
 it('cross-area proof rejects changed subtree membership and deletion facts without touching saved bytes', async () => {
   const repo = new MemoryRepository();
   repo.snapshot.items = [
-    item({ id: id(1), kind: 'stash' }),
+    item({ id: id(1), kind: 'tree' }),
     item({ id: id(2), parentId: id(1) }),
   ];
   const c = new WorkspaceController(repo);
@@ -150,7 +137,7 @@ it('cross-area proof rejects changed subtree membership and deletion facts witho
 it('partial Restore and purge filter only matching marker members, preserving order and independent descendants', async () => {
   const repo = new MemoryRepository();
   repo.snapshot.items = [
-    item({ id: id(1), kind: 'stash', deletedAt: 3 }),
+    item({ id: id(1), kind: 'tree', deletedAt: 3 }),
     item({ id: id(2), parentId: id(1), deletedAt: 4, restoreIndex: 0 }),
     item({ id: id(3), position: 1, deletedAt: 3 }),
     item({ id: id(4), position: 2, deletedAt: 3 }),
@@ -171,16 +158,16 @@ it('partial Restore and purge filter only matching marker members, preserving or
 it('Trash-to-live movement keeps nearest independent deletion trees and restores chosen owner exactly', async () => {
   const repo = new MemoryRepository();
   repo.snapshot.items = [
-    item({ id: id(1), kind: 'stash', deletedAt: 3 }),
+    item({ id: id(1), kind: 'tree', deletedAt: 3 }),
     item({
       id: id(2),
       parentId: id(1),
-      kind: 'stash',
+      kind: 'tree',
       deletedAt: 4,
       restoreIndex: 0,
     }),
     item({ id: id(3), parentId: id(2), deletedAt: 5, restoreIndex: 0 }),
-    item({ id: id(4), kind: 'stash' }),
+    item({ id: id(4), kind: 'tree' }),
   ];
   repo.snapshot.undoDeleteIds = [id(1), id(2), id(3)];
   const c = new WorkspaceController(repo);
@@ -225,7 +212,7 @@ it('broad group Undo preserves all marker order and content in a bounded batched
 it('singleton Restore keeps manually reordered inherited siblings when detaching an independent record', async () => {
   const repo = new MemoryRepository();
   repo.snapshot.items = [
-    item({ id: id(1), kind: 'stash', deletedAt: 3 }),
+    item({ id: id(1), kind: 'tree', deletedAt: 3 }),
     item({ id: id(2), parentId: id(1), position: 2 }),
     item({ id: id(3), parentId: id(1), position: 0 }),
     item({ id: id(4), parentId: id(1), position: 1, deletedAt: 4 }),
@@ -267,12 +254,12 @@ it('wide independent-deletion replay reads parent edges within a linear budget a
   const width = 500;
   const s = {
     items: [
-      item({ id: id(1), kind: 'stash', deletedAt: 3 }),
+      item({ id: id(1), kind: 'tree', deletedAt: 3 }),
       ...Array.from({ length: width }, (_, i) => [
         item({
           id: id(i * 2 + 2),
           parentId: id(1),
-          kind: 'stash',
+          kind: 'tree',
           position: i,
         }),
         item({ id: id(i * 2 + 3), parentId: id(i * 2 + 2), deletedAt: 4 }),
@@ -316,7 +303,7 @@ it('singleton Undo derives the same historical exact-ID descendant order from an
   repo.snapshot.items = [
     item({
       id: id(1),
-      kind: 'stash',
+      kind: 'tree',
       deletedAt: 3,
       markdown: '**parent**\r\n',
     }),

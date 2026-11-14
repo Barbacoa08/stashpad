@@ -55,7 +55,7 @@ it('retains useful allowlisted locations while excluding source-bearing messages
       '_app/immutable/chunks/DclECHGd.js:12:9',
     ],
   });
-  expect(record.reference).toMatch(/^SP-[A-F0-9]{16}$/);
+  expect(record.reference).toMatch(/^ST-[A-F0-9]{16}$/);
   expect(record.time).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
   expect(diagnosticText()).toContain(record.reference);
   for (const secret of [
@@ -140,6 +140,6 @@ it('survives unavailable/full storage and hostile error properties without losin
     },
   );
   expect(() => captureDiagnostic(hostile, 500)).not.toThrow();
-  expect(diagnosticText()).toContain('SP-');
+  expect(diagnosticText()).toContain('ST-');
   expect(diagnosticText()).not.toContain('PRIVATE_');
 });

@@ -11,20 +11,20 @@ it('opens Trash as a separate location with its own compose draft and clears nav
   expect(c.state.activeKey).toBe('compose:trash');
   expect(c.state.query).toBe('');
   c.editSource('Trash draft');
-  await c.openStash(null);
+  await c.openTree(null);
   expect(c.state.source).toBe('Home draft');
   c.dispose();
 });
 it('Undo while viewing restored tree follows the live scope without losing its composer', async () => {
   const r = new MemoryRepository();
-  await r.createChildStash({
+  await r.createChildTree({
     id: root,
     parent: { scope: 'live', itemId: null },
   });
   await r.deleteItem(root);
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(root);
+  await c.openTree(root);
   c.editSource('tree draft');
   expect(await c.undoRemove()).toBe(true);
   expect(c.state.location).toEqual({ scope: 'live', itemId: root });
@@ -35,7 +35,7 @@ it('Undo while viewing restored tree follows the live scope without losing its c
 for (const direction of ['delete', 'restore'])
   it(`lost capture acknowledgment reconciles the same child identity after owner ${direction}`, async () => {
     const r = new MemoryRepository();
-    await r.createChildStash({
+    await r.createChildTree({
       id: root,
       parent: { scope: 'live', itemId: null },
     });
@@ -52,13 +52,13 @@ for (const direction of ['delete', 'restore'])
     };
     const c = new WorkspaceController(r);
     await c.start();
-    await c.openStash(root);
+    await c.openTree(root);
     c.editSource('original child');
     expect(await c.save()).toBe(false);
     const child = r.snapshot.items.find((x) => x.id !== root)!;
     if (direction === 'delete') await c.remove(root);
     else await c.restoreItem(root);
-    await c.openStash(root);
+    await c.openTree(root);
     c.editSource('newer draft');
     expect(await c.save()).toBe(true);
     expect(r.snapshot.items.filter((x) => x.id !== root)).toEqual([child]);

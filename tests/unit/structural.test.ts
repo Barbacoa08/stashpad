@@ -40,10 +40,10 @@ function item(
 function seed(): WorkspaceSnapshot {
   return {
     items: [
-      item(1, null, 'stash', 0),
-      item(2, null, 'stash', 1),
+      item(1, null, 'tree', 0),
+      item(2, null, 'tree', 1),
       item(3, 1, 'note', 0),
-      item(4, 1, 'stash', 1),
+      item(4, 1, 'tree', 1),
       item(5, 1, 'note', 2),
       item(6, 4, 'note', 0),
     ],
@@ -51,7 +51,7 @@ function seed(): WorkspaceSnapshot {
     undoDeleteIds: [],
   };
 }
-it('V5 retains independent note composer and restore references while V4 remains strict', () => {
+it('current contract retains independent note composer and restore references', () => {
   const s = seed();
   s.items = [
     item(1, null, 'note', 0),
@@ -72,11 +72,8 @@ it('V5 retains independent note composer and restore references while V4 remains
   ];
   s.undoDeleteIds = [id(2)];
   const text = encodeBackup(s);
-  expect(JSON.parse(text).version).toBe(6);
-  expect(validateBackup(text)).toHaveProperty('workspace', s);
-  const old = JSON.parse(text);
-  old.version = 4;
-  expect(validateBackup(JSON.stringify(old))).toHaveProperty('code');
+  expect(JSON.parse(text).version).toBe(7);
+  expect(validateBackup(text)).toHaveProperty('library', s);
 });
 it('purge retains independent roots and unrelated Undo, repairs restore refs, and exactly replays', async () => {
   const r = new MemoryRepository();
@@ -139,7 +136,7 @@ it('captured noncontiguous movement preserves source order, exact replay, and un
 it('exit demotion preserves drafts and restore capability, and capture atomically reopens the note', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [item(1, null, 'stash', 0)],
+    items: [item(1, null, 'tree', 0)],
     drafts: [
       {
         key: `compose:${id(1)}`,
@@ -152,12 +149,12 @@ it('exit demotion preserves drafts and restore capability, and capture atomicall
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const seen: Item['kind'][] = [];
   const unsubscribe = c.subscribe((s) => {
     if (s.location.itemId === id(1)) seen.push(s.snapshot.items[0].kind);
   });
-  expect(await c.openStash(null)).toBe(true);
+  expect(await c.openTree(null)).toBe(true);
   expect(r.snapshot.items[0]).toEqual({ ...item(1, null, 'note', 0) });
   expect(seen).not.toContain('note');
   expect(c.sourceFor(`compose:${id(1)}`)).toBe('capture\r\n');
@@ -167,7 +164,7 @@ it('exit demotion preserves drafts and restore capability, and capture atomicall
     markdown: 'new',
     draft: { key: `compose:${id(1)}`, revision: 8 },
   });
-  expect(r.snapshot.items[0].kind).toBe('stash');
+  expect(r.snapshot.items[0].kind).toBe('tree');
   expect(r.snapshot.drafts[0].revision).toBe(9);
   unsubscribe();
   c.dispose();
@@ -178,7 +175,7 @@ it('purge failure preserves exact buffers; acknowledged purge removes only targe
   r.snapshot.items[0].deletedAt = 3;
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(4));
+  await c.openTree(id(4));
   c.editSource('owned composer');
   await c.selectNote(id(6));
   c.editSource('latest source');
@@ -195,16 +192,16 @@ it('purge failure preserves exact buffers; acknowledged purge removes only targe
   expect(c.state.purgedItemIds).toEqual([id(4), id(6)]);
   c.dispose();
 });
-it('Command-N atomically exits and demotes an unrelated empty current stash while keeping its composer', async () => {
+it('Command-N atomically exits and demotes an unrelated empty current tree while keeping its composer', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [item(1, null, 'stash', 0), item(2, null, 'note', 1)],
+    items: [item(1, null, 'tree', 0), item(2, null, 'note', 1)],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   c.editSource('retained origin draft');
   c.setQuery('exact');
   const seen: boolean[] = [];
@@ -213,9 +210,9 @@ it('Command-N atomically exits and demotes an unrelated empty current stash whil
       s.location.itemId === id(1) && s.snapshot.items[0].kind === 'note',
     ),
   );
-  expect(await c.createStash(id(2))).toBe(true);
+  expect(await c.createTree(id(2))).toBe(true);
   expect(r.snapshot.items[0].kind).toBe('note');
-  expect(r.snapshot.items[1].kind).toBe('stash');
+  expect(r.snapshot.items[1].kind).toBe('tree');
   expect(c.sourceFor(`compose:${id(1)}`)).toBe('retained origin draft');
   expect(seen).not.toContain(true);
   stop();
@@ -224,19 +221,19 @@ it('Command-N atomically exits and demotes an unrelated empty current stash whil
 it('failed flush and same-location navigation never demote; successful captured Retry exits once', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [item(1, null, 'stash', 0)],
+    items: [item(1, null, 'tree', 0)],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   expect(await c.newNote()).toBe(true);
-  expect(r.snapshot.items[0].kind).toBe('stash');
+  expect(r.snapshot.items[0].kind).toBe('tree');
   c.editSource('latest draft');
   r.fail = 'checkpoint';
-  expect(await c.openStash(null)).toBe(false);
-  expect(r.snapshot.items[0].kind).toBe('stash');
+  expect(await c.openTree(null)).toBe(false);
+  expect(r.snapshot.items[0].kind).toBe('tree');
   expect(c.state.location).toEqual(at(1));
   r.fail = null;
   expect(await c.retryMutation()).toBe(true);
@@ -247,7 +244,7 @@ it('failed flush and same-location navigation never demote; successful captured 
 it('lost purge acknowledgment retains buffers until exact Retry and never recreates a purged capture', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
+    items: [{ ...item(1, null, 'tree', 0), deletedAt: 3 }],
     drafts: [],
     undoDeleteIds: [],
   };
@@ -263,14 +260,14 @@ it('lost purge acknowledgment retains buffers until exact Retry and never recrea
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   c.editSource('captured child');
   expect(await c.save()).toBe(false);
   const child = r.snapshot.items.find((x) => x.id !== id(1))!;
   // Authoritative reconciliation occurs before capturePurge to include uncertain children.
   await c.flush();
   await c.openLocation(trash);
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const request = c.capturePurge(id(1));
   const purge = r.purgeItem.bind(r);
   let lost = true;
@@ -294,7 +291,7 @@ it('lost purge acknowledgment retains buffers until exact Retry and never recrea
 it('an uncertain capture is reconciled before moving it and its pending Save cannot duplicate newer source', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [item(1, null, 'stash', 0), item(2, null, 'stash', 1)],
+    items: [item(1, null, 'tree', 0), item(2, null, 'tree', 1)],
     drafts: [],
     undoDeleteIds: [],
   };
@@ -310,12 +307,12 @@ it('an uncertain capture is reconciled before moving it and its pending Save can
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   c.editSource('original');
   expect(await c.save()).toBe(false);
   await c.flush();
   await c.openLocation(home);
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const child = r.snapshot.items.find((x) => x.id !== id(1) && x.id !== id(2))!;
   c.editSource('newer draft');
   expect(await c.moveItems(c.captureMove([child.id], at(2), 0))).toBe(true);
@@ -350,7 +347,7 @@ it('20,000-deep purge is iterative and clears its Undo', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
     items: Array.from({ length: 20000 }, (_, i) =>
-      item(i + 1, i === 0 ? null : i, 'stash', 0),
+      item(i + 1, i === 0 ? null : i, 'tree', 0),
     ),
     drafts: [],
     undoDeleteIds: [id(1)],
@@ -384,7 +381,7 @@ it('explicit same-ID reopen promotes a demoted note while preserving its separat
     to: at(1),
     promoteDestination: true,
   });
-  expect(after.items[0].kind).toBe('stash');
+  expect(after.items[0].kind).toBe('tree');
   expect(after.drafts[0].markdown).toBe('separate');
 });
 it('a successful newer visit preserves an older exact failed navigation Retry until acknowledgment', async () => {
@@ -392,14 +389,14 @@ it('a successful newer visit preserves an older exact failed navigation Retry un
   r.snapshot = seed();
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(4));
+  await c.openTree(id(4));
   c.editSource('dirty');
   r.fail = 'checkpoint';
-  expect(await c.openStash(id(1))).toBe(false);
+  expect(await c.openTree(id(1))).toBe(false);
   const retry = c.mutationRetryIdentity;
   expect(retry).not.toBeNull();
   r.fail = null;
-  expect(await c.openStash(null)).toBe(true);
+  expect(await c.openTree(null)).toBe(true);
   expect(c.mutationRetryIdentity).toBe(retry);
   expect(c.state.mutationRetry).toBe(true);
   expect(await c.retryMutation()).toBe(true);
@@ -407,16 +404,16 @@ it('a successful newer visit preserves an older exact failed navigation Retry un
   expect(c.state.mutationRetry).toBe(false);
   c.dispose();
 });
-it('soft-deleting an open childless stash atomically demotes only the exited source while preserving its draft', async () => {
+it('soft-deleting an open childless tree atomically demotes only the exited source while preserving its draft', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [item(1, null, 'stash', 0)],
+    items: [item(1, null, 'tree', 0)],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   c.editSource('independent capture');
   expect(await c.remove(id(1))).toBe(true);
   expect(r.snapshot.items[0].kind).toBe('note');
@@ -429,13 +426,13 @@ it('soft-deleting an open childless stash atomically demotes only the exited sou
 it('Retry acknowledges an already committed purge even when newer typing can no longer save its removed owner', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
+    items: [{ ...item(1, null, 'tree', 0), deletedAt: 3 }],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const request = c.capturePurge(id(1));
   const purge = r.purgeItem.bind(r);
   let lost = true;
@@ -459,16 +456,16 @@ it('queued newer navigation demotes every actually exited empty origin without p
   const r = new MemoryRepository();
   r.snapshot = {
     items: [
-      item(1, null, 'stash', 0),
-      item(2, null, 'stash', 1),
-      item(3, null, 'stash', 2),
+      item(1, null, 'tree', 0),
+      item(2, null, 'tree', 1),
+      item(3, null, 'tree', 2),
     ],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   let wrote!: () => void;
@@ -489,25 +486,21 @@ it('queued newer navigation demotes every actually exited empty origin without p
     if (s.location.itemId !== null)
       invalid.push(
         s.snapshot.items.find((x) => x.id === s.location.itemId)?.kind !==
-          'stash',
+          'tree',
       );
     if (s.location.itemId !== previous) {
       visits.push({ id: s.location.itemId, op: s.operation });
       previous = s.location.itemId;
     }
   });
-  const first = c.openStash(id(2));
+  const first = c.openTree(id(2));
   await written;
-  const second = c.openStash(id(3));
+  const second = c.openTree(id(3));
   c.setQuery('newer Search');
   release();
   expect(await first).toBe(false);
   expect(await second).toBe(true);
-  expect(r.snapshot.items.map((x) => x.kind)).toEqual([
-    'note',
-    'note',
-    'stash',
-  ]);
+  expect(r.snapshot.items.map((x) => x.kind)).toEqual(['note', 'note', 'tree']);
   expect(c.state.location).toEqual(at(3));
   expect(c.state.query).toBe('newer Search');
   expect(invalid).not.toContain(true);
@@ -518,13 +511,13 @@ it('queued newer navigation demotes every actually exited empty origin without p
 it('neutral purge Retry preserves unrelated newer dirty root composers without attempting removed-owner writes', async () => {
   const r = new MemoryRepository();
   r.snapshot = {
-    items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
+    items: [{ ...item(1, null, 'tree', 0), deletedAt: 3 }],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const request = c.capturePurge(id(1));
   const purge = r.purgeItem.bind(r);
   let lost = true;
@@ -558,26 +551,22 @@ it('Retry keeps its original destination but demotes the empty origin actually d
   const r = new MemoryRepository();
   r.snapshot = {
     items: [
-      item(1, null, 'stash', 0),
-      item(2, null, 'stash', 1),
-      item(3, null, 'stash', 2),
+      item(1, null, 'tree', 0),
+      item(2, null, 'tree', 1),
+      item(3, null, 'tree', 2),
     ],
     drafts: [],
     undoDeleteIds: [],
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   r.fail = 'navigate';
-  expect(await c.openStash(id(3))).toBe(false);
+  expect(await c.openTree(id(3))).toBe(false);
   r.fail = null;
-  expect(await c.openStash(id(2))).toBe(true);
+  expect(await c.openTree(id(2))).toBe(true);
   expect(await c.retryMutation()).toBe(true);
-  expect(r.snapshot.items.map((x) => x.kind)).toEqual([
-    'note',
-    'note',
-    'stash',
-  ]);
+  expect(r.snapshot.items.map((x) => x.kind)).toEqual(['note', 'note', 'tree']);
   expect(c.state.location).toEqual(at(3));
   c.dispose();
 });
@@ -585,8 +574,8 @@ it('queued Command-N captures its actual exit origin after prior navigation ACK 
   const r = new MemoryRepository();
   r.snapshot = {
     items: [
-      item(1, null, 'stash', 0),
-      item(2, null, 'stash', 1),
+      item(1, null, 'tree', 0),
+      item(2, null, 'tree', 1),
       item(3, null, 'note', 2),
     ],
     drafts: [],
@@ -594,7 +583,7 @@ it('queued Command-N captures its actual exit origin after prior navigation ACK 
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   let wrote!: () => void;
@@ -608,15 +597,15 @@ it('queued Command-N captures its actual exit origin after prior navigation ACK 
     }
     return result;
   };
-  const calls: Parameters<MemoryRepository['createChildStash']>[0][] = [];
-  const create = r.createChildStash.bind(r);
-  r.createChildStash = async (request) => {
+  const calls: Parameters<MemoryRepository['createChildTree']>[0][] = [];
+  const create = r.createChildTree.bind(r);
+  r.createChildTree = async (request) => {
     calls.push(structuredClone(request));
     return create(request);
   };
-  const visiting = c.openStash(id(2));
+  const visiting = c.openTree(id(2));
   await written;
-  const creating = c.createStash(id(3));
+  const creating = c.createTree(id(3));
   release();
   expect(await visiting).toBe(true);
   expect(await creating).toBe(true);
@@ -635,13 +624,13 @@ for (const nextAction of ['Delete', 'Home', 'Home-clean'] as const)
   it(`a newer ${nextAction} failure preserves exact lost-purge reconciliation`, async () => {
     const r = new MemoryRepository();
     r.snapshot = {
-      items: [{ ...item(1, null, 'stash', 0), deletedAt: 3 }],
+      items: [{ ...item(1, null, 'tree', 0), deletedAt: 3 }],
       drafts: [],
       undoDeleteIds: [],
     };
     const c = new WorkspaceController(r);
     await c.start();
-    await c.openStash(id(1));
+    await c.openTree(id(1));
     const purge = r.purgeItem.bind(r);
     let lose = true;
     r.purgeItem = async (request) => {
@@ -659,7 +648,7 @@ for (const nextAction of ['Delete', 'Home', 'Home-clean'] as const)
     expect(
       await (nextAction === 'Delete'
         ? c.purgeItem(c.capturePurge(id(1)))
-        : c.openStash(null)),
+        : c.openTree(null)),
     ).toBe(false);
     c.editContext('compose', 'surviving Home draft');
     expect(c.state.purgedItemIds).toEqual([]);
@@ -701,15 +690,15 @@ it('a pending navigation checkpoint leaves editing available until the structura
 });
 function broadDeletedTree(width: number): WorkspaceSnapshot {
   const items: Item[] = [
-    { ...item(1, null, 'stash', 0), deletedAt: 3 },
+    { ...item(1, null, 'tree', 0), deletedAt: 3 },
     { ...item(2, null, 'note', 1), deletedAt: 4 },
   ];
   // Interleave inherited siblings, topmost explicit roots, and deeper explicit records.
   for (let i = 0; i < width; i++) {
     const n = 3 + i * 4;
-    items.push(item(n, 1, 'stash', i));
+    items.push(item(n, 1, 'tree', i));
     items.push({
-      ...item(n + 1, n, 'stash', 0),
+      ...item(n + 1, n, 'tree', 0),
       deletedAt: 5,
       restoreParentId: id(n),
       restoreIndex: 0,
@@ -796,12 +785,12 @@ it('broad ancestor Restore has a bounded hierarchy-read budget at two widths', (
 
 it('uncertain purge requires every captured ID absent and repository acknowledgment before retiring caches', async () => {
   const r = new MemoryRepository();
-  const parent = { ...item(1, null, 'stash', 0), deletedAt: 3 };
+  const parent = { ...item(1, null, 'tree', 0), deletedAt: 3 };
   const child = item(2, 1, 'note', 0);
   r.snapshot = { items: [parent, child], drafts: [], undoDeleteIds: [] };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   c.editSource('parent composer');
   c.editContext(id(2), 'child source');
   const purge = r.purgeItem.bind(r);
@@ -838,7 +827,7 @@ it('prioritized purge reconciliation preserves the newer exact color retry and i
   const r = new MemoryRepository();
   r.snapshot = {
     items: [
-      { ...item(1, null, 'stash', 0), deletedAt: 3 },
+      { ...item(1, null, 'tree', 0), deletedAt: 3 },
       item(2, null, 'note', 0),
     ],
     drafts: [],
@@ -846,7 +835,7 @@ it('prioritized purge reconciliation preserves the newer exact color retry and i
   };
   const c = new WorkspaceController(r);
   await c.start();
-  await c.openStash(id(1));
+  await c.openTree(id(1));
   const purge = r.purgeItem.bind(r);
   let lost = true;
   r.purgeItem = async (request) => {

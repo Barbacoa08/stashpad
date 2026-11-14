@@ -1,12 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 const card = (p: Page, id: string) => p.locator(`[data-entry-id="${id}"]`);
 const handle = (p: Page, id: string) =>
-  card(p, id).getByRole('button', { name: 'Reorder item', exact: true });
+  card(p, id).getByRole('button', { name: 'Reorder note', exact: true });
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(
   p: Page,
-  sources = ['first **exact**', 'stash source', 'last `exact`'],
+  sources = ['first **exact**', 'tree source', 'last `exact`'],
 ) {
   await p.setViewportSize({ width: 1400, height: 900 });
   await p.goto('/?fixture');
@@ -341,7 +341,7 @@ test('rapid reversal retargets current visuals, then settles latest authoritativ
     await page.evaluate(() =>
       (window as any).__test.repo.snapshot.items.map((x: any) => x.markdown),
     ),
-  ).toEqual(['first **exact**', 'stash source', 'last `exact`']);
+  ).toEqual(['first **exact**', 'tree source', 'last `exact`']);
 });
 test('delayed reorder never takes newer Search focus, typing, or animates another view', async ({
   page,

@@ -2,7 +2,7 @@ import type { Item, WorkspaceSnapshot, Location, ColorToken } from './notes';
 import type {
   DraftAck,
   CaptureItem,
-  CreateChildStash,
+  CreateChildTree,
   ReorderItem,
   PurgeItem,
   TransitionLocation,
@@ -22,7 +22,7 @@ const touch = (x: Item) =>
   (x.updatedAt = Math.max(Date.now(), x.updatedAt + 1));
 function find(s: WorkspaceSnapshot, id: string): Item {
   const x = s.items.find((x) => x.id === id);
-  if (!x) throw new Error('This item is unavailable. Your input is retained.');
+  if (!x) throw new Error('This note is unavailable. Your input is retained.');
   return x;
 }
 function location(s: WorkspaceSnapshot, at: Location, allowNote = false) {
@@ -31,7 +31,7 @@ function location(s: WorkspaceSnapshot, at: Location, allowNote = false) {
   if (at.itemId !== null) {
     const x = find(s, at.itemId);
     if (
-      (!allowNote && x.kind !== 'stash') ||
+      (!allowNote && x.kind !== 'tree') ||
       effectiveScope(s.items, x.id) !== at.scope
     )
       throw new Error('Invalid location.');
@@ -95,7 +95,7 @@ function creation(
   if (at.itemId !== null) {
     const parent = find(s, at.itemId);
     if (parent.kind === 'note') {
-      parent.kind = 'stash';
+      parent.kind = 'tree';
       touch(parent);
     }
   }
@@ -124,8 +124,8 @@ export function captureItem(s: WorkspaceSnapshot, r: CaptureItem) {
   ack(s, r.draft, composeKey(r.location));
   creation(s, r.id, r.location, 'note', r.markdown);
 }
-export function createChildStash(s: WorkspaceSnapshot, r: CreateChildStash) {
-  creation(s, r.id, r.parent, 'stash', 'Untitled');
+export function createChildTree(s: WorkspaceSnapshot, r: CreateChildTree) {
+  creation(s, r.id, r.parent, 'tree', 'Untitled');
   if (r.leave)
     transitionLocation(s, {
       from: r.leave,
@@ -136,7 +136,7 @@ export function createChildStash(s: WorkspaceSnapshot, r: CreateChildStash) {
 export function promoteItem(s: WorkspaceSnapshot, id: string) {
   const x = find(s, id);
   if (x.kind === 'note') {
-    x.kind = 'stash';
+    x.kind = 'tree';
     touch(x);
   }
 }
@@ -193,7 +193,7 @@ export function reorderItem(s: WorkspaceSnapshot, r: ReorderItem) {
   const x = find(s, r.id),
     actual = itemLocation(s.items, r.id);
   if (actual.scope !== r.group.scope || actual.itemId !== r.group.itemId)
-    throw new Error('Items can be reordered only within the same location.');
+    throw new Error('Notes can be reordered only within the same location.');
   const group = directEntries(s, r.group);
   if (
     !Number.isSafeInteger(r.toIndex) ||
@@ -215,7 +215,7 @@ const sameIds = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id, i) => id === b[i]);
 const stale = () =>
   new Error(
-    'The captured items or destination changed. Review the action again; your content is retained.',
+    'The captured notes or destination changed. Review the action again; your content is retained.',
   );
 function uniqueIds(ids: string[]) {
   if (
@@ -488,7 +488,7 @@ function restoreGroup(s: WorkspaceSnapshot, ids: string[]) {
         ? x.restoreParentId
         : null;
     if (parent !== null && index.get(parent)!.kind === 'note') {
-      index.get(parent)!.kind = 'stash';
+      index.get(parent)!.kind = 'tree';
       touch(index.get(parent)!);
     }
     const newKey = parent ?? 'live',

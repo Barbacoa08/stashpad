@@ -7,55 +7,55 @@ for (const constrained of [false, true])
       constrained ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (constrained)
       await page.addStyleTag({ content: ':root {font-size:24px !important}' });
     const fixture = await page.evaluate(async () => {
       const t = (window as any).__test;
       const s = {
-        stashes: [] as any[],
-        notes: [] as any[],
+        items: [] as any[],
         drafts: [],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       };
       for (let i = 0; i < 40; i++) {
         const id = `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
-        s.stashes.push({
+        s.items.push({
           id,
-          name:
+          kind: 'tree',
+          markdown:
             `Level ${String(i + 1).padStart(2, '0')} ` +
             'long-name-'.repeat(19),
-          parentId: s.stashes.at(-1)?.id ?? null,
+          parentId: s.items.at(-1)?.id ?? null,
           createdAt: i,
           updatedAt: i,
         });
       }
-      const owner = s.stashes[38];
+      const owner = s.items[38];
       for (let i = 0; i < 2; i++)
-        s.notes.push({
+        s.items.push({
           id: `00000000-0000-4001-8000-${String(i).padStart(12, '0')}`,
-          stashId: owner.id,
+          parentId: owner.id,
           markdown: `match note ${i + 1}`,
           createdAt: 50 + i,
           updatedAt: 50 + i,
           done: false,
           deletedAt: null,
         });
-      t.seedLegacy(s);
+      t.seed(s);
       await t.controller.start();
-      await t.controller.openStash(owner.id);
+      await t.controller.openTree(owner.id);
       const label = (x: any) => ({
         ...x,
-        name: Array.from(x.name).slice(0, 31).join('') + '…',
+        name: Array.from(x.markdown).slice(0, 31).join('') + '…',
       });
       return {
         owner: label(owner),
-        ancestor: label(s.stashes[16]),
-        child: label(s.stashes[39]),
+        ancestor: label(s.items[16]),
+        child: label(s.items[39]),
       };
     });
     const stream = page.getByRole('region', { name: 'Note stream' }),
-      capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+      capture = page.getByRole('textbox', { name: 'New note Markdown' });
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
     ).toBeVisible();
@@ -73,20 +73,20 @@ for (const constrained of [false, true])
         .locator('.app-header h1')
         .evaluate((el) => Array.from(el.textContent ?? '').length),
     ).toBeLessThanOrEqual(96);
-    const sidebar = page.getByRole('navigation', { name: 'Stashes' }),
+    const sidebar = page.getByRole('navigation', { name: 'Trees' }),
       owner = sidebar.getByRole('button', {
-        name: `Open stash ${fixture.owner.name}`,
+        name: `Open tree ${fixture.owner.name}`,
         exact: true,
       });
     await owner.scrollIntoViewIfNeeded();
     expect(
       await owner
-        .locator('.stash-name')
+        .locator('.tree-name')
         .evaluate((el) => el.getBoundingClientRect().width),
     ).toBeGreaterThanOrEqual(40);
     await expect(owner.locator('svg[aria-hidden="true"]')).toHaveCount(1);
     const toggle = sidebar.getByRole('button', {
-      name: `Collapse stash ${fixture.owner.name}`,
+      name: `Collapse tree ${fixture.owner.name}`,
       exact: true,
     });
     expect(
@@ -104,25 +104,25 @@ for (const constrained of [false, true])
     await toggle.click();
     await expect(
       sidebar.getByRole('button', {
-        name: `Open stash ${fixture.child.name}`,
+        name: `Open tree ${fixture.child.name}`,
         exact: true,
       }),
     ).toHaveCount(0);
     await sidebar
       .getByRole('button', {
-        name: `Expand stash ${fixture.owner.name}`,
+        name: `Expand tree ${fixture.owner.name}`,
         exact: true,
       })
       .click();
     await sidebar
       .getByRole('button', {
-        name: `Open stash ${fixture.ancestor.name}`,
+        name: `Open tree ${fixture.ancestor.name}`,
         exact: true,
       })
       .click();
     expect(
       await page.evaluate(
-        () => (window as any).__test.controller.state.stashId,
+        () => (window as any).__test.controller.state.ownerId,
       ),
     ).toBe(fixture.ancestor.id);
     await page.getByRole('searchbox').fill('match');
@@ -141,10 +141,10 @@ for (const constrained of [false, true])
     ).toHaveText('match note 1');
     expect(
       await page.evaluate(
-        () => (window as any).__test.controller.state.stashId,
+        () => (window as any).__test.controller.state.ownerId,
       ),
     ).toBe(fixture.ancestor.id);
-    await expect(cards.first().locator('.stash-icon')).toHaveCount(0);
+    await expect(cards.first().locator('.tree-icon')).toHaveCount(0);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(constrained ? 800 : 1440);
@@ -155,25 +155,26 @@ test('deep sidebar retains usable label and disclosure width at 800x600 and 150%
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.addStyleTag({ content: ':root {font-size:24px !important}' });
   await page.evaluate(async () => {
     const t = (window as any).__test,
-      s = { stashes: [] as any[], notes: [], drafts: [], undoDeleteId: null };
+      s = { items: [] as any[], drafts: [], undoDeleteIds: [] };
     for (let i = 0; i < 16; i++)
-      s.stashes.push({
+      s.items.push({
         id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-        name: `Deep stash ${i}`,
-        parentId: s.stashes.at(-1)?.id ?? null,
+        kind: 'tree',
+        markdown: `Deep tree ${i}`,
+        parentId: s.items.at(-1)?.id ?? null,
         createdAt: i,
         updatedAt: i,
       });
-    t.seedLegacy(s);
+    t.seed(s);
     await t.controller.start();
-    await t.controller.openStash(s.stashes[14].id);
+    await t.controller.openTree(s.items[14].id);
   });
   const button = page.getByRole('button', {
-    name: 'Open stash Deep stash 14',
+    name: 'Open tree Deep tree 14',
     exact: true,
   });
   await button.scrollIntoViewIfNeeded();

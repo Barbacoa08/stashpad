@@ -1,12 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 async function child(p: Page, label: string) {
   await p.keyboard.press('Meta+n');
   await expect(capture(p)).toBeFocused();
   return p.evaluate(async (label) => {
     const c = (window as any).__test.controller;
-    const id = c.state.stashId;
+    const id = c.state.ownerId;
     c.editContext(id, label);
     await c.flush();
     // History tests revisit saved containers; empty-container exits are covered separately.
@@ -29,7 +29,7 @@ test('history follows successful visits and ancestor clicks flush source', async
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBe(parent);
   await page.getByRole('button', { name: 'Forward', exact: true }).click();
@@ -40,7 +40,7 @@ test('history follows successful visits and ancestor clicks flush source', async
     .click();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as any).__test.controller.state.stashId),
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
     )
     .toBe(parent);
   expect(nested).not.toBe(parent);
@@ -230,15 +230,15 @@ test('successful full backup replacement resets all session visits', async ({
   await child(page, 'Parent');
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 4,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-11T00:00:00.000Z',
-      workspace: {
+      library: {
         items: [],
         drafts: [
           { key: 'compose', markdown: 'restored', revision: 1, updatedAt: 0 },
         ],
-        undoDeleteId: null,
+        undoDeleteIds: [],
       },
     });
   });
@@ -246,7 +246,7 @@ test('successful full backup replacement resets all session visits', async ({
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(capture(page)).toHaveText('restored');
   await expect(back(page)).toBeDisabled();
@@ -292,7 +292,7 @@ test('bounded deep breadcrumbs and controls fit 800 by 600 at 150 percent; brows
     let parent = null;
     for (let i = 0; i < 30; i++) {
       const id = crypto.randomUUID();
-      await t.repo.createChildStash({
+      await t.repo.createChildTree({
         id,
         parent: { scope: 'live', itemId: parent },
       });
@@ -347,7 +347,7 @@ test('right-side status retains explanation when expanded; collapsed retry remai
   await page.setViewportSize({ width: 1400, height: 800 });
   await page.goto('/?fixture');
   await expect(capture(page)).toBeVisible();
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status).toContainText('Notes and drafts on this Mac.');
   expect(
     await status.evaluate((el) =>
@@ -398,7 +398,7 @@ test('collapsed narrow 150 percent color failure keeps pointer Retry clear of th
   const palette = page.getByRole('dialog', { name: 'Assign color' });
   await palette.getByRole('button', { name: 'Red', exact: true }).click();
   await expect(palette.getByRole('alert')).toContainText('failure');
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status).toContainText('Red for bounded palette item');
   await expect(status).not.toContainText(id!);
   const retry = page.getByRole('button', { name: 'Retry action', exact: true });
@@ -511,10 +511,10 @@ test('cancelled restore and failed replacement preserve the current session visi
   const parent = await child(page, 'Parent');
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 4,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-11T00:00:00.000Z',
-      workspace: { items: [], drafts: [], undoDeleteId: null },
+      library: { items: [], drafts: [], undoDeleteIds: [] },
     });
   });
   await page
@@ -532,7 +532,7 @@ test('cancelled restore and failed replacement preserve the current session visi
     (window as any).__test.repo.fail = 'restore';
   });
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(page.getByRole('alert')).toContainText('failure');
   expect((await at(page)).itemId).toBe(parent);

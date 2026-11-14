@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const card = (page: Page, id: string) =>
   page.locator(`[data-entry-id="${id}"]`);
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(page: Page) {
   await page.goto('/?fixture');
   await capture(page).waitFor();
@@ -20,7 +20,7 @@ async function seed(page: Page) {
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -42,7 +42,7 @@ test('live M offers Trash, stages without writing, and cancels neutrally', async
   await card(page, ids[0]).click();
   const before = await snapshot(page);
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   const trash = dialog.getByRole('option', { name: 'Trash', exact: true });
   await expect(trash).toBeVisible();
   await trash.click();
@@ -60,7 +60,7 @@ test('M stages destinations without writing, traps focus, and cancels from Escap
   await card(page, ids[0]).click();
   const before = await snapshot(page);
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await expect(dialog).toBeVisible();
   const list = dialog.getByRole('listbox', { name: 'Destination' });
   await expect(list).toBeFocused();
@@ -105,7 +105,7 @@ test('Enter confirms the captured selected source block once and excludes select
   await card(page, ids[0]).click();
   await card(page, ids[1]).click({ modifiers: ['Meta'] });
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await expect(
     dialog.getByRole('option', {
       name: 'destination alpha, Root',
@@ -137,7 +137,7 @@ test('failed modal movement retains the exact destination for Retry and ignores 
   const ids = await seed(page);
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog
     .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
@@ -194,7 +194,7 @@ test('pending modal movement commits once and cannot be presented as cancelled',
     };
   });
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog
     .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
@@ -238,7 +238,7 @@ for (const scale of [100, 150])
       await page.addStyleTag({ content: ':root{font-size:24px !important}' });
     await card(page, ids[0]).click();
     await page.keyboard.press('m');
-    const dialog = page.getByRole('dialog', { name: 'Move items' });
+    const dialog = page.getByRole('dialog', { name: 'Move notes' });
     await expect(dialog).toBeVisible();
     await expect(
       dialog.getByRole('button', { name: 'Move', exact: true }),
@@ -272,7 +272,7 @@ test('a stale staged destination explains the failure inside the modal without m
   const ids = await seed(page);
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog
     .getByRole('option', { name: 'destination alpha, Root', exact: true })
     .click();
@@ -303,7 +303,7 @@ test('Trash movement offers both roots and moves directly to Root', async ({
   await page.getByRole('button', { name: 'Trash', exact: true }).click();
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await expect(
     dialog.getByRole('option', { name: 'Root', exact: true }),
   ).toBeVisible();
@@ -341,7 +341,7 @@ test('duplicate destination names expose their ancestry, stage without writing, 
     const t = (window as any).__test;
     const duplicates = [crypto.randomUUID(), crypto.randomUUID()];
     for (const [index, id] of duplicates.entries()) {
-      await t.repo.createChildStash({
+      await t.repo.createChildTree({
         id,
         parent: { scope: 'live', itemId: ids[index + 1] },
       });
@@ -356,7 +356,7 @@ test('duplicate destination names expose their ancestry, stage without writing, 
   await card(page, ids[0]).click();
   const before = await snapshot(page);
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   const alpha = dialog.getByRole('option', {
     name: 'Shared destination, Root / destination alpha',
     exact: true,
@@ -393,7 +393,7 @@ test('one Command-Z restores a noncontiguous M-to-Trash group in original order 
   await card(page, ids[0]).click();
   await card(page, ids[2]).click({ modifiers: ['Meta'] });
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog.getByRole('option', { name: 'Trash', exact: true }).click();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
@@ -453,7 +453,7 @@ test('both-area duplicate destinations expose their scoped paths and restoring a
   await page.getByRole('button', { name: 'Trash', exact: true }).click();
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await expect(
     dialog.getByRole('option', {
       name: 'Shared destination, Root',
@@ -517,7 +517,7 @@ test('cross-area lost acknowledgment retries the exact move without replacing a 
   });
   await card(page, ids[0]).click();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog.getByRole('option', { name: 'Trash', exact: true }).click();
   await page.keyboard.press('Enter');
   await expect(dialog.getByRole('alert')).toContainText(
@@ -547,7 +547,7 @@ for (const newerSelection of [false, true])
     await card(page, ids[0]).click();
     await card(page, ids[2]).click({ modifiers: ['Meta'] });
     await page.keyboard.press('m');
-    const dialog = page.getByRole('dialog', { name: 'Move items' });
+    const dialog = page.getByRole('dialog', { name: 'Move notes' });
     await dialog.getByRole('option', { name: 'Trash', exact: true }).click();
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
@@ -580,7 +580,7 @@ test('current backup round trip retains one persistent group Undo action', async
   await card(page, ids[0]).click();
   await card(page, ids[2]).click({ modifiers: ['Meta'] });
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog.getByRole('option', { name: 'Trash', exact: true }).click();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
@@ -590,9 +590,9 @@ test('current backup round trip retains one persistent group Undo action', async
   const backup = await page.evaluate(() =>
     JSON.parse((window as any).__test.repo.exported),
   );
-  expect(backup.version).toBe(6);
-  expect(backup.workspace.undoDeleteIds).toEqual([ids[0], ids[2]]);
-  expect(backup.workspace).not.toHaveProperty('undoDeleteId');
+  expect(backup.version).toBe(7);
+  expect(backup.library.undoDeleteIds).toEqual([ids[0], ids[2]]);
+  expect(backup.library).not.toHaveProperty('undoDeleteId');
   await page.evaluate(() => {
     const t = (window as any).__test;
     t.repo.restoreText = t.repo.exported;
@@ -601,7 +601,7 @@ test('current backup round trip retains one persistent group Undo action', async
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await capture(page).press('Escape');
   await page.keyboard.press('Meta+z');
@@ -617,7 +617,7 @@ test('pending group Undo Retry shares the shortcut and button guard and preserve
   await card(page, ids[0]).click();
   await card(page, ids[2]).click({ modifiers: ['Meta'] });
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await dialog.getByRole('option', { name: 'Trash', exact: true }).click();
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);

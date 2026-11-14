@@ -191,7 +191,7 @@
   <div
     class="color-choices"
     role="grid"
-    aria-label="Item color"
+    aria-label="Note color"
     aria-describedby="color-palette-instructions"
     aria-disabled={disabled}
     aria-busy={disabled}

@@ -95,7 +95,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <dialog
   use:mount
-  aria-label="Move items"
+  aria-label="Move notes"
   aria-describedby="move-summary"
   aria-busy={pending}
   onkeydown={keydown}
@@ -115,10 +115,10 @@
       oncancel();
   }}
 >
-  <h2>Move items</h2>
+  <h2>Move notes</h2>
   <p id="move-summary">
     Choose a destination for {count}
-    {count === 1 ? 'item' : 'items'}. Independently deleted descendants stay in
+    {count === 1 ? 'note' : 'notes'}. Independently deleted descendants stay in
     Trash when their parent moves to Root.
   </p>
   <!-- svelte-ignore a11y_interactive_supports_focus -->

@@ -47,7 +47,7 @@ for (const undoAvailable of [false, true])
     page,
   }) => {
     await page.goto('/?fixture');
-    const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+    const capture = page.getByRole('textbox', { name: 'New note Markdown' });
     for (const source of ['First **saved** note', 'Second saved note']) {
       await capture.fill(source);
       await capture.press('Enter');

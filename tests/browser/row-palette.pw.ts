@@ -7,7 +7,7 @@ const palette = (page: Page) =>
 async function seed(page: Page) {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   return page.evaluate(async () => {
     const t = (window as any).__test;
     const ids: string[] = [];

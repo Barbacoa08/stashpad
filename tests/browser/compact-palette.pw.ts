@@ -6,7 +6,7 @@ for (const scale of [1, 1.5]) {
     browserName,
   }) => {
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     await page.evaluate(async (scale) => {
       document.documentElement.style.fontSize = `${16 * scale}px`;
       const t = (window as any).__test;

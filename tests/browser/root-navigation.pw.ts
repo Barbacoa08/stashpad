@@ -8,12 +8,12 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
-    const navigation = page.getByRole('navigation', { name: 'Stashes' });
+    const navigation = page.getByRole('navigation', { name: 'Trees' });
     const root = navigation.getByRole('button', { name: 'Root', exact: true });
     await expect(root).toHaveAttribute('aria-current', 'page');
     await expect(root).not.toHaveAttribute('aria-expanded');
@@ -46,7 +46,7 @@ for (const large of [false, true]) {
     await expect(separator).toBeVisible();
     await expect(
       navigation.getByRole('button', {
-        name: /^(Expand|Collapse) stash Root$/,
+        name: /^(Expand|Collapse) tree Root$/,
       }),
     ).toHaveCount(0);
     await root.click();
@@ -67,27 +67,27 @@ test('Root separator stays above child rows without intercepting keyboard naviga
   browserName,
 }) => {
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.keyboard.press('Meta+n');
   await page.evaluate(async () => {
     const t = (window as any).__test;
-    const id = t.controller.state.stashId;
+    const id = t.controller.state.ownerId;
     t.controller.editContext(id, 'Root child');
     await t.controller.flush();
     t.controller.editSource('saved child');
     await t.controller.save();
   });
-  const navigation = page.getByRole('navigation', { name: 'Stashes' });
+  const navigation = page.getByRole('navigation', { name: 'Trees' });
   const root = navigation.getByRole('button', { name: 'Root', exact: true });
   const child = navigation.getByRole('button', {
-    name: 'Open stash Root child',
+    name: 'Open tree Root child',
     exact: true,
   });
   await expect(navigation.getByRole('separator')).toBeVisible();
   expect(
     await navigation
       .getByRole('separator')
-      .evaluate((el) => el.nextElementSibling?.classList.contains('stash-row')),
+      .evaluate((el) => el.nextElementSibling?.classList.contains('tree-row')),
   ).toBe(true);
   await root.focus();
   await expect(root).toBeFocused();
@@ -101,13 +101,13 @@ test('Root separator stays above child rows without intercepting keyboard naviga
   await expect(root).toHaveAttribute('aria-current', 'page');
   await child.click();
   await page
-    .getByRole('textbox', { name: 'Capture Markdown' })
+    .getByRole('textbox', { name: 'New note Markdown' })
     .fill('Home fixture bytes');
   await page.keyboard.press('Meta+1');
   await expect(page.locator('h1')).toHaveText('Root');
   await child.click();
   await expect(
-    page.getByRole('textbox', { name: 'Capture Markdown' }),
+    page.getByRole('textbox', { name: 'New note Markdown' }),
   ).toHaveText('Home fixture bytes');
 });
 
@@ -115,12 +115,12 @@ test('M presents Root paths while physical Home and End still stage destinations
   page,
 }) => {
   await page.goto('/?fixture');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.fill('Home source bytes');
   await capture.press('Enter');
   await page.getByRole('region', { name: 'Note stream' }).focus();
   await page.keyboard.press('m');
-  const dialog = page.getByRole('dialog', { name: 'Move items' });
+  const dialog = page.getByRole('dialog', { name: 'Move notes' });
   await expect(dialog).toContainText('Trash when their parent moves to Root.');
   const root = dialog.getByRole('option', { name: 'Root', exact: true });
   const trash = dialog.getByRole('option', { name: 'Trash', exact: true });

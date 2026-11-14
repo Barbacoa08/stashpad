@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const stream = (page: Page) =>
   page.getByRole('region', { name: 'Note stream' });
 const card = (page: Page, id: string) =>
@@ -63,7 +63,7 @@ test('concise local activity retains actual live status and error recovery', asy
 }) => {
   await page.setViewportSize({ width: 1400, height: 800 });
   await seed(page);
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status.getByRole('heading')).toHaveText('Local activity');
   await expect(status).toContainText('Notes and drafts on this Mac.');
   await capture(page).fill('retained local draft');
@@ -136,7 +136,7 @@ for (const scale of [100, 150])
     await page.evaluate(async () => {
       const t = (window as any).__test;
       for (let i = 0; i < 30; i++)
-        await t.repo.createChildStash({
+        await t.repo.createChildTree({
           id: crypto.randomUUID(),
           parent: { scope: 'live', itemId: null },
         });
@@ -279,10 +279,10 @@ test('document selection, palette, modal, busy state, and focused controls retai
   expect(await marker(page)).toEqual([ids[0]]);
   await page.evaluate(() => {
     (window as any).__test.repo.restoreText = JSON.stringify({
-      format: 'stashpad-alpha',
-      version: 4,
+      format: 'scratchtree-alpha',
+      version: 7,
       exportedAt: '2026-11-12T00:00:00.000Z',
-      workspace: { items: [], drafts: [], undoDeleteId: null },
+      library: { items: [], drafts: [], undoDeleteIds: [] },
     });
   });
   await page

@@ -1,7 +1,7 @@
 use rusqlite::Connection;
-use stashpad_alpha_kit::{backup, store::Store};
+use scratchtree_lib::{backup, store::Store};
 #[test]
-fn schema_six_stores_strict_array_and_preserves_unknown_similarly_named_setting() {
+fn schema_seven_stores_strict_array_and_preserves_unknown_similarly_named_setting() {
     let d = tempfile::tempdir().unwrap();
     let p = d.path().join("workspace.sqlite3");
     drop(Store::open(&p).unwrap());
@@ -9,35 +9,51 @@ fn schema_six_stores_strict_array_and_preserves_unknown_similarly_named_setting(
     let version: i64 = c
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 6);
+    assert_eq!(version, 7);
     let undo: String = c
         .query_row(
-            "SELECT value FROM settings WHERE key='undoDeleteId'",
+            "SELECT value FROM settings WHERE key='undoDeleteIds'",
             [],
             |r| r.get(0),
         )
         .unwrap();
     assert_eq!(undo, "[]");
     c.execute(
-        "INSERT INTO settings VALUES ('undoDeleteIds','private-unknown')",
-        [],
-    )
-    .unwrap();
-    c.execute(
-        "UPDATE settings SET value='not-json' WHERE key='undoDeleteId'",
+        "INSERT INTO settings VALUES ('undoDeleteIds.extra','private-unknown')",
         [],
     )
     .unwrap();
     drop(c);
+    let mut db = Store::open(&p).unwrap();
+    db.replace(&scratchtree_lib::model::WorkspaceSnapshot::default())
+        .unwrap();
+    drop(db);
+    let c = Connection::open(&p).unwrap();
+    let unknown: String = c
+        .query_row(
+            "SELECT value FROM settings WHERE key='undoDeleteIds.extra'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(unknown, "private-unknown");
+    c.execute(
+        "UPDATE settings SET value='not-json' WHERE key='undoDeleteIds'",
+        [],
+    )
+    .unwrap();
+    drop(c);
+    let before = std::fs::read(&p).unwrap();
     assert!(Store::open(&p).is_err());
+    assert_eq!(std::fs::read(&p).unwrap(), before);
 }
 #[test]
-fn backup_six_requires_ordered_unique_exact_explicit_deletion_ids() {
-    let valid = br#"{"format":"stashpad-alpha","version":6,"exportedAt":"2026-11-12T00:00:00.000Z","workspace":{"items":[],"drafts":[],"undoDeleteIds":[]}}"#;
+fn backup_seven_requires_ordered_unique_exact_explicit_deletion_ids() {
+    let valid = br#"{"format":"scratchtree-alpha","version":7,"exportedAt":"2026-11-12T00:00:00.000Z","library":{"items":[],"drafts":[],"undoDeleteIds":[]}}"#;
     assert!(backup::validate(valid).is_ok());
 }
 
-use stashpad_alpha_kit::{
+use scratchtree_lib::{
     model::*,
     store::{capture_move, capture_undo},
 };
@@ -97,7 +113,7 @@ fn group_move_undo_reopens_and_exact_replay_preserves_content_and_newer_marker()
             item(1, None, Kind::Note, 0),
             item(2, None, Kind::Note, 1),
             item(3, None, Kind::Note, 2),
-            item(4, None, Kind::Stash, 3),
+            item(4, None, Kind::Tree, 3),
             item(5, Some(4), Kind::Note, 0),
         ],
         drafts: vec![Draft {
@@ -137,7 +153,7 @@ fn group_move_undo_reopens_and_exact_replay_preserves_content_and_newer_marker()
     assert_eq!(db.undo(&request).unwrap(), next);
     assert_eq!(next.drafts, s.drafts);
     let imported = backup::validate(&backup::encode(&next).unwrap()).unwrap();
-    assert_eq!(imported.workspace, next);
+    assert_eq!(imported.library, next);
 }
 #[test]
 fn one_group_undo_restores_noncontiguous_source_order_and_filters_partial_members() {
@@ -206,9 +222,9 @@ fn one_group_undo_restores_noncontiguous_source_order_and_filters_partial_member
 fn trash_to_live_chosen_owner_detaches_nearest_independent_records_and_preserves_group_members() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("workspace.sqlite3")).unwrap();
-    let mut a = item(1, None, Kind::Stash, 0);
+    let mut a = item(1, None, Kind::Tree, 0);
     a.deleted_at = Some(3);
-    let mut independent = item(3, Some(2), Kind::Stash, 0);
+    let mut independent = item(3, Some(2), Kind::Tree, 0);
     independent.deleted_at = Some(4);
     independent.restore_parent_id = Some(id(2));
     independent.restore_index = Some(0);
@@ -219,10 +235,10 @@ fn trash_to_live_chosen_owner_detaches_nearest_independent_records_and_preserves
     let s = WorkspaceSnapshot {
         items: vec![
             a,
-            item(2, Some(1), Kind::Stash, 0),
+            item(2, Some(1), Kind::Tree, 0),
             independent,
             deeper,
-            item(5, None, Kind::Stash, 0),
+            item(5, None, Kind::Tree, 0),
         ],
         drafts: vec![],
         undo_delete_ids: vec![id(1), id(3), id(4)],
@@ -309,114 +325,8 @@ fn stale_redelete_cannot_be_consumed_by_old_exact_undo_request() {
 }
 
 #[test]
-fn schema_five_conversion_validates_frozen_source_and_preserves_all_rows_and_unknown_settings() {
-    for marker in [None, Some("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")] {
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("workspace.sqlite3");
-        let mut db = Store::open(&p).unwrap();
-        let mut deleted = item(2, Some(1), Kind::Stash, 0);
-        deleted.deleted_at = Some(4);
-        deleted.restore_parent_id = Some(id(3));
-        deleted.restore_index = Some(0);
-        let mut ancestor = item(1, None, Kind::Stash, 0);
-        ancestor.id = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".into();
-        ancestor.deleted_at = Some(3);
-        deleted.parent_id = Some(ancestor.id.clone());
-        let mut s = WorkspaceSnapshot {
-            items: vec![ancestor, deleted, item(3, None, Kind::Note, 0)],
-            drafts: vec![Draft {
-                key: format!("compose:{}", id(3)),
-                markdown: "**draft**\r\n".into(),
-                revision: 9,
-                updated_at: 10,
-            }],
-            undo_delete_ids: marker.into_iter().map(str::to_string).collect(),
-        };
-        s.items.sort_by(|a, b| a.id.cmp(&b.id));
-        db.replace(&s).unwrap();
-        drop(db);
-        let c = Connection::open(&p).unwrap();
-        c.execute(
-            "UPDATE settings SET value=?1 WHERE key='undoDeleteId'",
-            [marker],
-        )
-        .unwrap();
-        c.execute_batch("INSERT INTO settings VALUES ('undoDeleteIds','unknown-exact');INSERT INTO settings VALUES ('other','arbitrary');PRAGMA user_version=5;CREATE TRIGGER no_item_churn BEFORE UPDATE ON items BEGIN SELECT RAISE(ABORT,'rows must remain unchanged'); END;").unwrap();
-        drop(c);
-        let mut db = Store::open(&p).unwrap();
-        assert_eq!(db.load().unwrap(), s);
-        db.replace(&s).unwrap();
-        drop(db);
-        let c = Connection::open(&p).unwrap();
-        assert_eq!(
-            c.query_row(
-                "SELECT value FROM settings WHERE key='undoDeleteIds'",
-                [],
-                |r| r.get::<_, String>(0)
-            )
-            .unwrap(),
-            "unknown-exact"
-        );
-        assert_eq!(
-            c.query_row("SELECT value FROM settings WHERE key='other'", [], |r| {
-                r.get::<_, String>(0)
-            })
-            .unwrap(),
-            "arbitrary"
-        );
-    }
-}
-#[test]
-fn schema_five_invalid_source_or_injected_setting_write_rolls_back_exact_original_file() {
-    for mode in [
-        "bad-id",
-        "case-mismatch",
-        "array",
-        "bad-draft",
-        "write-failure",
-    ] {
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("workspace.sqlite3");
-        let mut db = Store::open(&p).unwrap();
-        let mut x = item(1, None, Kind::Note, 0);
-        x.id = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".into();
-        x.deleted_at = Some(3);
-        db.replace(&WorkspaceSnapshot {
-            items: vec![x.clone()],
-            undo_delete_ids: vec![x.id.clone()],
-            ..Default::default()
-        })
-        .unwrap();
-        drop(db);
-        let c = Connection::open(&p).unwrap();
-        let raw = match mode {
-            "bad-id" => "missing",
-            "case-mismatch" => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            "array" => "[]",
-            _ => &x.id,
-        };
-        c.execute(
-            "UPDATE settings SET value=?1 WHERE key='undoDeleteId'",
-            [raw],
-        )
-        .unwrap();
-        c.execute_batch("INSERT INTO settings VALUES ('other','retained');PRAGMA user_version=5;")
-            .unwrap();
-        if mode == "bad-draft" {
-            c.execute("INSERT INTO drafts VALUES ('invalid','retained',1,1)", [])
-                .unwrap();
-        }
-        if mode == "write-failure" {
-            c.execute_batch("CREATE TRIGGER fail_setting AFTER INSERT ON settings WHEN NEW.key='undoDeleteId' BEGIN SELECT RAISE(ABORT,'synthetic failure after array insertion'); END;").unwrap();
-        }
-        drop(c);
-        let before = std::fs::read(&p).unwrap();
-        assert!(Store::open(&p).is_err(), "{mode}");
-        assert_eq!(std::fs::read(&p).unwrap(), before, "{mode}");
-    }
-}
-#[test]
-fn schema_six_missing_null_malformed_duplicate_live_or_wrong_case_marker_rejects_without_writes() {
+fn schema_seven_missing_null_malformed_duplicate_live_or_wrong_case_marker_rejects_without_writes()
+{
     for raw in [
         None,
         Some("null"),
@@ -438,13 +348,13 @@ fn schema_six_missing_null_malformed_duplicate_live_or_wrong_case_marker_rejects
         match raw {
             Some(raw) => {
                 c.execute(
-                    "UPDATE settings SET value=?1 WHERE key='undoDeleteId'",
+                    "UPDATE settings SET value=?1 WHERE key='undoDeleteIds'",
                     [raw],
                 )
                 .unwrap();
             }
             None => {
-                c.execute("DELETE FROM settings WHERE key='undoDeleteId'", [])
+                c.execute("DELETE FROM settings WHERE key='undoDeleteIds'", [])
                     .unwrap();
             }
         }
@@ -454,58 +364,7 @@ fn schema_six_missing_null_malformed_duplicate_live_or_wrong_case_marker_rejects
         assert_eq!(std::fs::read(&p).unwrap(), before);
     }
 }
-#[test]
-fn converted_v5_envelope_overflow_rolls_back_rows_settings_and_version() {
-    let d = tempfile::tempdir().unwrap();
-    let p = d.path().join("workspace.sqlite3");
-    let mut db = Store::open(&p).unwrap();
-    let mut s = WorkspaceSnapshot {
-        items: (1..=10)
-            .map(|n| item(n, None, Kind::Note, n as i64 - 1))
-            .collect(),
-        ..Default::default()
-    };
-    s.items[0].deleted_at = Some(3);
-    s.items[0].position = 0;
-    for x in s.items.iter_mut().skip(1) {
-        x.position -= 1;
-    }
-    s.undo_delete_ids = vec![id(1)];
-    for x in s.items.iter_mut().take(9) {
-        x.markdown = "x".repeat(MAX_SOURCE);
-    }
-    s.items[9].markdown = String::new();
-    let mut old = serde_json::to_value(&s).unwrap();
-    old.as_object_mut().unwrap().remove("undoDeleteIds");
-    old["undoDeleteId"] = id(1).into();
-    let mut envelope = serde_json::json!({"format":"stashpad-alpha","version":5,"exportedAt":"2026-11-12T00:00:00.000Z","workspace":old});
-    let gap = MAX_ENVELOPE - serde_json::to_vec(&envelope).unwrap().len();
-    assert!(gap < MAX_SOURCE);
-    envelope["workspace"]["items"][9]["markdown"] = "x".repeat(gap).into();
-    let text = serde_json::to_vec(&envelope).unwrap();
-    assert_eq!(text.len(), MAX_ENVELOPE);
-    assert!(stashpad_alpha_kit::v5_backup::validate(&text).is_ok());
-    assert!(backup::validate(&text).is_err());
-    s.items[9].markdown = "x".repeat(gap - 3);
-    db.replace(&s).unwrap();
-    drop(db);
-    let c = Connection::open(&p).unwrap();
-    c.execute(
-        "UPDATE items SET markdown=?1 WHERE id=?2",
-        rusqlite::params!["x".repeat(gap), id(10)],
-    )
-    .unwrap();
-    c.execute(
-        "UPDATE settings SET value=?1 WHERE key='undoDeleteId'",
-        [id(1)],
-    )
-    .unwrap();
-    c.execute_batch("PRAGMA user_version=5;").unwrap();
-    drop(c);
-    let before = std::fs::read(&p).unwrap();
-    assert!(Store::open(&p).is_err());
-    assert_eq!(std::fs::read(&p).unwrap(), before);
-}
+
 #[test]
 fn broad_group_undo_has_one_atomic_mutation_and_preserves_four_thousand_roots_in_marker_order() {
     for width in [1000, 4000] {
@@ -617,7 +476,7 @@ fn cross_area_rejects_added_children_changed_facts_and_replays_newer_source_only
     let mut db = Store::open(&d.path().join("workspace.sqlite3")).unwrap();
     let s = WorkspaceSnapshot {
         items: vec![
-            item(1, None, Kind::Stash, 0),
+            item(1, None, Kind::Tree, 0),
             item(2, Some(1), Kind::Note, 0),
         ],
         ..Default::default()
@@ -679,7 +538,7 @@ fn singleton_restore_preserves_manually_reordered_inherited_siblings_when_detach
 ) {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("workspace.sqlite3")).unwrap();
-    let mut root = item(1, None, Kind::Stash, 0);
+    let mut root = item(1, None, Kind::Tree, 0);
     root.deleted_at = Some(3);
     let mut detached = item(4, Some(1), Kind::Note, 1);
     detached.deleted_at = Some(4);
@@ -744,15 +603,14 @@ fn replay_batches_thousands_of_distinct_independent_deletion_groups() {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("workspace.sqlite3");
         let mut db = Store::open(&p).unwrap();
-        let mut ancestor = item(1, None, Kind::Stash, 0);
+        let mut ancestor = item(1, None, Kind::Tree, 0);
         ancestor.deleted_at = Some(3);
         let mut s = WorkspaceSnapshot {
             items: vec![ancestor],
             ..Default::default()
         };
         for i in 0..width {
-            s.items
-                .push(item(i * 2 + 2, Some(1), Kind::Stash, i as i64));
+            s.items.push(item(i * 2 + 2, Some(1), Kind::Tree, i as i64));
             let mut independent = item(i * 2 + 3, Some(i * 2 + 2), Kind::Note, 0);
             independent.deleted_at = Some(4);
             s.items.push(independent);
@@ -785,7 +643,7 @@ fn replay_batches_thousands_of_distinct_independent_deletion_groups() {
 fn public_singleton_undo_capture_is_canonical_for_unsorted_valid_snapshot() {
     let d = tempfile::tempdir().unwrap();
     let mut db = Store::open(&d.path().join("workspace.sqlite3")).unwrap();
-    let mut parent = item(1, None, Kind::Stash, 0);
+    let mut parent = item(1, None, Kind::Tree, 0);
     parent.deleted_at = Some(3);
     let mut three = item(3, Some(1), Kind::Note, 0);
     three.deleted_at = Some(4);

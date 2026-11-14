@@ -2,7 +2,7 @@
   import type { EditorState } from '@codemirror/state';
   import type { Item } from '../domain/notes';
   import { itemLabel } from '../domain/hierarchy';
-  import StashIcon from './StashIcon.svelte';
+  import TreeIcon from './TreeIcon.svelte';
   import { markerColors } from '../workspace/colors';
   import { timestampPresentation } from '../domain/timestamps';
   import NoteBody from './NoteBody.svelte';
@@ -95,7 +95,7 @@
 <!-- Selection and actions are separate from rendered content and links. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <article
-  aria-label={item.kind === 'stash' ? `Stash ${itemLabel(item)}` : 'Saved note'}
+  aria-label={item.kind === 'tree' ? `Tree ${itemLabel(item)}` : 'Saved note'}
   class:selected
   class="note-card"
   class:editing
@@ -119,9 +119,9 @@
       aria-pressed={selected}
       {disabled}
       onclick={onselectbutton}
-      aria-label={item.kind === 'stash' ? 'Select stash' : 'Select note'}
-      title={item.kind === 'stash' ? 'Select stash' : 'Select note'}
-      >{#if item.kind === 'stash'}<StashIcon
+      aria-label={item.kind === 'tree' ? 'Select tree' : 'Select note'}
+      title={item.kind === 'tree' ? 'Select tree' : 'Select note'}
+      >{#if item.kind === 'tree'}<TreeIcon
           color={item.color}
         />{:else if item.color}<span
           class="note-color"
@@ -133,7 +133,7 @@
         class="drag-handle"
         draggable="true"
         {disabled}
-        aria-label="Reorder item"
+        aria-label="Reorder note"
         title="Drag to reorder · Command Up/Down"
         onclick={onhandleselect}
         {ondragstart}
@@ -155,8 +155,8 @@
         {#if !editing}<button
             {disabled}
             onclick={onedit}
-            aria-label={item.kind === 'stash' ? 'Edit stash' : 'Edit note'}
-            title={item.kind === 'stash' ? 'Edit stash' : 'Edit note'}
+            aria-label={item.kind === 'tree' ? 'Edit tree' : 'Edit note'}
+            title={item.kind === 'tree' ? 'Edit tree' : 'Edit note'}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true"
               ><path d="m3 10 7-7 3 3-7 7-4 1zM9 4l3 3" /></svg
@@ -188,16 +188,16 @@
           {disabled}
           onclick={ondelete}
           aria-label={permanent
-            ? item.kind === 'stash'
-              ? 'Permanently delete stash'
+            ? item.kind === 'tree'
+              ? 'Permanently delete tree'
               : 'Permanently delete note'
-            : item.kind === 'stash'
-              ? 'Delete stash'
+            : item.kind === 'tree'
+              ? 'Delete tree'
               : 'Delete note'}
           title={permanent
-            ? 'Permanently delete this item and its children'
-            : item.kind === 'stash'
-              ? 'Delete stash'
+            ? 'Permanently delete this note and its children'
+            : item.kind === 'tree'
+              ? 'Delete tree'
               : 'Delete note'}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true"

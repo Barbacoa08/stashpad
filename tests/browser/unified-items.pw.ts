@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 const edit = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 async function seed(p: Page, sources: string[]) {
@@ -23,7 +23,7 @@ async function seed(p: Page, sources: string[]) {
     return ids;
   }, sources);
 }
-test('selected note Command-N atomically preserves latest source and opens one child; stash Command-N adds to same selected parent', async ({
+test('selected note Command-N atomically preserves latest source and opens one child; tree Command-N adds to same selected parent', async ({
   page,
 }) => {
   const [id] = await seed(page, ['**parent**\r\n']);
@@ -38,7 +38,7 @@ test('selected note Command-N atomically preserves latest source and opens one c
   );
   expect(items).toHaveLength(2);
   expect(items.find((x: any) => x.id === id)).toMatchObject({
-    kind: 'stash',
+    kind: 'tree',
     markdown: 'latest **source**\r\n',
     parentId: null,
     position: 0,
@@ -51,7 +51,7 @@ test('selected note Command-N atomically preserves latest source and opens one c
   items = await page.evaluate(() => (window as any).__test.repo.snapshot.items);
   expect(items.filter((x: any) => x.parentId === id)).toHaveLength(2);
 });
-test('Right promotes unchanged ID, empty destinations focus capture, and stash double-click edits with E at end and retained Undo', async ({
+test('Right promotes unchanged ID, empty destinations focus capture, and tree double-click edits with E at end and retained Undo', async ({
   page,
 }) => {
   const [id] = await seed(page, ['**source**']);
@@ -75,7 +75,7 @@ test('Right promotes unchanged ID, empty destinations focus capture, and stash d
     await page.evaluate(() => (window as any).__test.repo.snapshot.items[0].id),
   ).toBe(id);
 });
-test('mixed deletion selects same ordinal, preserves stash tree and edit histories, and Undo returns source', async ({
+test('mixed deletion selects same ordinal, preserves tree tree and edit histories, and Undo returns source', async ({
   page,
 }) => {
   const ids = await seed(page, ['first', 'middle', 'last']);
@@ -164,7 +164,7 @@ test('selected global result becomes Command-N parent instead of the current ope
   await page.keyboard.press('Meta+n');
   await expect(capture(page)).toBeFocused();
   const s = await page.evaluate(() => (window as any).__test.repo.snapshot);
-  expect(s.items.find((x: any) => x.id === ids[1]).kind).toBe('stash');
+  expect(s.items.find((x: any) => x.id === ids[1]).kind).toBe('tree');
   expect(s.items.find((x: any) => x.markdown === 'Untitled').parentId).toBe(
     ids[1],
   );
@@ -215,19 +215,19 @@ test('blank-background source flush preserves newer Search focus and query', asy
     ),
   ).toBe('latest');
 });
-test('Capture Up follows displayed sibling rank, skips interleaved stashes, and uses displayed search order', async ({
+test('Capture Up follows displayed sibling rank, skips interleaved trees, and uses displayed search order', async ({
   page,
 }) => {
   const ids = await seed(page, ['match first-created', 'match second-created']);
   await page.evaluate(async (ids) => {
     const t = (window as any).__test;
-    const stash = crypto.randomUUID();
-    await t.repo.createChildStash({
-      id: stash,
+    const tree = crypto.randomUUID();
+    await t.repo.createChildTree({
+      id: tree,
       parent: { scope: 'live', itemId: null },
     });
-    await t.repo.saveItemSource(stash, 'match stash', {
-      key: stash,
+    await t.repo.saveItemSource(tree, 'match tree', {
+      key: tree,
       revision: 0,
     });
     for (const x of t.repo.snapshot.items) {

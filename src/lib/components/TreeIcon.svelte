@@ -4,10 +4,10 @@
   let { color = null }: { color?: ColorToken | null } = $props();
 </script>
 
-<!-- Locally authored, decorative stack symbol for actual stash containers. -->
+<!-- Locally authored, decorative stack symbol for actual tree containers. -->
 <svg
   style:color={color ? markerColors[color] : undefined}
-  class="stash-icon"
+  class="tree-icon"
   viewBox="0 0 24 24"
   aria-hidden="true"
   focusable="false"

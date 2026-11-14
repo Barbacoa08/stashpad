@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 const card = (p: Page, id: string) => p.locator(`[data-entry-id="${id}"]`);
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(p: Page) {
   await p.goto('/?fixture');
   await capture(p).waitFor();
@@ -20,7 +20,7 @@ async function seed(p: Page) {
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -271,7 +271,7 @@ async function drag(
 ) {
   const dataTransfer = await p.evaluateHandle(() => new DataTransfer());
   await card(p, from)
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .dispatchEvent('dragstart', { dataTransfer });
   const box = (await card(p, to).boundingBox())!;
   const clientY = edge === 'before' ? box.y + 1 : box.y + box.height - 1;
@@ -298,7 +298,9 @@ test('owned handle drag uses before/after final indices, keeps descendants, reje
       if (kind === 'file') dt.items.add(new File(['x'], 'x.txt'));
       else
         dt.setData(
-          kind === 'url' ? 'text/uri-list' : 'application/x-stashpad-sibling',
+          kind === 'url'
+            ? 'text/uri-list'
+            : 'application/x-scratchtree-sibling',
           'foreign',
         );
       return dt;
@@ -309,7 +311,7 @@ test('owned handle drag uses before/after final indices, keeps descendants, reje
   const pending = await drag(page, ids[0], ids[1], 'before', false);
   await expect(card(page, ids[1])).toHaveClass(/drop-before/);
   await card(page, ids[0])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .dispatchEvent('dragend');
   await expect(page.locator('.drop-before,.drop-after')).toHaveCount(0);
   await card(page, ids[1]).dispatchEvent('drop', {
@@ -332,7 +334,7 @@ test('moves child and Trash sibling groups, preserves handle focus, flushes edit
     .getByRole('textbox', { name: 'Edit Markdown' })
     .fill('child latest **source**');
   const handle = card(page, ids[4]).getByRole('button', {
-    name: 'Reorder item',
+    name: 'Reorder note',
     exact: true,
   });
   await handle.focus();
@@ -348,10 +350,10 @@ test('moves child and Trash sibling groups, preserves handle focus, flushes edit
   await page.keyboard.press('Meta+ArrowDown');
   expect(await snapshot(page)).toEqual(before);
   await expect(
-    page.getByRole('region', { name: 'Workspace status' }),
-  ).toContainText('Open the containing stash');
+    page.getByRole('region', { name: 'Editor status' }),
+  ).toContainText('Open the containing tree');
   await expect(
-    page.getByRole('button', { name: 'Reorder item', exact: true }),
+    page.getByRole('button', { name: 'Reorder note', exact: true }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[1]).click();
@@ -421,7 +423,7 @@ test('drag identity is handle-only, rejects cross-parent and cross-scope reuse a
   expect(await order(page)).toEqual(ids.slice(0, 3));
   const active = await drag(page, ids[0], ids[2], 'after', false);
   await page
-    .getByRole('button', { name: 'Open stash parent', exact: true })
+    .getByRole('button', { name: 'Open tree parent', exact: true })
     .click();
   const before = await snapshot(page);
   await card(page, ids[5]).dispatchEvent('drop', {
@@ -441,7 +443,7 @@ test('drag identity is handle-only, rejects cross-parent and cross-scope reuse a
   expect(await snapshot(page)).toEqual(trashed);
   await page.getByRole('button', { name: 'Root', exact: true }).click();
   const source = card(page, ids[0]).getByRole('button', {
-    name: 'Reorder item',
+    name: 'Reorder note',
     exact: true,
   });
   const target = card(page, ids[2]);
@@ -472,7 +474,7 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   );
   await expect(
     page.getByRole('button', {
-      name: 'Open stash first **source**',
+      name: 'Open tree first **source**',
       exact: true,
     }),
   ).toHaveCount(0);
@@ -481,7 +483,7 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
   await page.getByRole('button', { name: 'Trash', exact: true }).click();
   await card(page, ids[0]).click();
   await expect(card(page, ids[0])).toHaveClass(/done/);
-  await page.getByRole('button', { name: 'Restore item', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore note', exact: true }).click();
   await page.getByRole('button', { name: 'Root', exact: true }).click();
   await page
     .getByRole('button', { name: 'Export backup', exact: true })
@@ -495,7 +497,7 @@ test('marker metadata survives done, promotion, Trash, Restore, and strict backu
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   expect(await snapshot(page)).toEqual(before);
   await expect(card(page, ids[0])).toHaveAttribute('data-kind', 'note');
@@ -576,7 +578,7 @@ for (const scale of [100, 150])
       path: `test-results/captures/colors-order/colors-order-guide-${scale}.png`,
     });
     await card(page, ids[0])
-      .getByRole('button', { name: 'Reorder item', exact: true })
+      .getByRole('button', { name: 'Reorder note', exact: true })
       .dispatchEvent('dragend');
     await page.keyboard.press('Meta+Backspace');
     await page.getByRole('button', { name: 'Trash', exact: true }).click();
@@ -600,7 +602,7 @@ test('held Command hides unavailable stream actions with no selected entry', asy
   await seed(page);
   await stream(page).focus();
   await page.keyboard.down('Meta');
-  await expect(page.locator('.stream-command-hint')).toHaveText('⌘N New stash');
+  await expect(page.locator('.stream-command-hint')).toHaveText('⌘N New tree');
   await expect(page.locator('.home-command-hint')).toBeVisible();
   await page.keyboard.up('Meta');
   await expect(page.locator('.command-hint')).toHaveCount(0);
@@ -617,19 +619,19 @@ test('held Command updates stream hints on editor, Search, control, selection, a
   await expect(editor).toBeFocused();
   await page.keyboard.down('Meta');
   const hints = page.locator('.stream-command-hint');
-  await expect(hints).toHaveText('⌘N New stash');
+  await expect(hints).toHaveText('⌘N New tree');
   await page.getByRole('searchbox').focus();
-  await expect(hints).toHaveText('⌘N New stash');
+  await expect(hints).toHaveText('⌘N New tree');
   await stream(page).focus();
-  await expect(hints).toHaveText('⌘N New stash · ⌘↑/↓ Reorder · ⌘⌫ Delete');
+  await expect(hints).toHaveText('⌘N New tree · ⌘↑/↓ Reorder · ⌘⌫ Delete');
   await page
     .getByRole('button', { name: 'Export backup', exact: true })
     .focus();
-  await expect(hints).toHaveText('⌘N New stash');
+  await expect(hints).toHaveText('⌘N New tree');
   await card(page, ids[0])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .focus();
-  await expect(hints).toHaveText('⌘N New stash · ⌘↓ Reorder');
+  await expect(hints).toHaveText('⌘N New tree · ⌘↓ Reorder');
   await stream(page).focus();
   await expect(hints).toContainText('Delete');
   await card(page, ids[1])
@@ -640,7 +642,7 @@ test('held Command updates stream hints on editor, Search, control, selection, a
       window.getSelection()?.removeAllRanges();
       window.getSelection()?.addRange(range);
     });
-  await expect(hints).toHaveText('⌘N New stash');
+  await expect(hints).toHaveText('⌘N New tree');
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await expect(hints).toContainText('Reorder');
   await page.keyboard.up('Meta');
@@ -655,15 +657,13 @@ test('held Command advertises only possible sibling directions, no singleton or 
   for (const [index, keys] of ['⌘↓', '⌘↑/↓', '⌘↑'].entries()) {
     await card(page, ids[index]).click();
     await page.keyboard.down('Meta');
-    await expect(hints).toHaveText(
-      `⌘N New stash · ${keys} Reorder · ⌘⌫ Delete`,
-    );
+    await expect(hints).toHaveText(`⌘N New tree · ${keys} Reorder · ⌘⌫ Delete`);
     await page.keyboard.up('Meta');
   }
   await page.getByRole('searchbox').fill('source');
   await card(page, ids[0]).click();
   await page.keyboard.down('Meta');
-  await expect(hints).toHaveText('⌘N New stash · ⌘⌫ Delete');
+  await expect(hints).toHaveText('⌘N New tree · ⌘⌫ Delete');
   await page.keyboard.up('Meta');
   await page.getByRole('button', { name: 'Root', exact: true }).click();
   await card(page, ids[2]).click();
@@ -672,7 +672,7 @@ test('held Command advertises only possible sibling directions, no singleton or 
   await capture(page).press('Enter');
   await stream(page).focus();
   await page.keyboard.down('Meta');
-  await expect(hints).toHaveText('⌘N New stash · ⌘⌫ Delete');
+  await expect(hints).toHaveText('⌘N New tree · ⌘⌫ Delete');
   await page.keyboard.up('Meta');
 });
 
@@ -708,7 +708,7 @@ for (const scale of [100, 150])
     });
     await page.getByRole('searchbox').focus();
     await expect(page.locator('.stream-command-hint')).toHaveText(
-      '⌘N New stash',
+      '⌘N New tree',
     );
     expect(await geometry()).toEqual(before);
     await page.screenshot({
@@ -743,7 +743,7 @@ test('held hint focus observation tolerates focused-control removal and reorderi
   await page.keyboard.press('Escape');
   await expect(stream(page)).toBeFocused();
   const handle = card(page, ids[1]).getByRole('button', {
-    name: 'Reorder item',
+    name: 'Reorder note',
     exact: true,
   });
   await handle.focus();

@@ -51,7 +51,7 @@ async function nativeMock(
   return { repo, saveCalls: () => saves };
 }
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function typeCapture(page: Page, source: string) {
   await page.getByRole('region', { name: 'Note stream' }).focus();
   await page.keyboard.press('Space');
@@ -128,7 +128,7 @@ for (const deniedStorage of [false, true])
     const diagnostic = page.getByRole('textbox', {
       name: 'Diagnostic details',
     });
-    await expect(diagnostic).toHaveValue(/SP-/);
+    await expect(diagnostic).toHaveValue(/ST-/);
     await expect(diagnostic).toHaveValue(/TypeError/);
     const safeDetails = await diagnostic.inputValue();
     expect(safeDetails).not.toContain('PRIVATE_');

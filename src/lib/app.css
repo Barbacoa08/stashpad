@@ -408,7 +408,7 @@ kbd {
 .note-card .cm-line {
   padding: 0 !important;
 }
-.stash-card .note-meta button {
+.tree-card .note-meta button {
   font-size: inherit;
   line-height: 1.2;
   padding: 0.15rem 0.3rem;
@@ -627,7 +627,7 @@ kbd {
   border: 0;
 }
 
-.stash-navigation {
+.tree-navigation {
   flex-shrink: 0;
   display: grid;
   gap: 4px;
@@ -635,16 +635,16 @@ kbd {
   max-height: 45vh;
   overflow: auto;
 }
-.stash-navigation > button {
+.tree-navigation > button {
   text-align: left;
 }
-.stash-row {
+.tree-row {
   display: flex;
   align-items: center;
   min-width: 0;
   gap: 2px;
 }
-.stash-link {
+.tree-link {
   text-align: left;
   min-width: 0;
   overflow: hidden;
@@ -652,27 +652,27 @@ kbd {
   white-space: nowrap;
   flex: 1;
 }
-.stash-expand,
-.stash-expand-spacer {
+.tree-expand,
+.tree-expand-spacer {
   width: 24px;
   flex: 0 0 24px;
   padding: 3px;
 }
-.stash-navigation .current {
+.tree-navigation .current {
   background: #303b4f;
   color: #fff;
   border-color: #657b98;
 }
-.stash-card-icon {
+.tree-card-icon {
   position: absolute;
   left: 0.35rem;
   top: 0.45rem;
 }
-.stash-card-icon .stash-icon {
+.tree-card-icon .tree-icon {
   width: 1rem;
   height: 1rem;
 }
-.stash-icon {
+.tree-icon {
   width: 30px;
   height: 30px;
   fill: none;
@@ -680,7 +680,7 @@ kbd {
   stroke-width: 1.5;
   flex: none;
 }
-.stash-open {
+.tree-open {
   background: transparent;
   border: 0;
   text-align: left;
@@ -702,11 +702,11 @@ kbd {
   color: #c6d0e0;
   overflow-wrap: anywhere;
 }
-.stash-dialog form {
+.tree-dialog form {
   display: grid;
   gap: 10px;
 }
-.stash-dialog input {
+.tree-dialog input {
   width: 100%;
   min-width: 0;
 }
@@ -729,17 +729,17 @@ kbd {
   flex: 1;
   min-width: 0;
 }
-.current-stash-heading {
+.current-tree-heading {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
 }
-.current-stash-heading .stash-icon {
+.current-tree-heading .tree-icon {
   width: 1rem;
   height: 1rem;
 }
-.current-stash-heading > span {
+.current-tree-heading > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -753,22 +753,22 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.stash-link {
+.tree-link {
   display: grid;
   grid-template-columns: 1.125rem minmax(0, 1fr);
   column-gap: 0.3rem;
   align-items: center;
 }
-.stash-link .stash-icon {
+.tree-link .tree-icon {
   width: 1.125rem;
   height: 1.125rem;
 }
-.stash-name {
+.tree-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.stash-level {
+.tree-level {
   grid-column: 2;
   font-size: 0.6rem;
   line-height: 1.15;
@@ -813,45 +813,45 @@ kbd {
   flex: none;
   vertical-align: middle;
 }
-.stash-navigation {
+.tree-navigation {
   max-height: none;
   overflow: visible;
   min-width: 0;
 }
-.stash-navigation > button {
+.tree-navigation > button {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
-.sidebar .stash-row button:hover:enabled {
+.sidebar .tree-row button:hover:enabled {
   background: transparent;
 }
-.stash-row.current,
-.stash-row:hover {
+.tree-row.current,
+.tree-row:hover {
   background: #303b4f;
   color: #fff;
 }
-.stash-navigation .stash-row.current .stash-link {
+.tree-navigation .tree-row.current .tree-link {
   background: transparent;
   color: inherit;
 }
-.stash-row {
+.tree-row {
   min-height: 2rem;
 }
-.stash-row .stash-expand .icon {
+.tree-row .tree-expand .icon {
   width: 1.125rem;
   height: 1.125rem;
 }
-.stash-row .stash-expand {
+.tree-row .tree-expand {
   align-self: start;
   padding-block: 0.4rem;
   display: grid;
   place-items: center;
 }
-.stash-expand span {
+.tree-expand span {
   display: flex;
 }
-.stash-expand span.expanded {
+.tree-expand span.expanded {
   transform: rotate(90deg);
 }
 .backup-actions button {
@@ -1160,10 +1160,10 @@ kbd {
 .drag-handle:hover:enabled {
   background: transparent;
 }
-.note-card[data-kind='stash'] .note-select {
+.note-card[data-kind='tree'] .note-select {
   pointer-events: auto;
 }
-.item-slot .stash-icon,
+.item-slot .tree-icon,
 .drag-handle svg {
   width: 1.125rem;
   height: 1.125rem;
@@ -1223,8 +1223,8 @@ kbd {
 .item-slot .note-select:focus-visible .note-color {
   visibility: hidden;
 }
-/* Keyboard reorder keeps a stash's stack; its focus ring identifies the action. */
-.note-card[data-kind='stash']:not(:hover) .drag-handle span {
+/* Keyboard reorder keeps a tree's stack; its focus ring identifies the action. */
+.note-card[data-kind='tree']:not(:hover) .drag-handle span {
   opacity: 0;
 }
 .note-card.drop-before::before,
@@ -1344,25 +1344,25 @@ main:has(.workspace) .sidebar {
   gap: 0.3rem;
 }
 .sidebar-search .icon,
-.stash-navigation .root-link .icon,
+.tree-navigation .root-link .icon,
 .backup-actions .icon {
   width: 1.125rem;
   height: 1.125rem;
 }
-.sidebar .stash-navigation .root-link,
+.sidebar .tree-navigation .root-link,
 .sidebar .backup-actions button {
   padding-left: calc(24px + 2px);
   gap: 0.3rem;
   border-color: transparent;
   border-radius: 0;
 }
-.sidebar .stash-navigation .root-link.current,
-.sidebar .stash-navigation .root-link:hover:enabled {
+.sidebar .tree-navigation .root-link.current,
+.sidebar .tree-navigation .root-link:hover:enabled {
   background: #303b4f;
   color: #fff;
 }
 
-.stash-navigation .root-separator {
+.tree-navigation .root-separator {
   border: 0;
   border-top: 1px solid #414141;
   margin: 0.35rem 0;

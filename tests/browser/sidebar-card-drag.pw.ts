@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const card = (p: Page, id: string) => p.locator(`[data-entry-id="${id}"]`);
 async function seed(p: Page) {
   await p.goto('/?fixture');
@@ -8,14 +8,14 @@ async function seed(p: Page) {
   return p.evaluate(async () => {
     const t = (window as any).__test;
     const ids = Array.from({ length: 4 }, () => crypto.randomUUID());
-    for (const [i, markdown] of ['first **source**', 'stash', 'last'].entries())
+    for (const [i, markdown] of ['first **source**', 'tree', 'last'].entries())
       await t.repo.captureItem({
         id: ids[i],
         location: { scope: 'live', itemId: null },
         markdown,
         draft: { key: 'compose', revision: 0 },
       });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: ids[3],
       parent: { scope: 'live', itemId: ids[1] },
     });
@@ -44,7 +44,7 @@ for (const scale of [100, 150]) {
     for (const id of ids.slice(0, 2)) {
       const item = card(page, id),
         handle = item.getByRole('button', {
-          name: 'Reorder item',
+          name: 'Reorder note',
           exact: true,
         });
       const before = await box(item.locator('.note-body'));
@@ -61,7 +61,7 @@ for (const scale of [100, 150]) {
         };
       });
       measurements.push({
-        kind: id === ids[0] ? 'note' : 'stash',
+        kind: id === ids[0] ? 'note' : 'tree',
         ...geometry,
         body: before,
         slot: await box(handle),
@@ -85,7 +85,7 @@ for (const scale of [100, 150]) {
         await expect(handle.locator('span')).toHaveCSS('opacity', '0');
         await item.locator('.note-select').focus();
         await item.hover();
-        await expect(item.locator('.stash-icon')).toHaveCSS(
+        await expect(item.locator('.tree-icon')).toHaveCSS(
           'visibility',
           'hidden',
         );
@@ -98,7 +98,7 @@ for (const scale of [100, 150]) {
       expect(await box(item.locator('.note-body'))).toEqual(before);
     }
     const handle = card(page, ids[1]).getByRole('button', {
-      name: 'Reorder item',
+      name: 'Reorder note',
       exact: true,
     });
     await handle.press('Meta+ArrowUp');
@@ -131,8 +131,8 @@ for (const scale of [100, 150]) {
     const centers = await page.locator('.sidebar').evaluate((el) =>
       [
         '.sidebar-search svg',
-        '.stash-navigation > button svg',
-        '.stash-row .stash-icon',
+        '.tree-navigation > button svg',
+        '.tree-row .tree-icon',
       ].map((s) => {
         const r = el.querySelector(s)!.getBoundingClientRect();
         return r.left + r.width / 2;
@@ -151,13 +151,13 @@ for (const scale of [100, 150]) {
         .evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft)),
     ).toBe(6);
     for (let i = 0; i < 18; i++) await page.keyboard.press('Meta+n');
-    const nav = page.getByRole('navigation', { name: 'Stashes' });
+    const nav = page.getByRole('navigation', { name: 'Trees' });
     await expect(nav).toHaveCSS('overflow-y', 'visible');
     const deep = page
-      .locator('.stash-row')
-      .filter({ has: page.locator('.stash-level', { hasText: 'Level 4' }) });
+      .locator('.tree-row')
+      .filter({ has: page.locator('.tree-level', { hasText: 'Level 4' }) });
     const primary = await deep.evaluate((el) =>
-      ['.stash-expand svg', '.stash-icon', '.stash-name'].map((s) => {
+      ['.tree-expand svg', '.tree-icon', '.tree-name'].map((s) => {
         const r = el.querySelector(s)!.getBoundingClientRect();
         return r.top + r.height / 2;
       }),
@@ -182,7 +182,7 @@ for (const scale of [100, 150]) {
 // Browser-created transfers do not faithfully retain effectAllowed/dropEffect themselves.
 async function owned(p: Page, id: string) {
   await card(p, id)
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .evaluate((el) => {
       const transfer = new DataTransfer();
       let effect = 'copy';
@@ -263,7 +263,7 @@ test('owned self, adjacent, nested editor, and background drags reject copy whil
     'first **source**',
   );
 });
-for (const kind of ['note', 'stash'] as const)
+for (const kind of ['note', 'tree'] as const)
   test(`actual drag starts throughout the revealed ${kind} slot and preserves exact source/ownership`, async ({
     page,
   }) => {
@@ -277,7 +277,7 @@ for (const kind of ['note', 'stash'] as const)
     await source.hover();
     const bounds = (await target.boundingBox())!;
     await source
-      .getByRole('button', { name: 'Reorder item', exact: true })
+      .getByRole('button', { name: 'Reorder note', exact: true })
       .dragTo(target, {
         sourcePosition: { x: 2, y: 2 },
         targetPosition: { x: bounds.width / 2, y: bounds.height * 0.75 },
@@ -345,7 +345,7 @@ test('view cancellation keeps owned rejection feedback until dragend without rev
     ),
   ).toEqual(before);
   await card(page, ids[0])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .dispatchEvent('dragend');
   expect(await over(page.locator('.sidebar'))).toEqual({
     effect: 'copy',

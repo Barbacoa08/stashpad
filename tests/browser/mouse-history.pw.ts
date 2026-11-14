@@ -1,6 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const at = (p: Page) =>
   p.evaluate(() => (window as any).__test.controller.state.location);
 async function child(p: Page) {
@@ -53,7 +53,7 @@ test('Wry side-button release makes exactly one app visit over capture and inlin
   await expect(capture(page)).toBeVisible();
   const parent = await child(page),
     nested = await child(page);
-  // History only opens valid stashes; a saved child keeps nested available.
+  // History only opens valid trees; a saved child keeps nested available.
   await saveChild(page);
   await capture(page).fill('nested **draft**');
   expect(await phase(capture(page), 'mousedown', 3)).toEqual({
@@ -95,7 +95,7 @@ test('side events consume URL fallback at boundaries, blocked state, and before 
 }) => {
   await page.goto('/?fixture&failLoad');
   await expect(
-    page.getByRole('button', { name: 'Retry loading workspace' }),
+    page.getByRole('button', { name: 'Retry loading library' }),
   ).toBeVisible();
   await side(page.locator('main'), 3);
   await side(page.locator('main'), 4);
@@ -110,7 +110,7 @@ test('side events consume URL fallback at boundaries, blocked state, and before 
       ).toBe(false);
   const parent = await child(page),
     nested = await child(page);
-  // History only opens valid stashes; a saved child keeps nested available.
+  // History only opens valid trees; a saved child keeps nested available.
   await saveChild(page);
   await page.evaluate((id) => {
     const t = (window as any).__test,
@@ -149,7 +149,7 @@ test('failed side Back retains exact draft and captured Retry without reclaiming
   await expect(capture(page)).toBeVisible();
   const parent = await child(page),
     nested = await child(page);
-  // History only opens valid stashes; a saved child keeps nested available.
+  // History only opens valid trees; a saved child keeps nested available.
   await saveChild(page);
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'checkpoint';
@@ -182,11 +182,11 @@ test('side Back skips a demoted history entry without promoting it and explicit 
     const t = (window as any).__test;
     const empty = crypto.randomUUID(),
       id = crypto.randomUUID();
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id: empty,
       parent: { scope: 'live', itemId: null },
     });
-    await t.repo.createChildStash({
+    await t.repo.createChildTree({
       id,
       parent: { scope: 'live', itemId: null },
     });
@@ -208,7 +208,7 @@ test('side Back skips a demoted history entry without promoting it and explicit 
   await capture(page).fill('empty owner exact **draft**');
   await page
     .getByRole('button', {
-      name: 'Open stash Nonempty destination',
+      name: 'Open tree Nonempty destination',
       exact: true,
     })
     .click();

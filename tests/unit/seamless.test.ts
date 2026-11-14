@@ -97,7 +97,7 @@ it('export and restore preview flush note source rather than leaving only an edi
   const { repo, c } = await setup();
   c.editSource('exported\r\n');
   expect(await c.export()).toBe(true);
-  expect(JSON.parse(repo.exported!).workspace.items[0].markdown).toBe(
+  expect(JSON.parse(repo.exported!).library.items[0].markdown).toBe(
     'exported\r\n',
   );
   c.editSource('before preview');
@@ -106,26 +106,26 @@ it('export and restore preview flush note source rather than leaving only an edi
     'before preview',
   );
 });
-it('one pending instant creation creates one Untitled stash in the open parent and preserves the latest inline source', async () => {
+it('one pending instant creation creates one Untitled tree in the open parent and preserves the latest inline source', async () => {
   const { repo, c, id } = await setup();
-  c.editSource('before new stash');
+  c.editSource('before new tree');
   let release!: () => void;
   repo.delayCreate = new Promise<void>((r) => (release = r));
-  const first = c.createStash(),
-    second = c.createStash();
+  const first = c.createTree(),
+    second = c.createTree();
   await new Promise((r) => setTimeout(r, 0));
   release();
   expect(await first).toBe(true);
   expect(await second).toBe(true);
-  expect(repo.snapshot.items.filter((x) => x.kind === 'stash')).toHaveLength(1);
+  expect(repo.snapshot.items.filter((x) => x.kind === 'tree')).toHaveLength(1);
   expect(
-    repo.snapshot.items.filter((x) => x.kind === 'stash')[0].parentId,
+    repo.snapshot.items.filter((x) => x.kind === 'tree')[0].parentId,
   ).toBeNull();
   expect(
     repo.snapshot.items
       .filter((x) => x.kind === 'note')
       .find((n) => n.id === id)?.markdown,
-  ).toBe('before new stash');
+  ).toBe('before new tree');
 });
 
 it('failed latest-source delete leaves the original note alive, retains the revision, and retry/Undo restores it exactly', async () => {
@@ -194,7 +194,7 @@ it('delayed creation retains a newer search query rather than clearing a later u
   let release!: () => void;
   repo.delayCreate = new Promise<void>((r) => (release = r));
   c.setQuery('previous');
-  const pending = c.createStash();
+  const pending = c.createTree();
   await new Promise((r) => setTimeout(r, 0));
   c.setQuery('new intent');
   release();
@@ -207,7 +207,7 @@ for (const action of ['finish', 'navigate', 'close'] as const)
     const repo = new MemoryRepository();
     const owner = crypto.randomUUID(),
       id = crypto.randomUUID();
-    await repo.createChildStash({
+    await repo.createChildTree({
       id: owner,
       parent: { scope: 'live', itemId: null },
     });
@@ -228,7 +228,7 @@ for (const action of ['finish', 'navigate', 'close'] as const)
       await (action === 'finish'
         ? c.finishEdit()
         : action === 'navigate'
-          ? c.openStash(null)
+          ? c.openTree(null)
           : c.flush()),
     ).toBe(true);
     expect(

@@ -5,7 +5,7 @@ test('search leads navigation and status remains accessible in details', async (
 }) => {
   await page.goto('/?fixture');
   const sidebar = page.getByRole('complementary', {
-    name: 'Workspace navigation',
+    name: 'Editor navigation',
   });
   const search = page.getByRole('searchbox', { name: 'Search saved notes' });
   await expect(search).toBeVisible();
@@ -20,11 +20,9 @@ test('search leads navigation and status remains accessible in details', async (
       .locator('svg[aria-hidden=true]'),
   ).toHaveCount(1);
   await expect(
-    page.getByRole('region', { name: 'Workspace status' }),
+    page.getByRole('region', { name: 'Editor status' }),
   ).toBeVisible();
-  await expect(page.getByLabel('Keyboard shortcuts')).toContainText(
-    'New stash',
-  );
+  await expect(page.getByLabel('Keyboard shortcuts')).toContainText('New tree');
   await expect(page.getByLabel('Keyboard shortcuts')).toContainText('Space');
 });
 
@@ -33,7 +31,7 @@ test('narrow details exposes failed save and retry without stealing focus', asyn
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto('/?fixture');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.waitFor();
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await capture.fill('Synthetic failed save');
@@ -58,32 +56,33 @@ for (const constrained of [false, true])
       constrained ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (constrained)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
     await page.evaluate(async () => {
       const t = (window as any).__test;
-      const stashes = Array.from({ length: 35 }, (_, i) => ({
+      const trees = Array.from({ length: 35 }, (_, i) => ({
         id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-        name: `Synthetic stash ${i} with long name`,
+        kind: 'tree',
+        markdown: `Synthetic tree ${i} with long name`,
         parentId: i
           ? `00000000-0000-4000-8000-${String(i - 1).padStart(12, '0')}`
           : null,
         createdAt: i,
         updatedAt: i,
       }));
-      t.seedLegacy({ stashes, notes: [], drafts: [], undoDeleteId: null });
+      t.seed({ items: trees, drafts: [], undoDeleteIds: [] });
       await t.controller.start();
-      await t.controller.openStash(stashes[33].id);
+      await t.controller.openTree(trees[33].id);
     });
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
-    const row = sidebar.locator('.stash-row.current');
-    const title = row.getByRole('button', { name: /Open stash/ });
-    const toggle = row.getByRole('button', { name: /Collapse stash/ });
+    const row = sidebar.locator('.tree-row.current');
+    const title = row.getByRole('button', { name: /Open tree/ });
+    const toggle = row.getByRole('button', { name: /Collapse tree/ });
     await title.focus();
     await expect(title).toBeFocused();
     const measurements = await row.evaluate((el) => {
@@ -113,26 +112,27 @@ for (const constrained of [false, true])
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await toggle.press('Enter');
     await expect(
-      row.getByRole('button', { name: /Expand stash/ }),
+      row.getByRole('button', { name: /Expand tree/ }),
     ).toHaveAttribute('aria-expanded', 'false');
     await page.screenshot({
       path: `test-results/captures/sidebar/task-1-${constrained ? 'narrow-150' : 'wide'}.png`,
     });
   });
 
-test('current and hovered stash rows retain one surface for both controls', async ({
+test('current and hovered tree rows retain one surface for both controls', async ({
   page,
   browserName,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.evaluate(async () => {
     const t = (window as any).__test;
     const names = ['Current', 'Current child', 'Other', 'Other child'];
-    const stashes = names.map((name, i) => ({
+    const trees = names.map((name, i) => ({
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-      name,
+      kind: 'tree',
+      markdown: name,
       parentId:
         i === 1
           ? '00000000-0000-4000-8000-000000000000'
@@ -142,18 +142,18 @@ test('current and hovered stash rows retain one surface for both controls', asyn
       createdAt: i,
       updatedAt: i,
     }));
-    t.seedLegacy({ stashes, notes: [], drafts: [], undoDeleteId: null });
+    t.seed({ items: trees, drafts: [], undoDeleteIds: [] });
     await t.controller.start();
-    await t.controller.openStash(stashes[0].id);
+    await t.controller.openTree(trees[0].id);
   });
   for (const name of ['Current', 'Other']) {
     const title = page.getByRole('button', {
-      name: `Open stash ${name}`,
+      name: `Open tree ${name}`,
       exact: true,
     });
     const row = title.locator('..');
     const chevron = row.getByRole('button', {
-      name: new RegExp(`^(Expand|Collapse) stash ${name}$`),
+      name: new RegExp(`^(Expand|Collapse) tree ${name}$`),
     });
     for (const [part, target] of [
       ['title', title],
@@ -173,13 +173,13 @@ test('current and hovered stash rows retain one surface for both controls', asyn
     await expect(chevron).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   }
   const currentChevron = page.getByRole('button', {
-    name: 'Collapse stash Current',
+    name: 'Collapse tree Current',
   });
   await currentChevron.focus();
   // WebKit uses Option-Tab to include buttons in sequential keyboard navigation.
   await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   const currentTitle = page.getByRole('button', {
-    name: 'Open stash Current',
+    name: 'Open tree Current',
     exact: true,
   });
   await expect(currentTitle).toBeFocused();
@@ -192,7 +192,7 @@ async function failedCapture(
 ) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/?fixture');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.fill('Responsive recovery source');
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await capture.press('Enter');
