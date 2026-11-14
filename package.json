@@ -27,6 +27,8 @@
     "@opentelemetry/api": "1.10.0",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-dialog": "2.8.4",
+    "dexie": "4.4.7",
+    "dexie-cloud-addon": "4.4.16",
     "markdown-it": "15.0.3",
     "svelte": "5.57.3"
   },

@@ -1,5 +1,6 @@
 pub mod backup;
 mod external;
+pub mod files;
 pub mod model;
 pub mod store;
 mod window_geometry;
@@ -229,6 +230,55 @@ mod preview_tests {
 }
 
 #[tauri::command]
+async fn backup_read_text(app: tauri::AppHandle) -> Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = app
+            .dialog()
+            .file()
+            .add_filter("Scratchtree backup", &["json"])
+            .blocking_pick_file();
+        let Some(path) = path else { return Ok(None) };
+        let path = path.into_path().map_err(storage_error)?;
+        files::read_text(&path).map(Some)
+    })
+    .await
+    .map_err(storage_error)?
+}
+
+#[tauri::command]
+async fn backup_write_text(app: tauri::AppHandle, text: String) -> Result<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = app
+            .dialog()
+            .file()
+            .add_filter("Scratchtree backup", &["json"])
+            .set_file_name("scratchtree-backup.json")
+            .blocking_save_file();
+        let Some(path) = path else { return Ok(None) };
+        let path = path.into_path().map_err(storage_error)?;
+        files::write_text(&path, &text)?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(storage_error)?
+}
+
+#[tauri::command]
+async fn backup_safety_text(app: tauri::AppHandle, text: String) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let folder = app
+            .path()
+            .app_data_dir()
+            .map_err(storage_error)?
+            .join("backups");
+        files::safety_text(&folder, &text)?;
+        Ok(())
+    })
+    .await
+    .map_err(storage_error)?
+}
+
+#[tauri::command]
 async fn backup_export(
     app: tauri::AppHandle,
     state: State<'_, NativeState>,
@@ -373,6 +423,9 @@ pub fn run() {
             items_move,
             item_restore,
             item_undo_delete,
+            backup_read_text,
+            backup_write_text,
+            backup_safety_text,
             backup_export,
             backup_preview_restore,
             backup_confirm_restore

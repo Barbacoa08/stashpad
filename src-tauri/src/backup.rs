@@ -1,9 +1,6 @@
+pub use crate::files::atomic_write;
 use crate::model::*;
-use std::{
-    collections::{HashMap, HashSet},
-    io::Write,
-    path::Path,
-};
+use std::collections::{HashMap, HashSet};
 fn invalid() -> AppError {
     error(
         "invalid_backup",
@@ -244,25 +241,4 @@ pub fn validate(bytes: &[u8]) -> Result<BackupV7> {
     validate_snapshot(&b.library)?;
     encode(&b.library).map_err(|_|error("invalid_backup","Backup exceeds the 10 MiB capacity. The original is retained; recover using a compatible app or verified smaller copy."))?;
     Ok(b)
-}
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| error("file_error", "Choose a local destination folder."))?;
-    let tmp = parent.join(format!(".scratchtree-{}.tmp", uuid::Uuid::new_v4()));
-    let result = (|| {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp)
-            .map_err(storage_error)?;
-        f.write_all(bytes).map_err(storage_error)?;
-        f.sync_all().map_err(storage_error)?;
-        std::fs::rename(&tmp, path).map_err(storage_error)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }
