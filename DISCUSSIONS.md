@@ -52,7 +52,9 @@ Mac comes first. Future iOS and Android companions are intended primarily for vi
 
 ## Developer ID signing and notarization
 
-The current Mac alpha is ad-hoc signed and is not notarized, so macOS can block its first launch. Decide whether and when to use Developer ID signing and notarization, including their distribution and maintenance implications. See [issue #6](https://github.com/Barbacoa08/scratchtree/issues/6).
+**Deferred, likely until after MVP (2026-11-13).** Sharing with friends does not currently justify adding Developer ID signing and notarization. Continue distributing the ad-hoc signed, unnotarized DMG, with the existing first-launch instructions and managed-Mac limitations. Signing and notarization remain intended future work; their exact timing is not committed. This decision does not authorize enrollment, credential access, signing changes, or publication.
+
+When revisited, use Apple Developer ID signing, notarization, and a stapled ticket for the GitHub DMG. Start with local signing and Keychain-held credentials, and verify the downloaded package and first-launch experience. The [Apple Developer Program](https://developer.apple.com/programs/) currently costs $99 USD per year, with regional pricing and applicable taxes; an existing suitable membership can cover Scratchtree. Recheck pricing and [Tauri's signing requirements](https://v2.tauri.app/distribute/sign/macos/) before implementation. Signing does not override employer application restrictions. See [issue #6](https://github.com/Barbacoa08/scratchtree/issues/6) and [the release guide](docs/RELEASING.md).
 
 ## Other repository decision
 
