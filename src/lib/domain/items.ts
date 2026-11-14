@@ -17,7 +17,7 @@ import {
   effectiveScope,
   itemLocation,
 } from './hierarchy';
-import { uuid, validateBackup, encodeBackup } from './backup';
+import { uuid, validateSnapshot } from './validation';
 const touch = (x: Item) =>
   (x.updatedAt = Math.max(Date.now(), x.updatedAt + 1));
 function find(s: WorkspaceSnapshot, id: string): Item {
@@ -548,10 +548,7 @@ function fromStructure(
     drafts: [],
     undoDeleteIds: [...ids],
   };
-  if (
-    !equal(structuralItems(s), before) ||
-    'code' in validateBackup(encodeBackup(s))
-  )
+  if (!equal(structuralItems(s), before) || 'code' in validateSnapshot(s))
     throw stale();
   return s;
 }
@@ -562,7 +559,7 @@ function proofFor(
   const before = structuralItems(s),
     after = structuredClone(s);
   apply(after);
-  if ('code' in validateBackup(encodeBackup(after))) throw stale();
+  if ('code' in validateSnapshot(after)) throw stale();
   return { before, after: structuralItems(after) };
 }
 export function captureMoveProof(
