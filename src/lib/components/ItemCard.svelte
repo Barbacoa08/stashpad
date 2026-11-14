@@ -86,6 +86,7 @@
     onmovekey: (event: KeyboardEvent) => void;
   } = $props();
   let body = $state<NoteBody>();
+  let lineCenter = $state<number>();
   let updated = $derived(timestampPresentation(item.updatedAt));
   export function focus(options?: { end?: boolean }) {
     body?.focus(options);
@@ -107,6 +108,9 @@
   class:done={item.done}
   data-note-id={item.id}
   style:--selection-color={item.color ? markerColors[item.color] : undefined}
+  style:--item-line-center={lineCenter === undefined
+    ? undefined
+    : `${lineCenter}px`}
   data-kind={item.kind}
   data-entry-id={item.id}
   onclick={onselect}
@@ -212,6 +216,7 @@
     </p>{/if}
   <NoteBody
     bind:this={body}
+    onfirstline={(center) => (lineCenter = center)}
     {expanded}
     {onexpand}
     id={item.id}
