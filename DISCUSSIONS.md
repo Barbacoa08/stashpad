@@ -44,7 +44,9 @@ Manual Delete inside Trash permanently removes the selected item and its childre
 
 ## Accounts and synchronization
 
-A later MVP is intended to use one shared API/backend database and device-local copies, with local-first loading, initially for a single user's library across devices. Simple last-write-wins is acceptable. Authentication, backend technology, ordering, conflict handling, and recovery remain to be designed and evaluated; the current app is local-only.
+**Dexie Cloud is selected for the next synchronization implementation.** Start with one personal library across Macs, local-first access, and no signup or login screens. Devices still need private authorization. An acknowledged current library on the server is sufficient initially; version history is deferred. Simple last-write-wins for note source is acceptable.
+
+The current released app remains local-only and uses native SQLite. The Dexie experiment is a starting point, not a complete Repository implementation or a verified native storage replacement. Validate managed-cloud behavior, SQLite-to-IndexedDB transfer and native durability, concurrent hierarchy/ordering, rejected-edit recovery, Trash/purge/restore, and Undo before integrating. Initial device setup, the exact shared-data boundary, and recovery rules remain design decisions. The right panel should present concise sync status, distinguish local saves from server acknowledgment, and expose offline/error details without implying success from connectivity alone.
 
 ## Mobile companions
 
