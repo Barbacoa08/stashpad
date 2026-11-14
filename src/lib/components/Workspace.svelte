@@ -716,12 +716,20 @@
     }
   }
   async function copy(id: string) {
+    const entries = shownEntries.filter((entry) =>
+      selectedIds.has(id) ? selectedIds.has(entry.id) : entry.id === id,
+    );
+    if (!entries.length) return;
+    // Capture source and displayed order before the platform clipboard await.
+    const source = entries
+      .map((entry) =>
+        entry.id === viewState.activeKey
+          ? controller.sourceFor(entry.id)
+          : entry.markdown,
+      )
+      .join('\n');
     try {
-      await copyMarkdown(
-        id === viewState.activeKey
-          ? controller.sourceFor(id)
-          : (viewState.snapshot.items.find((n) => n.id === id)?.markdown ?? ''),
-      );
+      await copyMarkdown(source);
       controller.feedback('Markdown copied');
     } catch {
       controller.feedback(

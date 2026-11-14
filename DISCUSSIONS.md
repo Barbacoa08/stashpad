@@ -20,7 +20,7 @@ M uses a staged destination dialog for moving selected siblings together within 
 
 ## Keyboard selection and batch actions
 
-Mouse Shift-range and Command-toggle selection are accepted. Research keyboard range expansion, contraction, anchor/focus behavior, and selection clearing before adding Shift-arrow selection. Decide batch edit/color/completion/copy/delete behavior separately; those actions currently use one primary item. Current selection conventions draw on [Apple’s selection guidance](https://support.apple.com/guide/mac-help/select-items-mchlp1378/mac) and [WAI-ARIA guidance distinguishing focus and selection](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/#kbd_focus_vs_selection). Interactive note cards retain their content/button semantics rather than becoming listbox options.
+Mouse Shift-range and Command-toggle selection are accepted. Research keyboard range expansion, contraction, anchor/focus behavior, and selection clearing before adding Shift-arrow selection. C and Copy Markdown copy selected visible notes together in displayed order, preserving their source and adding one newline between notes. Decide batch edit/color/completion/delete behavior separately; those actions currently use one primary item. Current selection conventions draw on [Apple’s selection guidance](https://support.apple.com/guide/mac-help/select-items-mchlp1378/mac) and [WAI-ARIA guidance distinguishing focus and selection](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/#kbd_focus_vs_selection). Interactive note cards retain their content/button semantics rather than becoming listbox options.
 
 ## Tabs
 

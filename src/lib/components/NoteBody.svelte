@@ -3,6 +3,7 @@
   import type { EditorState } from '@codemirror/state';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import MarkdownView from './MarkdownView.svelte';
+  import { firstLineCenter } from '../workspace/first-line';
   let {
     id,
     markdown,
@@ -20,9 +21,11 @@
     oncontext,
     expanded,
     onexpand,
+    onfirstline,
   }: {
     expanded: boolean;
     onexpand: (expanded: boolean) => void;
+    onfirstline: (center: number | undefined) => void;
     id: string;
     markdown: string;
     source: string;
@@ -77,6 +80,32 @@
   });
   function measure() {
     if (!body) return;
+    const content = editing
+      ? body.querySelector<HTMLElement>('.cm-content')
+      : rendered?.querySelector<HTMLElement>('.markdown-view');
+    const editLine = editing ? content?.firstElementChild : null;
+    // A virtualized editor may start with a gap, not the document's first line.
+    // Keep the previous anchor until that first line is rendered again.
+    if (!editing || editLine?.classList.contains('cm-line')) {
+      const anchor = editing ? editLine : content;
+      let center = anchor ? firstLineCenter(anchor) : null;
+      if (center === null && editLine) {
+        const rect = editLine.getBoundingClientRect();
+        center = rect.top + rect.height / 2;
+      }
+      const editScroll = editing
+        ? (body.querySelector('.cm-scroller')?.scrollTop ?? 0)
+        : 0;
+      onfirstline(
+        center === null
+          ? undefined
+          : body.offsetTop +
+              body.scrollTop +
+              editScroll +
+              center -
+              body.getBoundingClientRect().top,
+      );
+    }
     const nextCap =
       parseFloat(getComputedStyle(body).getPropertyValue('--note-cap')) *
       parseFloat(getComputedStyle(document.documentElement).fontSize);
@@ -98,6 +127,8 @@
     return () => observer.disconnect();
   });
   $effect(() => {
+    markdown;
+    source;
     naturalHeight;
     changed;
     editing;
