@@ -20,7 +20,7 @@ export const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const invalid = (
-  message = 'Invalid workspace fields or references.',
+  message = 'Invalid library fields or references.',
 ): AppError => ({ code: 'invalid_backup', message });
 export function validateBackup(text: string): BackupV7 | AppError {
   if (bytes(text) > MAX_ENVELOPE)

@@ -7,7 +7,7 @@ for (const constrained of [false, true])
       constrained ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (constrained)
       await page.addStyleTag({ content: ':root {font-size:24px !important}' });
     const fixture = await page.evaluate(async () => {
@@ -55,7 +55,7 @@ for (const constrained of [false, true])
       };
     });
     const stream = page.getByRole('region', { name: 'Note stream' }),
-      capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+      capture = page.getByRole('textbox', { name: 'New note Markdown' });
     await expect(
       page.getByRole('navigation', { name: 'Breadcrumbs' }),
     ).toBeVisible();
@@ -155,7 +155,7 @@ test('deep sidebar retains usable label and disclosure width at 800x600 and 150%
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.addStyleTag({ content: ':root {font-size:24px !important}' });
   await page.evaluate(async () => {
     const t = (window as any).__test,

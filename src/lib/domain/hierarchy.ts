@@ -16,21 +16,21 @@ export function composeOwner(key: string): { ownerId: string | null } | null {
 /** Exact IDs and an iterative, linear walk reject dangling parents and cycles. */
 export function hierarchyIndex(items: Item[]): Map<string, Item> {
   const byId = new Map(items.map((s) => [s.id, s]));
-  if (byId.size !== items.length) throw new Error('Duplicate item.');
+  if (byId.size !== items.length) throw new Error('Duplicate note.');
   const done = new Set<string>();
   for (const item of items) {
     let id: string | null = item.id;
     const pending = new Set<string>();
     while (id !== null && !done.has(id)) {
-      if (pending.has(id)) throw new Error('Item cycle.');
+      if (pending.has(id)) throw new Error('Note cycle.');
       const current = byId.get(id);
-      if (!current) throw new Error('Missing parent item.');
+      if (!current) throw new Error('Missing parent note.');
       pending.add(id);
       if (
         current.parentId !== null &&
         byId.get(current.parentId)?.kind !== 'tree'
       )
-        throw new Error('Invalid parent item.');
+        throw new Error('Invalid parent note.');
       id = current.parentId;
     }
     for (const key of pending) done.add(key);
@@ -80,12 +80,12 @@ export function scopeIndex(items: Item[]): Map<string, 'live' | 'trash'> {
 }
 export function effectiveScope(items: Item[], id: string): 'live' | 'trash' {
   const scope = scopeIndex(items).get(id);
-  if (!scope) throw new Error('Missing item.');
+  if (!scope) throw new Error('Missing note.');
   return scope;
 }
 export function itemLocation(items: Item[], id: string): Location {
   const item = items.find((x) => x.id === id);
-  if (!item) throw new Error('Missing item.');
+  if (!item) throw new Error('Missing note.');
   return { scope: effectiveScope(items, id), itemId: item.parentId };
 }
 export function directEntries(

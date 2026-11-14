@@ -9,7 +9,7 @@ for (const action of [
     page,
   }) => {
     await page.goto('/?fixture&lifecycle');
-    const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+    const capture = page.getByRole('textbox', { name: 'New note Markdown' });
     await capture.waitFor();
     await page.evaluate(() => {
       (window as any).__test.repo.fail = 'checkpoint';
@@ -50,7 +50,7 @@ test('successful close checkpoints the composer without recreating or clearing i
   page,
 }) => {
   await page.goto('/?fixture&lifecycle');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.fill('**retained** source');
   await capture.press('ArrowLeft');
   const caret = await capture.evaluate(
@@ -81,7 +81,7 @@ test('a platform hide error offers recovery and successful retry returns focus t
   page,
 }) => {
   await page.goto('/?fixture&lifecycle');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.fill('retained after hide error');
   await page.evaluate(async () => {
     const t = (window as any).__test;

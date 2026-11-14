@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 async function seed(p: Page, sources: string[]) {
@@ -102,7 +102,7 @@ test('click-away preserves actual new target after delayed save and failure reta
   await expect(page.getByRole('alert')).toContainText('failure');
   await expect(inline(page)).toHaveText('retained failure');
   await page.evaluate(() => ((window as any).__test.repo.fail = null));
-  await page.getByRole('button', { name: 'Retry checkpoint' }).click();
+  await page.getByRole('button', { name: 'Retry saving changes' }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -355,7 +355,7 @@ test('selected deletion, empty child, and replacement reset navigation memory wh
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await capture(page).press('Escape');
   await page.keyboard.press('ArrowDown');

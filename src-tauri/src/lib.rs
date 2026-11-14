@@ -27,7 +27,7 @@ impl NativeState {
             let parent = self
                 .path
                 .parent()
-                .ok_or_else(|| error("storage_error", "Workspace folder unavailable."))?;
+                .ok_or_else(|| error("storage_error", "Library folder unavailable."))?;
             std::fs::create_dir_all(parent).map_err(storage_error)?;
             inner.store = Some(store::Store::open(&self.path)?);
         }
@@ -195,6 +195,39 @@ struct Preview {
     trees: usize,
     warning: String,
 }
+impl Preview {
+    fn new(token: String, library: &WorkspaceSnapshot) -> Self {
+        Self {
+            token,
+            notes: library.items.len(),
+            drafts: library.drafts.len(),
+            trees: library
+                .items
+                .iter()
+                .filter(|x| x.kind == Kind::Tree)
+                .count(),
+            warning:
+                "Replace the entire local library, including Trash and drafts. A safety backup will be written first."
+                    .into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    #[test]
+    fn all_source_bearing_notes_are_counted_once_including_trash() {
+        let backup =
+            backup::validate(include_bytes!("../../tests/fixtures/valid-v7.json")).unwrap();
+        let preview = Preview::new("captured-token".into(), &backup.library);
+        assert_eq!(preview.notes, 5);
+        assert_eq!(preview.trees, 2);
+        assert_eq!(preview.drafts, 3);
+        assert_eq!(preview.token, "captured-token");
+    }
+}
+
 #[tauri::command]
 async fn backup_export(
     app: tauri::AppHandle,
@@ -241,25 +274,7 @@ async fn backup_preview_restore(
             .map_err(storage_error)?;
         let b = backup::validate(&bytes)?;
         let token = uuid::Uuid::new_v4().to_string();
-        let result = Preview {
-            token: token.clone(),
-            notes: b
-                .library
-                .items
-                .iter()
-                .filter(|x| x.kind == Kind::Note)
-                .count(),
-            drafts: b.library.drafts.len(),
-            trees: b
-                .library
-                .items
-                .iter()
-                .filter(|x| x.kind == Kind::Tree)
-                .count(),
-            warning:
-                "Replace all local notes, trees, and drafts. A safety backup will be written first."
-                    .into(),
-        };
+        let result = Preview::new(token.clone(), &b.library);
         inner.lock().map_err(storage_error)?.preview = Some((token, b.library));
         Ok(Some(result))
     })
@@ -363,7 +378,7 @@ pub fn run() {
             backup_confirm_restore
         ])
         .build(tauri::generate_context!())
-        .expect("Cannot start local workspace")
+        .expect("Cannot start local library")
         .run(|app, event| {
             // Reuse the hidden webview: rebuilding it would lose session/editor state.
             #[cfg(target_os = "macos")]

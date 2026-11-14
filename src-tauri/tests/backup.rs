@@ -405,3 +405,70 @@ fn repeated_nested_fields_use_the_last_value_before_strict_validation() {
         .replace("\"done\":false,\"done\":true", "\"done\":true,\"done\":0");
     assert!(backup::validate(invalid_last.as_bytes()).is_err());
 }
+
+#[test]
+fn raw_json_timestamp_components_require_ascii_digits() {
+    let text = include_str!("../../tests/fixtures/valid-v7.json");
+    for date in [
+        "2026-+1-01T00:00:00.000Z",
+        "+026-01-01T00:00:00.000Z",
+        "2026-01-01T+0:00:00.000Z",
+        "2026-01-01T00:00:00.+00Z",
+    ] {
+        assert!(
+            backup::validate(text.replace("2026-11-13T00:00:00.000Z", date).as_bytes()).is_err(),
+            "accepted {date}"
+        );
+    }
+}
+
+#[test]
+fn raw_json_integral_decimal_and_exponent_versions_match_javascript() {
+    let text = include_str!("../../tests/fixtures/valid-v7.json");
+    let expected = backup::validate(text.as_bytes()).unwrap();
+    for version in ["7.0", "7e0"] {
+        let raw = text.replace("\"version\": 7", &format!("\"version\": {version}"));
+        let checked = backup::validate(raw.as_bytes()).unwrap();
+        assert_eq!(checked.library, expected.library);
+        assert_eq!(checked.version, 7);
+    }
+}
+
+#[test]
+fn raw_json_safe_integral_metadata_preserves_exact_source() {
+    let text = include_str!("../../tests/fixtures/valid-v7.json");
+    let raw = text
+        .replace("\"position\": 0", "\"position\": -0.0")
+        .replace("\"createdAt\": 1", "\"createdAt\": 1.0")
+        .replace("\"updatedAt\": 2", "\"updatedAt\": 2e0")
+        .replace("\"deletedAt\": 3", "\"deletedAt\": 3.0")
+        .replace("\"restoreIndex\": 1", "\"restoreIndex\": 1e0")
+        .replacen("\"revision\": 4", "\"revision\": 9.007199254740991e15", 1);
+    let checked = backup::validate(raw.as_bytes()).unwrap();
+    let mut expected = backup::validate(text.as_bytes()).unwrap().library;
+    expected.drafts[0].revision = 9007199254740991;
+    assert_eq!(checked.library, expected);
+    assert_eq!(checked.library.items[0].markdown, "**note 1**\r\nline\n");
+    assert_eq!(checked.library.drafts[0].markdown, "unsaved\r\n");
+}
+
+#[test]
+fn raw_json_invalid_integer_metadata_and_unknown_fields_stay_strict() {
+    let text = include_str!("../../tests/fixtures/valid-v7.json");
+    for value in [
+        "1.5",
+        "9.007199254740992e15",
+        "-1.0",
+        "\"1.0\"",
+        "true",
+        "null",
+    ] {
+        let raw = text.replace("\"revision\": 4", &format!("\"revision\": {value}"));
+        assert!(
+            backup::validate(raw.as_bytes()).is_err(),
+            "accepted {value}"
+        );
+    }
+    let unknown = text.replace("\"revision\": 4", "\"revision\": 4.0, \"unknown\": 1e0");
+    assert!(backup::validate(unknown.as_bytes()).is_err());
+}

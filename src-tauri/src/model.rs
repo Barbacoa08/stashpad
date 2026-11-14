@@ -31,7 +31,7 @@ pub fn error(code: &str, message: &str) -> AppError {
 pub fn storage_error(_: impl std::fmt::Display) -> AppError {
     error(
         "storage_error",
-        "Local storage could not complete the operation. Your prior workspace is retained; retry.",
+        "Local storage could not complete the operation. Your prior library is retained; retry.",
     )
 }
 pub fn now() -> i64 {

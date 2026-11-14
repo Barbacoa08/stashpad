@@ -1,7 +1,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 const id = '00000000-0000-4000-8000-000000000001';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(page: Page) {
   await page.goto('/?fixture');
   await capture(page).waitFor();
@@ -145,7 +145,7 @@ test('grip cursor is grab on hover, grabbing on press, and grab on release witho
 }) => {
   await seed(page);
   const handle = page.getByRole('button', {
-    name: 'Reorder item',
+    name: 'Reorder note',
     exact: true,
   });
   await page.locator(`[data-entry-id="${id}"]`).hover();

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const compose = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 async function replace(p: Page, text: string, edit = compose(p)) {
   await edit.focus();

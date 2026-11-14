@@ -22,7 +22,7 @@ const touch = (x: Item) =>
   (x.updatedAt = Math.max(Date.now(), x.updatedAt + 1));
 function find(s: WorkspaceSnapshot, id: string): Item {
   const x = s.items.find((x) => x.id === id);
-  if (!x) throw new Error('This item is unavailable. Your input is retained.');
+  if (!x) throw new Error('This note is unavailable. Your input is retained.');
   return x;
 }
 function location(s: WorkspaceSnapshot, at: Location, allowNote = false) {
@@ -193,7 +193,7 @@ export function reorderItem(s: WorkspaceSnapshot, r: ReorderItem) {
   const x = find(s, r.id),
     actual = itemLocation(s.items, r.id);
   if (actual.scope !== r.group.scope || actual.itemId !== r.group.itemId)
-    throw new Error('Items can be reordered only within the same location.');
+    throw new Error('Notes can be reordered only within the same location.');
   const group = directEntries(s, r.group);
   if (
     !Number.isSafeInteger(r.toIndex) ||
@@ -215,7 +215,7 @@ const sameIds = (a: string[], b: string[]) =>
   a.length === b.length && a.every((id, i) => id === b[i]);
 const stale = () =>
   new Error(
-    'The captured items or destination changed. Review the action again; your content is retained.',
+    'The captured notes or destination changed. Review the action again; your content is retained.',
   );
 function uniqueIds(ids: string[]) {
   if (

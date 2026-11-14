@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Locator } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const card = (p: Page, id: string) => p.locator(`[data-entry-id="${id}"]`);
 async function seed(p: Page) {
   await p.goto('/?fixture');
@@ -44,7 +44,7 @@ for (const scale of [100, 150]) {
     for (const id of ids.slice(0, 2)) {
       const item = card(page, id),
         handle = item.getByRole('button', {
-          name: 'Reorder item',
+          name: 'Reorder note',
           exact: true,
         });
       const before = await box(item.locator('.note-body'));
@@ -98,7 +98,7 @@ for (const scale of [100, 150]) {
       expect(await box(item.locator('.note-body'))).toEqual(before);
     }
     const handle = card(page, ids[1]).getByRole('button', {
-      name: 'Reorder item',
+      name: 'Reorder note',
       exact: true,
     });
     await handle.press('Meta+ArrowUp');
@@ -182,7 +182,7 @@ for (const scale of [100, 150]) {
 // Browser-created transfers do not faithfully retain effectAllowed/dropEffect themselves.
 async function owned(p: Page, id: string) {
   await card(p, id)
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .evaluate((el) => {
       const transfer = new DataTransfer();
       let effect = 'copy';
@@ -277,7 +277,7 @@ for (const kind of ['note', 'tree'] as const)
     await source.hover();
     const bounds = (await target.boundingBox())!;
     await source
-      .getByRole('button', { name: 'Reorder item', exact: true })
+      .getByRole('button', { name: 'Reorder note', exact: true })
       .dragTo(target, {
         sourcePosition: { x: 2, y: 2 },
         targetPosition: { x: bounds.width / 2, y: bounds.height * 0.75 },
@@ -345,7 +345,7 @@ test('view cancellation keeps owned rejection feedback until dragend without rev
     ),
   ).toEqual(before);
   await card(page, ids[0])
-    .getByRole('button', { name: 'Reorder item', exact: true })
+    .getByRole('button', { name: 'Reorder note', exact: true })
     .dispatchEvent('dragend');
   expect(await over(page.locator('.sidebar'))).toEqual({
     effect: 'copy',

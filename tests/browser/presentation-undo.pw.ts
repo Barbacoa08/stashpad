@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const stream = (page: Page) =>
   page.getByRole('region', { name: 'Note stream' });
 const card = (page: Page, id: string) =>
@@ -63,7 +63,7 @@ test('concise local activity retains actual live status and error recovery', asy
 }) => {
   await page.setViewportSize({ width: 1400, height: 800 });
   await seed(page);
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status.getByRole('heading')).toHaveText('Local activity');
   await expect(status).toContainText('Notes and drafts on this Mac.');
   await capture(page).fill('retained local draft');

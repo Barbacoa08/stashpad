@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const cards = (page: Page) => page.getByRole('article', { name: 'Saved note' });
 
 async function checkEditor(editor: Locator) {
@@ -45,7 +45,7 @@ async function checkEditor(editor: Locator) {
   ].sort((a, b) => a - b);
   expect((levels[1] + 0.05) / (levels[0] + 0.05)).toBeGreaterThanOrEqual(3);
   expect(parseFloat(presentation.width)).toBeGreaterThan(0);
-  if ((await editor.getAttribute('aria-label')) === 'Capture Markdown') {
+  if ((await editor.getAttribute('aria-label')) === 'New note Markdown') {
     expect(presentation.outline).toBe('none');
     await expect(
       editor.locator('xpath=ancestor::section[contains(@class, "composer")]'),

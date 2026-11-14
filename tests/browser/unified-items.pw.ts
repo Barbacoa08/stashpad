@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 const edit = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 async function seed(p: Page, sources: string[]) {

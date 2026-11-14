@@ -1,16 +1,16 @@
 # Mac preview releases
 
-Stashpad Preview currently installs through an Apple Silicon DMG published as a GitHub prerelease. Releases are manual; there is no automatic updater. The alpha uses local notes only, with no accounts or synchronization. [README.md](../README.md#download-and-install) is the user-facing installation guide.
+Scratchtree currently installs through an Apple Silicon DMG published as a GitHub prerelease. Releases are manual; there is no automatic updater. The alpha uses local notes only, with no accounts or synchronization. [README.md](../README.md#download-and-install) is the user-facing installation guide.
 
-The existing preview is ad-hoc signed, **not Developer ID signed or notarized**. Production signing, credentials, notarization, Intel builds, and other platforms require separate decisions. Keep the Preview identifier `tech.barbajoe.stashpad.preview` stable: its local library is separate from the application bundle. A future name or icon change must explicitly consider identity and data-location compatibility.
+The alpha is ad-hoc signed, **not Developer ID signed or notarized**. Production signing, credentials, notarization, Intel builds, and other platforms require separate decisions. The current native identifier is `tech.barbajoe.scratchtree.preview`; data is stored separately from the application bundle. Alpha changes may break identity or format compatibility, but using actual notes requires a deliberate private backup and transfer plan first.
 
 ## Scope and prerequisites
 
 - Follow [CONTRIBUTING.md](../CONTRIBUTING.md), including independent reviews, verification, and source identity. Packaging is not a replacement for implementation acceptance.
 - Confirm the current task authorizes publishing a release. Code approval, a merged PR, or a past release does not grant standing publication or credential access. If publication is already authorized, complete the verified release without asking again.
-- Use the README's pinned Node, pnpm, and Rust versions, macOS command-line build prerequisites, the `aarch64-apple-darwin` Rust target, Python 3 for the checks below, and authenticated GitHub CLI access to `Barbacoa08/stashpad`. Select the toolchains in the shell before running Tauri's child commands. Do not depend on another worktree's ignored toolchain/cache paths.
+- Use the README's pinned Node, pnpm, and Rust versions, macOS command-line build prerequisites, the `aarch64-apple-darwin` Rust target, Python 3 for the checks below, and authenticated GitHub CLI access to `Barbacoa08/scratchtree`. Select the toolchains in the shell before running Tauri's child commands. Do not depend on another worktree's ignored toolchain/cache paths.
 - Start from a clean, freshly fetched, verified release commit, normally merged `origin/main`, in an isolated worktree. Record commit/tree IDs, tool versions, architecture, commands, outcomes, and omissions in a dated ignored `.projects/` task folder.
-- Never use an original Stashpad profile or bundle personal notes, SQLite files, backups, exports, private captures, credentials, or scratch directories. New installations start empty. Do not launch against an existing user profile merely to package the installer.
+- Never use an original third-party application profile or bundle personal notes, SQLite files, backups, exports, private captures, credentials, or scratch directories. New installations start empty. Do not launch against an existing user profile merely to package the installer.
 
 For a prose-only PR, documentation checks are sufficient and no new installer is needed. For a runtime release, verify the selected source under the contributor guide, and record the applicable packaged native checks and their limits. If a squash merge leaves the complete tracked tree identical to the tested PR head, retain both identities and the verified tree equality; do not imply a fresh test run occurred. Build the release afresh from the selected clean commit.
 
@@ -20,7 +20,7 @@ The shell examples assume the repository root and one continuing shell. Keep err
 
 ```sh
 set -eu
-gh release list --repo Barbacoa08/stashpad
+gh release list --repo Barbacoa08/scratchtree
 release_tag='v0.1.0-alpha.N' # Replace N with the approved unused number.
 case "$release_tag" in *N*) echo 'Choose a real release tag first.' >&2; exit 1 ;; esac
 
@@ -45,10 +45,10 @@ env -u TAURI_CONFIG -u APPLE_SIGNING_IDENTITY -u APPLE_CERTIFICATE \
 
 test -z "$(git status --porcelain)"
 mkdir "$release_dir/staging" "$release_dir/assets"
-release_app="$release_dir/staging/Stashpad Preview.app"
-ditto "$release_target_dir/aarch64-apple-darwin/release/bundle/macos/Stashpad Preview.app" "$release_app"
+release_app="$release_dir/staging/Scratchtree.app"
+ditto "$release_target_dir/aarch64-apple-darwin/release/bundle/macos/Scratchtree.app" "$release_app"
 codesign --force --sign - --timestamp=none \
-  --identifier tech.barbajoe.stashpad.preview "$release_app"
+  --identifier tech.barbajoe.scratchtree.preview "$release_app"
 codesign --verify --deep --strict --verbose=2 "$release_app"
 codesign -dv --verbose=4 "$release_app" 2> "$release_dir/signature.txt"
 ln -s /Applications "$release_dir/staging/Applications"
@@ -64,10 +64,10 @@ Release tag and internal application version are different identities: alpha.1 a
 
 ```sh
 release_label=${release_tag#v}
-release_name="Stashpad-Preview_${release_label}_aarch64.dmg"
+release_name="Scratchtree_${release_label}_aarch64.dmg"
 release_dmg="$release_dir/assets/$release_name"
 test ! -e "$release_dmg"
-hdiutil create -volname 'Stashpad Preview' -fs HFS+ \
+hdiutil create -volname 'Scratchtree' -fs HFS+ \
   -srcfolder "$release_dir/staging" -format UDZO -imagekey zlib-level=9 \
   "$release_dmg" > "$release_dir/create-dmg.log" 2>&1
 hdiutil verify "$release_dmg" > "$release_dir/verify-dmg.log" 2>&1
@@ -99,7 +99,7 @@ The trap detaches the successfully attached image if a later check exits or is i
 5. The image is detached successfully. Never leave a failed verification mount behind or upload after a failed check.
 
 ```sh
-codesign --verify --deep --strict "$release_mount/Stashpad Preview.app"
+codesign --verify --deep --strict "$release_mount/Scratchtree.app"
 release_cleanup
 trap - EXIT HUP INT TERM
 (cd "$release_dir/assets" && shasum -a 256 "$release_name" > SHA256SUMS.txt)
@@ -109,18 +109,20 @@ trap - EXIT HUP INT TERM
 
 ## Release notes, upload, and publication
 
-Write release notes inside the task folder. Include changes, source commit, actual verification and omissions, Apple Silicon/local-only limits, internal version, ad-hoc signing/notarization status, and installation/update instructions. Explain that replacing the app retains its separately stored library, while restoring a backup **replaces** the destination library. Recommend export before updating. Record the released storage and backup versions and any incompatibility with earlier installers: current source uses schema 6/BackupV6, while alpha.2 uses schema 4 and cannot read an upgraded library or BackupV6. Schema-5-only builds also cannot reopen an upgraded schema-6 profile. Before upgrading an existing profile for acceptance, quit every older Preview process and preserve a consistent private recovery copy. Never reopen that upgraded profile with an older binary. For an ad-hoc release, tell users to install the app in Applications, try opening it, click **Done** on the warning, then open **System Settings → Privacy & Security → Security** and click **Open Anyway**. They should authenticate if prompted and confirm **Open**. Say to proceed only if they trust the download, link [Apple's per-app opening instructions](https://support.apple.com/en-us/102445), and note that managed Macs may restrict opening. Do not prescribe disabling system-wide protections or removing quarantine attributes.
+Write release notes inside the task folder. Include changes, exact source identity, actual verification/omissions, Apple Silicon/local-only limits, internal version, signing status, and installation instructions. Record the current schema-7/BackupV7 contract and the new application identity. Earlier alpha profiles and exports are not opened or migrated automatically. For an initial transfer, preserve an unchanged private export and recovery installer, convert a copy to the current contract, validate it, import it, and verify a fresh export/restore. Restore **replaces** the destination library; it does not merge libraries or synchronize Macs. Keep each machine's distinct export until the intended data is verified. Historical public alpha releases may be removed only under applicable task authorization and after a working recovery path exists.
+
+For an ad-hoc release, install the app in Applications, try opening it, click **Done** on the warning, then open **System Settings → Privacy & Security → Security** and click **Open Anyway**. Authenticate if prompted and confirm **Open**. Proceed only if you trust the download. Link [Apple's per-app opening instructions](https://support.apple.com/en-us/102445) and note that managed Macs may restrict opening. Do not prescribe disabling system-wide protections or removing quarantine attributes.
 
 Create a draft first so uploaded files can be checked before public publication:
 
 ```sh
 gh release create "$release_tag" "$release_dmg" "$release_dir/assets/SHA256SUMS.txt" \
-  --repo Barbacoa08/stashpad --draft --prerelease --target "$release_commit" \
-  --title "Stashpad Preview $release_label — Apple Silicon" \
+  --repo Barbacoa08/scratchtree --draft --prerelease --target "$release_commit" \
+  --title "Scratchtree $release_label — Apple Silicon" \
   --notes-file "$release_dir/release-notes.md"
-gh api 'repos/Barbacoa08/stashpad/releases?per_page=100' \
+gh api 'repos/Barbacoa08/scratchtree/releases?per_page=100' \
   > "$release_dir/draft-releases.json"
-gh release download "$release_tag" --repo Barbacoa08/stashpad \
+gh release download "$release_tag" --repo Barbacoa08/scratchtree \
   --dir "$release_dir/download-check" --pattern '*.dmg' --pattern SHA256SUMS.txt
 cmp "$release_dmg" "$release_dir/download-check/$release_name"
 cmp "$release_dir/assets/SHA256SUMS.txt" "$release_dir/download-check/SHA256SUMS.txt"
@@ -131,15 +133,15 @@ Before publishing, select the exact tag from the returned metadata and verify dr
 When these checks pass and publication is authorized:
 
 ```sh
-gh release edit "$release_tag" --repo Barbacoa08/stashpad \
+gh release edit "$release_tag" --repo Barbacoa08/scratchtree \
   --draft=false --prerelease --latest=false
-gh api "repos/Barbacoa08/stashpad/releases/tags/$release_tag" \
+gh api "repos/Barbacoa08/scratchtree/releases/tags/$release_tag" \
   > "$release_dir/published-release.json"
 git ls-remote --tags origin "refs/tags/$release_tag" \
   > "$release_dir/published-tag.txt"
 curl --fail --location --silent --show-error \
   --output "$release_dir/public-download.dmg" \
-  "https://github.com/Barbacoa08/stashpad/releases/download/$release_tag/$release_name"
+  "https://github.com/Barbacoa08/scratchtree/releases/download/$release_tag/$release_name"
 cmp "$release_dmg" "$release_dir/public-download.dmg"
 ```
 

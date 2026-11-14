@@ -153,11 +153,11 @@ export class MemoryRepository implements Repository {
     this.staged = b.library;
     return {
       token: 'synthetic-token',
-      notes: b.library.items.filter((x) => x.kind === 'note').length,
+      notes: b.library.items.length,
       drafts: b.library.drafts.length,
       trees: b.library.items.filter((x) => x.kind === 'tree').length,
       warning:
-        'Replace the entire local workspace. A safety backup is required.',
+        'Replace the entire local library, including Trash and drafts. A safety backup will be written first.',
     };
   }
   async confirmRestore(_token: string, confirm: boolean) {

@@ -1,6 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const at = (p: Page) =>
   p.evaluate(() => (window as any).__test.controller.state.location);
 async function child(p: Page) {
@@ -95,7 +95,7 @@ test('side events consume URL fallback at boundaries, blocked state, and before 
 }) => {
   await page.goto('/?fixture&failLoad');
   await expect(
-    page.getByRole('button', { name: 'Retry loading workspace' }),
+    page.getByRole('button', { name: 'Retry loading library' }),
   ).toBeVisible();
   await side(page.locator('main'), 3);
   await side(page.locator('main'), 4);

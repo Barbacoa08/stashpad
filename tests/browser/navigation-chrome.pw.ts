@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 async function child(p: Page, label: string) {
   await p.keyboard.press('Meta+n');
   await expect(capture(p)).toBeFocused();
@@ -246,7 +246,7 @@ test('successful full backup replacement resets all session visits', async ({
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(capture(page)).toHaveText('restored');
   await expect(back(page)).toBeDisabled();
@@ -347,7 +347,7 @@ test('right-side status retains explanation when expanded; collapsed retry remai
   await page.setViewportSize({ width: 1400, height: 800 });
   await page.goto('/?fixture');
   await expect(capture(page)).toBeVisible();
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status).toContainText('Notes and drafts on this Mac.');
   expect(
     await status.evaluate((el) =>
@@ -398,7 +398,7 @@ test('collapsed narrow 150 percent color failure keeps pointer Retry clear of th
   const palette = page.getByRole('dialog', { name: 'Assign color' });
   await palette.getByRole('button', { name: 'Red', exact: true }).click();
   await expect(palette.getByRole('alert')).toContainText('failure');
-  const status = page.getByRole('region', { name: 'Workspace status' });
+  const status = page.getByRole('region', { name: 'Editor status' });
   await expect(status).toContainText('Red for bounded palette item');
   await expect(status).not.toContainText(id!);
   const retry = page.getByRole('button', { name: 'Retry action', exact: true });
@@ -532,7 +532,7 @@ test('cancelled restore and failed replacement preserve the current session visi
     (window as any).__test.repo.fail = 'restore';
   });
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(page.getByRole('alert')).toContainText('failure');
   expect((await at(page)).itemId).toBe(parent);

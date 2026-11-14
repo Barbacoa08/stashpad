@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function create(page: Page, name: string) {
   await expect(capture(page)).toBeVisible();
   await page.keyboard.press('Meta+n');
@@ -226,7 +226,7 @@ test('successful restore resets capture undo even when restored source equals th
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(capture(page)).toBeFocused();
   await page.keyboard.press('Meta+z');

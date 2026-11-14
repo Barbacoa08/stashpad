@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 async function seed(page: Page, sources: string[]) {
@@ -325,7 +325,7 @@ test('expansion uses exact note identity across filters and survives deletion/Un
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(
     first.getByRole('button', { name: 'Expand note', exact: true }),

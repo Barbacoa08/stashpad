@@ -5,7 +5,7 @@ test('search leads navigation and status remains accessible in details', async (
 }) => {
   await page.goto('/?fixture');
   const sidebar = page.getByRole('complementary', {
-    name: 'Workspace navigation',
+    name: 'Editor navigation',
   });
   const search = page.getByRole('searchbox', { name: 'Search saved notes' });
   await expect(search).toBeVisible();
@@ -20,7 +20,7 @@ test('search leads navigation and status remains accessible in details', async (
       .locator('svg[aria-hidden=true]'),
   ).toHaveCount(1);
   await expect(
-    page.getByRole('region', { name: 'Workspace status' }),
+    page.getByRole('region', { name: 'Editor status' }),
   ).toBeVisible();
   await expect(page.getByLabel('Keyboard shortcuts')).toContainText('New tree');
   await expect(page.getByLabel('Keyboard shortcuts')).toContainText('Space');
@@ -31,7 +31,7 @@ test('narrow details exposes failed save and retry without stealing focus', asyn
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.goto('/?fixture');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.waitFor();
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await capture.fill('Synthetic failed save');
@@ -56,7 +56,7 @@ for (const constrained of [false, true])
       constrained ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (constrained)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
@@ -78,7 +78,7 @@ for (const constrained of [false, true])
       await t.controller.openTree(trees[33].id);
     });
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     const row = sidebar.locator('.tree-row.current');
     const title = row.getByRole('button', { name: /Open tree/ });
@@ -125,7 +125,7 @@ test('current and hovered tree rows retain one surface for both controls', async
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   await page.evaluate(async () => {
     const t = (window as any).__test;
     const names = ['Current', 'Current child', 'Other', 'Other child'];
@@ -192,7 +192,7 @@ async function failedCapture(
 ) {
   await page.setViewportSize({ width, height: 900 });
   await page.goto('/?fixture');
-  const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const capture = page.getByRole('textbox', { name: 'New note Markdown' });
   await capture.fill('Responsive recovery source');
   await page.evaluate(() => ((window as any).__test.repo.fail = 'save'));
   await capture.press('Enter');

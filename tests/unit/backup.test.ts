@@ -171,3 +171,72 @@ it('uses the last repeated envelope and nested field before strict validation', 
     ),
   ).toHaveProperty('code', 'invalid_backup');
 });
+
+// A tree is also a source-bearing note; Trash is part of the complete library.
+it('previews every saved note exactly once with trees as an included subtotal', async () => {
+  const repo = new MemoryRepository();
+  repo.restoreText = encodeBackup(snapshot());
+  expect(await repo.previewRestore()).toMatchObject({
+    notes: 2,
+    trees: 1,
+    drafts: 2,
+  });
+  expect(repo.snapshot.items).toHaveLength(0);
+});
+
+describe('raw JSON input parity with native backup validation', () => {
+  const text = readFileSync(
+    new URL('../fixtures/valid-v7.json', import.meta.url),
+    'utf8',
+  );
+  it.each([
+    '2026-+1-01T00:00:00.000Z',
+    '+026-01-01T00:00:00.000Z',
+    '2026-01-01T+0:00:00.000Z',
+    '2026-01-01T00:00:00.+00Z',
+  ])('rejects signed timestamp components: %s', (date) => {
+    expect(
+      validateBackup(text.replace('2026-11-13T00:00:00.000Z', date)),
+    ).toHaveProperty('code', 'invalid_backup');
+  });
+  it.each(['7.0', '7e0'])(
+    'accepts integral version %s without changing source',
+    (version) => {
+      expect(
+        validateBackup(text.replace('"version": 7', `"version": ${version}`)),
+      ).toEqual(JSON.parse(text));
+    },
+  );
+  it('accepts safe integral decimal/exponent metadata and preserves source separators', () => {
+    const raw = text
+      .replaceAll('"position": 0', '"position": -0.0')
+      .replaceAll('"createdAt": 1', '"createdAt": 1.0')
+      .replaceAll('"updatedAt": 2', '"updatedAt": 2e0')
+      .replaceAll('"deletedAt": 3', '"deletedAt": 3.0')
+      .replaceAll('"restoreIndex": 1', '"restoreIndex": 1e0')
+      .replace('"revision": 4', '"revision": 9.007199254740991e15');
+    const checked = validateBackup(raw);
+    expect(checked).toEqual(JSON.parse(raw));
+    if ('code' in checked) throw new Error(checked.code);
+    expect(checked.library.items[0].markdown).toBe('**note 1**\r\nline\n');
+    expect(checked.library.drafts[0]).toMatchObject({
+      markdown: 'unsaved\r\n',
+      revision: 9007199254740991,
+    });
+  });
+  it.each(['1.5', '9.007199254740992e15', '-1.0', '"1.0"', 'true', 'null'])(
+    'rejects invalid integer metadata %s',
+    (value) => {
+      expect(
+        validateBackup(text.replace('"revision": 4', `"revision": ${value}`)),
+      ).toHaveProperty('code', 'invalid_backup');
+    },
+  );
+  it('keeps unknown-field rejection after numeric normalization', () => {
+    expect(
+      validateBackup(
+        text.replace('"revision": 4', '"revision": 4.0, "unknown": 1e0'),
+      ),
+    ).toHaveProperty('code', 'invalid_backup');
+  });
+});

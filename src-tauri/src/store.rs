@@ -487,7 +487,7 @@ fn find<'a>(s: &'a WorkspaceSnapshot, id: &str) -> Result<&'a Item> {
     s.items.iter().find(|x| x.id == id).ok_or_else(|| {
         error(
             "not_found",
-            "This item is unavailable. Your input is retained.",
+            "This note is unavailable. Your input is retained.",
         )
     })
 }
@@ -495,7 +495,7 @@ fn find_mut<'a>(s: &'a mut WorkspaceSnapshot, id: &str) -> Result<&'a mut Item> 
     s.items.iter_mut().find(|x| x.id == id).ok_or_else(|| {
         error(
             "not_found",
-            "This item is unavailable. Your input is retained.",
+            "This note is unavailable. Your input is retained.",
         )
     })
 }
@@ -510,7 +510,7 @@ pub fn effective_scope(s: &WorkspaceSnapshot, id: &str) -> Result<Scope> {
         let x = index.get(key).ok_or_else(|| {
             error(
                 "not_found",
-                "This item is unavailable. Your input is retained.",
+                "This note is unavailable. Your input is retained.",
             )
         })?;
         if x.deleted_at.is_some() {
@@ -643,7 +643,7 @@ fn restore(s: &mut WorkspaceSnapshot, id: &str) -> Result<()> {
 }
 
 fn stale() -> AppError {
-    error("stale_structure", "The captured items or destination changed. Review the action again; your content is retained.")
+    error("stale_structure", "The captured notes or destination changed. Review the action again; your content is retained.")
 }
 fn unique_ids(ids: &[String]) -> Result<std::collections::HashSet<&str>> {
     let mut seen = std::collections::HashSet::new();

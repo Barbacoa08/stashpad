@@ -8,7 +8,7 @@ const replace = async (page: import('@playwright/test').Page, text: string) => {
 const edit = (page: import('@playwright/test').Page) =>
   page
     .getByRole('textbox', { name: 'Edit Markdown' })
-    .or(page.getByRole('textbox', { name: 'Capture Markdown' }))
+    .or(page.getByRole('textbox', { name: 'New note Markdown' }))
     .first();
 test('save search selected-outside-results, clear, new, and compose recovery', async ({
   page,
@@ -121,12 +121,12 @@ test('initial read failure offers retry, then save failure retains source and su
 }) => {
   await page.goto('/?fixture&failLoad');
   await expect(
-    page.getByRole('button', { name: 'Retry loading workspace' }),
+    page.getByRole('button', { name: 'Retry loading library' }),
   ).toBeVisible();
   await page.evaluate(() => {
     (window as any).__test.repo.fail = null;
   });
-  await page.getByRole('button', { name: 'Retry loading workspace' }).click();
+  await page.getByRole('button', { name: 'Retry loading library' }).click();
   await replace(page, 'retry source');
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'save';
@@ -279,4 +279,32 @@ test('background acknowledgment retains editor selection and autosaves replaceme
       ),
     )
     .toBe(expected);
+});
+
+test('draft checkpoint retry saves changes without submitting a note', async ({
+  page,
+}) => {
+  await page.goto('/?fixture');
+  await expect(edit(page)).toBeVisible();
+  await page.evaluate(() => ((window as any).__test.repo.fail = 'checkpoint'));
+  await replace(page, 'retained capture draft');
+  await expect(page.getByRole('alert')).toContainText('failure');
+  await expect(edit(page)).toHaveText('retained capture draft');
+  await page.evaluate(() => ((window as any).__test.repo.fail = null));
+  await page
+    .getByRole('button', { name: 'Retry saving changes', exact: true })
+    .click();
+  await expect(page.getByRole('status')).toHaveText('Draft saved');
+  await expect(edit(page)).toHaveText('retained capture draft');
+  await expect(page.getByRole('article', { name: 'Saved note' })).toHaveCount(
+    0,
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__test.repo.snapshot.drafts.find(
+          (draft: any) => draft.key === 'compose',
+        )?.markdown,
+    ),
+  ).toBe('retained capture draft');
 });

@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 const editor = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const current = (page: Page) =>
   page.evaluate(() => (window as any).__test.controller.state.source);
 for (const [name, source] of [

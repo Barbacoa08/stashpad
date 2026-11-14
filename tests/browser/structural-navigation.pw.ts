@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 const card = (page: Page, id: string) =>
   page.locator(`[data-entry-id="${id}"]`);
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 async function seed(page: Page) {
   await page.goto('/?fixture');
   await capture(page).waitFor();
@@ -273,7 +273,7 @@ test('older uncertain purge Retry stays distinct from a newer failed palette cho
   const palette = page.getByRole('dialog', { name: 'Assign color' });
   await palette.getByRole('button', { name: 'Red', exact: true }).click();
   await expect(palette.getByRole('alert')).toContainText('failure');
-  const feedback = page.getByRole('region', { name: 'Workspace status' });
+  const feedback = page.getByRole('region', { name: 'Editor status' });
   // The currently available generic action acknowledges purge, not this color.
   await expect(feedback).not.toContainText('Retry color:');
   await page.evaluate(() => {
@@ -308,7 +308,7 @@ test('older uncertain purge Retry stays distinct from a newer failed palette cho
   });
   await retry.dispatchEvent('click');
   await expect(
-    palette.getByRole('grid', { name: 'Item color' }),
+    palette.getByRole('grid', { name: 'Note color' }),
   ).toHaveAttribute('aria-busy', 'true');
   await page.getByRole('searchbox').fill('newer search');
   await page.evaluate(() => (window as any).__test.releaseColor());

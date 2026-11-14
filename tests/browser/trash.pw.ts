@@ -1,13 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (p: Page) =>
-  p.getByRole('textbox', { name: 'Capture Markdown' });
+  p.getByRole('textbox', { name: 'New note Markdown' });
 const edit = (p: Page) => p.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (p: Page) => p.getByRole('region', { name: 'Note stream' });
 const card = (p: Page, id: string) => p.locator(`[data-entry-id="${id}"]`);
 const trash = (p: Page) =>
   p.getByRole('button', { name: 'Trash', exact: true });
 const restore = (p: Page) =>
-  p.getByRole('button', { name: 'Restore item', exact: true });
+  p.getByRole('button', { name: 'Restore note', exact: true });
 async function seed(p: Page) {
   await p.goto('/?fixture');
   await capture(p).waitFor();
@@ -400,7 +400,7 @@ for (const large of [false, true])
       await t.controller.start();
     });
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     const overflow = await sidebar.evaluate((el) => ({
       self: getComputedStyle(el).overflowY,

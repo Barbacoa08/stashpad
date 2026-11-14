@@ -6,7 +6,9 @@ When a topic becomes actionable, link its individual GitHub issue here. Record a
 
 ## Branding, terminology, and identity
 
-The app remains Stashpad Preview with “stash” terminology; Scratchtree is the working future name. The selected reference family is preserved in the [branding record](docs/branding/README.md). Root and its small tree replace the former Home destination, with a separator above child navigation; the selected family also supplies the Dock icon. Other functional icons retain their existing appearance. Finalize the app name, remaining hierarchy terms, and future artwork refinements separately; current Preview identifiers and note locations remain stable.
+**Scratchtree** is the accepted name, with “Fast Markdown notes, organized into note trees” as its description. Use note, note tree / tree, parent, sibling, and child note. Root is the top navigation destination. Library refers to all stored data; use notes, Root, or editor in their specific contexts. The [branding record](docs/branding/README.md) preserves the terminology and selected icon family.
+
+The rename uses a new native identity and current-only storage/backup contracts. Alpha compatibility is not promised; actual notes still need a deliberate private backup and transfer. Historical alpha releases can be removed once the new package and private recovery path are verified. Remaining discussion concerns light/dark treatments, platform containers, and future icon/style refinements, rather than the accepted name and vocabulary.
 
 ## Styling experiment
 
@@ -50,7 +52,7 @@ Mac comes first. Future iOS and Android companions are intended primarily for vi
 
 ## Developer ID signing and notarization
 
-The current Mac alpha is ad-hoc signed and is not notarized, so macOS can block its first launch. Decide whether and when to use Developer ID signing and notarization, including their distribution and maintenance implications. See [issue #6](https://github.com/Barbacoa08/stashpad/issues/6).
+The current Mac alpha is ad-hoc signed and is not notarized, so macOS can block its first launch. Decide whether and when to use Developer ID signing and notarization, including their distribution and maintenance implications. See [issue #6](https://github.com/Barbacoa08/scratchtree/issues/6).
 
 ## Other repository decision
 

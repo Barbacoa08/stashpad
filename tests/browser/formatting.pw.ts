@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const stream = (page: Page) =>

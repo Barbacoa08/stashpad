@@ -458,3 +458,21 @@ it('delayed tree creation opens only on success and retains later typing in the 
     c.dispose();
   }
 });
+
+it('saving a capture draft retains its source without submitting a note', async () => {
+  const repo = new MemoryRepository();
+  const c = new WorkspaceController(repo);
+  try {
+    await c.start();
+    c.editSource('unfinished Markdown **');
+    expect(await c.flush()).toBe(true);
+    expect(c.state.status).toBe('Draft saved');
+    expect(repo.snapshot.items).toHaveLength(0);
+    expect(repo.snapshot.drafts).toMatchObject([
+      { key: 'compose', markdown: 'unfinished Markdown **' },
+    ]);
+    expect(c.state.source).toBe('unfinished Markdown **');
+  } finally {
+    c.dispose();
+  }
+});

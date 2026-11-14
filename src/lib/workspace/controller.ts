@@ -257,7 +257,7 @@ export class WorkspaceController {
         if (this.state.buffers[key]?.revision === revision) {
           this.dirty.delete(key);
           this.patch({
-            status: composeOwner(key) ? 'Draft checkpointed' : 'Saved',
+            status: composeOwner(key) ? 'Draft saved' : 'Saved',
             error: '',
           });
         }
@@ -405,7 +405,7 @@ export class WorkspaceController {
   selectNote(id: string) {
     const item = this.state.snapshot.items.find((x) => x.id === id);
     if (!item) {
-      this.error(new Error('This item is unavailable.'));
+      this.error(new Error('This note is unavailable.'));
       return Promise.resolve(false);
     }
     const at = this.state.query.trim()
@@ -505,7 +505,7 @@ export class WorkspaceController {
   enterItem(id: string) {
     const item = this.state.snapshot.items.find((x) => x.id === id);
     if (!item) {
-      this.error(new Error('This item is unavailable.'));
+      this.error(new Error('This note is unavailable.'));
       return Promise.resolve(false);
     }
     const at: Location = {
@@ -738,7 +738,7 @@ export class WorkspaceController {
         const prior = this.state.snapshot;
         const current = this.state.location;
         const target = prior.items.find((x) => x.id === id);
-        if (!target) throw new Error('This item is unavailable.');
+        if (!target) throw new Error('This note is unavailable.');
         this.snapshot(await this.repo.deleteItem(id, leave));
         if (view === this.viewIntent) {
           let at = current;
@@ -774,7 +774,7 @@ export class WorkspaceController {
         this.patch({
           status:
             target.deletedAt !== null
-              ? 'This item is already in Trash. Restore is available.'
+              ? 'This note is already in Trash. Restore is available.'
               : 'Deleted. Undo delete is available.',
           error: '',
           mutationRetry: this.uncertainPurgeRetries.size > 0,
@@ -792,7 +792,7 @@ export class WorkspaceController {
   }
   capturePurge(id: string): PurgeItem {
     if (effectiveScope(this.state.snapshot.items, id) !== 'trash')
-      throw new Error('Only items in Trash can be permanently deleted.');
+      throw new Error('Only notes in Trash can be permanently deleted.');
     return {
       id,
       location: itemLocation(this.state.snapshot.items, id),
@@ -917,13 +917,13 @@ export class WorkspaceController {
     order: string[];
   } {
     if (!ids.length || new Set(ids).size !== ids.length)
-      throw new Error('Select unique sibling items.');
+      throw new Error('Select unique sibling notes.');
     const from = itemLocation(this.state.snapshot.items, ids[0]);
     const order = directEntries(this.state.snapshot, from).map((x) => x.id),
       selected = new Set(ids);
     const members = new Set(order);
     if (ids.some((id) => !members.has(id)))
-      throw new Error('Select items from one sibling group.');
+      throw new Error('Select notes from one sibling group.');
     return { ids: order.filter((id) => selected.has(id)), from, order };
   }
   captureMove(ids: string[], to: Location, toIndex: number): MoveItems {
@@ -942,7 +942,7 @@ export class WorkspaceController {
       let parent: string | null = to.itemId;
       while (parent !== null) {
         if (selected.has(parent))
-          throw new Error('An item cannot move inside itself.');
+          throw new Error('A note cannot move inside itself.');
         parent = index.get(parent)?.parentId ?? null;
       }
     }
@@ -1002,7 +1002,7 @@ export class WorkspaceController {
     return this.itemMetadata(
       'move',
       () => this.repo.moveItems(captured),
-      'Items moved',
+      'Notes moved',
     );
   }
   private async reconcileCreations(skipChild?: string): Promise<boolean> {
@@ -1056,7 +1056,7 @@ export class WorkspaceController {
     return this.itemMetadata(
       'restore-item',
       () => this.repo.restoreItem(id),
-      'Item restored',
+      'Note restored',
     );
   }
   setItemColor(id: string, color: ColorToken | null) {
@@ -1211,7 +1211,7 @@ export class WorkspaceController {
           this.patch({ mutationRetry: this.uncertainPurgeRetries.size > 0 });
           this.patch({
             query: '',
-            status: 'Workspace restored',
+            status: 'Library restored',
             error: '',
             completionRetry: null,
           });

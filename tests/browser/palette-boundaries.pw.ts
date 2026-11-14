@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function seed(page: Page) {
   await page.goto('/?fixture');
-  await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
   const id = await page.evaluate(async () => {
     const t = (window as any).__test;
     const id = crypto.randomUUID();
@@ -56,7 +56,7 @@ for (const [start, key, next] of [
     );
     await page.keyboard.press('l');
     const palette = page.getByRole('dialog', { name: 'Assign color' });
-    const grid = palette.getByRole('grid', { name: 'Item color' });
+    const grid = palette.getByRole('grid', { name: 'Note color' });
     await expect(grid).toBeVisible();
     await expect(grid.getByRole('row')).toHaveCount(5);
     await expect(grid.getByRole('gridcell')).toHaveCount(10);

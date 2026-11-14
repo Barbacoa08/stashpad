@@ -133,7 +133,7 @@
         class="drag-handle"
         draggable="true"
         {disabled}
-        aria-label="Reorder item"
+        aria-label="Reorder note"
         title="Drag to reorder · Command Up/Down"
         onclick={onhandleselect}
         {ondragstart}
@@ -195,7 +195,7 @@
               ? 'Delete tree'
               : 'Delete note'}
           title={permanent
-            ? 'Permanently delete this item and its children'
+            ? 'Permanently delete this note and its children'
             : item.kind === 'tree'
               ? 'Delete tree'
               : 'Delete note'}

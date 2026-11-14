@@ -3,7 +3,7 @@ const card = (page: Page) => page.getByRole('article', { name: 'Saved note' });
 const stream = (page: Page) =>
   page.getByRole('region', { name: 'Note stream' });
 async function capture(page: Page, source = 'Task **source**') {
-  const edit = page.getByRole('textbox', { name: 'Capture Markdown' });
+  const edit = page.getByRole('textbox', { name: 'New note Markdown' });
   await edit.fill(source);
   await page.getByRole('button', { name: 'Save note', exact: true }).click();
   await expect(card(page)).toHaveCount(1);
@@ -81,7 +81,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await page.goto('/?fixture');
   await capture(page);
   await page
-    .getByRole('textbox', { name: 'Capture Markdown' })
+    .getByRole('textbox', { name: 'New note Markdown' })
     .fill('Pending capture');
   await page.evaluate(() => {
     (window as any).__test.repo.fail = 'completion';
@@ -91,7 +91,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await expect(page.getByRole('alert')).toContainText('failure');
   await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
   await expect(
-    page.getByRole('region', { name: 'Workspace status' }),
+    page.getByRole('region', { name: 'Editor status' }),
   ).toContainText('completion failure');
   await expect(
     page.getByRole('button', { name: 'Retry save', exact: true }),
@@ -105,7 +105,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
   await expect(card(page)).toHaveClass(/done/);
   await expect(card(page)).toHaveCount(1);
   await expect(
-    page.getByRole('textbox', { name: 'Capture Markdown' }),
+    page.getByRole('textbox', { name: 'New note Markdown' }),
   ).toHaveText('Pending capture');
   await page.getByRole('button', { name: /^(Show|Hide) Details$/ }).click();
   await page.getByRole('button', { name: 'Edit note', exact: true }).click();
@@ -131,7 +131,7 @@ test('completion failure has its own narrow retry, preserving capture and latest
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(card(page)).toHaveClass(/done/);
   await expect(card(page)).toContainText('latest exact source');
@@ -154,7 +154,7 @@ test('source-flush failure retains visible source and completion-specific retry 
     page.getByRole('button', { name: 'Retry completion', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('region', { name: 'Workspace status' }),
+    page.getByRole('region', { name: 'Editor status' }),
   ).toContainText('save failure');
   await expect(editor).toHaveText('Latest **source**');
   await expect(card(page)).not.toHaveClass(/done/);

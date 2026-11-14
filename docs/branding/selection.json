@@ -1,7 +1,6 @@
 {
   "updated": "2026-11-13",
   "status": "current selections; exploration continues; not production assets",
-  "workingName": "Scratchtree",
   "description": "Fast Markdown notes, organized into note trees.",
   "selections": [
     {
@@ -42,7 +41,7 @@
     }
   ],
   "openTopics": [
-    "Revisit the 24px and 16px tree-only treatments.",
-    "Finalize terminology, light/dark treatments, platform containers, and production exports."
-  ]
+    "Light/dark treatments, platform containers, and future artwork refinements."
+  ],
+  "acceptedName": "Scratchtree"
 }

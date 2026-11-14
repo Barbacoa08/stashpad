@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const cards = (page: Page) => page.getByRole('article', { name: 'Saved note' });
@@ -47,10 +47,10 @@ test('accepted maximum-safe timestamps remain accessible through restore and nor
     .getByRole('button', { name: 'Restore backup', exact: true })
     .click();
   await expect(
-    page.getByRole('region', { name: 'Replace workspace?' }),
+    page.getByRole('region', { name: 'Replace library?' }),
   ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Replace workspace', exact: true })
+    .getByRole('button', { name: 'Replace library', exact: true })
     .click();
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page)).toContainText('Date unavailable');
@@ -127,7 +127,7 @@ for (const constrained of [false, true])
         .getByRole('button', { name: 'Select note', exact: true })
         .focus();
       for (const name of [
-        'Reorder item',
+        'Reorder note',
         'Edit note',
         'Mark done',
         'Copy Markdown',

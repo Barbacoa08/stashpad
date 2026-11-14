@@ -7,7 +7,7 @@ use std::{
 fn invalid() -> AppError {
     error(
         "invalid_backup",
-        "Invalid or unsupported backup. No workspace data were replaced.",
+        "Invalid or unsupported backup. No library data were replaced.",
     )
 }
 fn uuid(s: &str) -> bool {
@@ -27,7 +27,11 @@ fn timestamp(s: &str) -> bool {
     {
         return false;
     }
-    let part = |a: usize, b: usize| s.get(a..b).and_then(|x| x.parse::<u32>().ok());
+    let part = |a: usize, b: usize| {
+        s.get(a..b)
+            .filter(|x| x.bytes().all(|b| b.is_ascii_digit()))
+            .and_then(|x| x.parse::<u32>().ok())
+    };
     let (Some(y), Some(m), Some(d), Some(h), Some(mi), Some(sec), Some(_ms)) = (
         part(0, 4),
         part(5, 7),
@@ -204,17 +208,35 @@ pub fn encode(s: &WorkspaceSnapshot) -> Result<Vec<u8>> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(error(
             "capacity_exceeded",
-            "The workspace exceeds the 10 MiB backup capacity. Input and saved data are retained.",
+            "The library exceeds the 10 MiB backup capacity. Input and saved data are retained.",
         ));
     }
     Ok(bytes)
+}
+// JSON.parse treats integral decimal/exponent numbers as integers too. Normalize
+// only safe integral floats; typed deserialization and domain checks stay strict.
+fn normalize_json_integers(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::Number(n) if n.is_f64() => {
+            if let Some(x) = n.as_f64() {
+                if x.fract() == 0.0 && (-MAX_SAFE as f64..=MAX_SAFE as f64).contains(&x) {
+                    *value = Value::Number((x as i64).into());
+                }
+            }
+        }
+        Value::Array(values) => values.iter_mut().for_each(normalize_json_integers),
+        Value::Object(values) => values.values_mut().for_each(normalize_json_integers),
+        _ => {}
+    }
 }
 pub fn validate(bytes: &[u8]) -> Result<BackupV7> {
     if bytes.len() > MAX_ENVELOPE {
         return Err(invalid());
     }
     // Match JSON.parse's last-value rule before validating the strict current contract.
-    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
+    let mut value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| invalid())?;
+    normalize_json_integers(&mut value);
     let b: BackupV7 = serde_json::from_value(value).map_err(|_| invalid())?;
     if b.format != "scratchtree-alpha" || b.version != 7 || !timestamp(&b.exported_at) {
         return Err(invalid());

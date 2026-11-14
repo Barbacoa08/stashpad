@@ -12,7 +12,7 @@ for (const constrained of [false, true]) {
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
-    const capture = page.getByRole('textbox', { name: 'Capture Markdown' });
+    const capture = page.getByRole('textbox', { name: 'New note Markdown' });
     await capture.waitFor();
     await page.evaluate(async () => {
       const t = (window as any).__test;

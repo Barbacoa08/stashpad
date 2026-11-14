@@ -1,6 +1,6 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 const capture = (page: Page) =>
-  page.getByRole('textbox', { name: 'Capture Markdown' });
+  page.getByRole('textbox', { name: 'New note Markdown' });
 const inline = (page: Page) =>
   page.getByRole('textbox', { name: 'Edit Markdown' });
 const cards = (page: Page) => page.getByRole('article', { name: 'Saved note' });

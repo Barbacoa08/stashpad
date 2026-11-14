@@ -1078,7 +1078,7 @@
     } catch {
       controller.feedback(
         '',
-        'These items can no longer move to that destination.',
+        'These notes can no longer move to that destination.',
       );
       return null;
     }
@@ -1168,7 +1168,7 @@
       excluded = new Set(ids),
       snapshot = viewState.snapshot;
     if (!ids.length) {
-      controller.feedback('Open the containing tree to move this item.');
+      controller.feedback('Open the containing tree to move this note.');
       return;
     }
     const children = new Map<string, string[]>();
@@ -1302,7 +1302,7 @@
     } catch {
       controller.feedback(
         '',
-        'These items can no longer be reordered together.',
+        'These notes can no longer be reordered together.',
       );
     }
   }
@@ -1618,7 +1618,7 @@
       !viewState.error &&
       !viewState.completionRetry &&
       !viewState.mutationRetry}
-    aria-label="Workspace status"
+    aria-label="Editor status"
   >
     <h2 class:sr-only={compact}><Icon name="info" /> Local activity</h2>
     {#if !compact}<p>Notes and drafts on this Mac.</p>{/if}
@@ -1641,7 +1641,7 @@
       >
     {:else if viewState.error}<button
         disabled={blocked}
-        onclick={() => controller.flush()}>Retry checkpoint</button
+        onclick={() => controller.flush()}>Retry saving changes</button
       ><button disabled={blocked} onclick={() => submit(viewState.activeKey)}
         >Retry save</button
       >{/if}
@@ -1707,16 +1707,15 @@
       >{/if}
   </header>
   {#if !viewState.loaded}
-    <section aria-label="Workspace loading">
+    <section aria-label="Library loading">
       <p role="status">{viewState.status}</p>
       {#if viewState.error}<p role="alert">{viewState.error}</p>
-        <button onclick={() => controller.start()}
-          >Retry loading workspace</button
+        <button onclick={() => controller.start()}>Retry loading library</button
         >{/if}
     </section>
   {:else}
     <div class="workspace" class:details-open={detailsOpen}>
-      <aside class="sidebar" aria-label="Workspace navigation">
+      <aside class="sidebar" aria-label="Editor navigation">
         <div class="sidebar-search">
           <label class="sr-only" for="search">Search saved notes</label>
           <Icon name="search" />
@@ -1756,10 +1755,10 @@
             disabled={navigationBlocked}><Icon name="trash" /> Trash</button
           >
           <button onclick={() => controller.export()} disabled={blocked}
-            ><Icon name="download" /> Export backup</button
+            ><Icon name="upload" /> Export backup</button
           ><button
             onclick={() => controller.previewRestore()}
-            disabled={blocked}><Icon name="upload" /> Restore backup</button
+            disabled={blocked}><Icon name="download" /> Restore backup</button
           ><button
             onclick={() => void undoDelete()}
             disabled={!viewState.snapshot.undoDeleteIds.length ||
@@ -1772,7 +1771,7 @@
           >
         </div>
       </aside>
-      <section class="notes-column" aria-label="Notes workspace">
+      <section class="notes-column" aria-label="Notes editor">
         <div class="stream-header">
           {#if showCommandHints}<span
               class="command-hint stream-command-hint"
@@ -1785,7 +1784,7 @@
         </div>
         <p class="sr-only" aria-live="polite">
           {mouseSelection.ids.length}
-          {mouseSelection.ids.length === 1 ? 'item selected' : 'items selected'}
+          {mouseSelection.ids.length === 1 ? 'note selected' : 'notes selected'}
         </p>
         <!-- The focusable region is the keyboard navigation surface; card selection has named controls. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
@@ -1879,7 +1878,7 @@
           </div>
           <MarkdownEditor
             bind:this={composer}
-            label="Capture Markdown"
+            label="New note Markdown"
             contextKey={captureKey +
               ':workspace:' +
               workspaceEpoch +
@@ -1939,7 +1938,7 @@
           <h2>Details and shortcuts</h2>
           <p>
             {visibleNotes.length}
-            {visibleNotes.length === 1 ? 'note' : 'notes'} · Local workspace
+            {visibleNotes.length === 1 ? 'note' : 'notes'} · On this Mac
           </p>
           {#if selectedNote}{@const created = timestampPresentation(
               selectedNote.createdAt,
@@ -1961,8 +1960,8 @@
             <section aria-label="Trash details">
               <h2>Trash</h2>
               <p>
-                Items are retained for at least 90 days unless you permanently
-                delete them. Delete here permanently removes the item and its
+                Notes are retained for at least 90 days unless you permanently
+                delete them. Delete here permanently removes the note and its
                 children, with no Undo. Automatic permanent cleanup is not
                 enabled yet.
               </p>
@@ -1980,11 +1979,11 @@
               {#if selectedNote && scopes.get(selectedNote.id) === 'trash'}
                 <button
                   onclick={() => void restoreSelected()}
-                  disabled={blocked}>Restore item</button
+                  disabled={blocked}>Restore note</button
                 >
                 <p>
                   {selectedNote.deletedAt === null
-                    ? 'Restore this item and its children to Root.'
+                    ? 'Restore this note and its children to Root.'
                     : 'Restore to its remembered live parent, or Root if unavailable.'}
                 </p>
               {/if}
@@ -2007,7 +2006,7 @@
                 ></span
               >
             </div>
-            <div><span>New note / Focus capture</span><kbd>Space</kbd></div>
+            <div><span>Write a note</span><kbd>Space</kbd></div>
             <div>
               <span aria-hidden="true">Search</span><span class="sr-only"
                 >Search: Command slash, Command F, or slash</span
@@ -2033,7 +2032,7 @@
             </div>
             <div><span>Mark done / not done</span><kbd>X</kbd></div>
             <div><span>Assign color</span><kbd>L</kbd></div>
-            <div><span>Move selected items</span><kbd>M</kbd></div>
+            <div><span>Move selected notes</span><kbd>M</kbd></div>
             <div>
               <span aria-hidden="true">Reorder siblings</span><span
                 class="sr-only"
@@ -2082,12 +2081,16 @@
     </div>
     {#if viewState.preview}<section
         class="confirmation"
-        aria-label="Replace workspace?"
+        aria-label="Replace library?"
       >
-        <h2>Replace workspace?</h2>
+        <h2>Replace library?</h2>
         <p>
-          {viewState.preview.notes} notes, {viewState.preview.trees} trees, and
-          {viewState.preview.drafts} drafts.
+          {viewState.preview.notes}
+          {viewState.preview.notes === 1 ? 'note' : 'notes'}, including
+          {viewState.preview.trees}
+          {viewState.preview.trees === 1 ? 'tree' : 'trees'}, and
+          {viewState.preview.drafts}
+          {viewState.preview.drafts === 1 ? 'draft' : 'drafts'}.
         </p>
         <p>{viewState.preview.warning}</p>
         <button
@@ -2115,7 +2118,7 @@
               composer?.focus();
             }
           }}
-          disabled={viewState.operation !== null}>Replace workspace</button
+          disabled={viewState.operation !== null}>Replace library</button
         >
       </section>{/if}
     {#each palette ? [palette] : [] as session (session.session)}

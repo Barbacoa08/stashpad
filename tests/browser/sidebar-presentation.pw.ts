@@ -8,13 +8,13 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
       });
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     const search = page.getByRole('searchbox', { name: 'Search saved notes' });
     const wrapper = sidebar.locator('.sidebar-search');
@@ -89,7 +89,7 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
@@ -120,7 +120,7 @@ for (const large of [false, true]) {
       Math.abs(dimensions.label.center - dimensions.stack.center),
     ).toBeLessThanOrEqual(1);
     const sidebar = page.getByRole('complementary', {
-      name: 'Workspace navigation',
+      name: 'Editor navigation',
     });
     for (const selector of [
       '.sidebar-search',
@@ -161,7 +161,7 @@ for (const large of [false, true]) {
       large ? { width: 800, height: 600 } : { width: 1440, height: 900 },
     );
     await page.goto('/?fixture');
-    await page.getByRole('textbox', { name: 'Capture Markdown' }).waitFor();
+    await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
     if (large)
       await page.addStyleTag({
         content: ':root { font-size: 24px !important }',
@@ -192,3 +192,42 @@ for (const large of [false, true]) {
     });
   });
 }
+
+test('tree creation and note capture have distinct shortcuts and preserve the draft', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto('/?fixture');
+  const editor = page.getByRole('region', {
+    name: 'Notes editor',
+    exact: true,
+  });
+  const capture = editor.getByRole('textbox', {
+    name: 'New note Markdown',
+    exact: true,
+  });
+  await capture.fill('unfinished **draft');
+  await expect(page.getByRole('status')).toHaveText('Draft saved');
+  await expect(page.getByRole('article')).toHaveCount(0);
+  const shortcuts = page.getByLabel('Keyboard shortcuts');
+  await expect(
+    shortcuts.locator('div').filter({ hasText: 'New tree' }),
+  ).toContainText('N');
+  await expect(
+    shortcuts.locator('div').filter({ hasText: 'Write a note' }),
+  ).toContainText('Space');
+  await page.getByRole('region', { name: 'Note stream', exact: true }).focus();
+  await page.keyboard.press('Space');
+  await expect(capture).toBeFocused();
+  await expect(capture).toHaveText('unfinished **draft');
+  await page.keyboard.press('Meta+n');
+  await expect(
+    page.getByRole('button', { name: 'Open tree Untitled', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('searchbox', { name: 'Search saved notes' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Root', exact: true }).click();
+  await expect(capture).toHaveText('unfinished **draft');
+  await expect(editor.locator('.stream-header')).toContainText('1 note');
+});
