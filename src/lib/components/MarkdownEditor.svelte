@@ -90,10 +90,10 @@
     });
   }
   const styles = HighlightStyle.define([
-    { tag: tags.keyword, color: '#d5a6ff' },
-    { tag: tags.string, color: '#a9d4a4' },
-    { tag: tags.number, color: '#e5be8a' },
-    { tag: tags.comment, color: '#a2aebf' },
+    { tag: tags.keyword, color: 'var(--editor-keyword)' },
+    { tag: tags.string, color: 'var(--editor-string)' },
+    { tag: tags.number, color: 'var(--editor-number)' },
+    { tag: tags.comment, color: 'var(--editor-comment)' },
     { tag: tags.emphasis, class: 'cm-emphasis' },
     { tag: tags.strong, class: 'cm-strong' },
     { tag: tags.monospace, class: 'cm-code' },
@@ -112,7 +112,7 @@
       drawSelection(),
       EditorView.theme({
         '.cm-cursor, .cm-dropCursor': {
-          borderLeftColor: '#fff',
+          borderLeftColor: 'var(--caret)',
           marginLeft: '0',
         },
       }),

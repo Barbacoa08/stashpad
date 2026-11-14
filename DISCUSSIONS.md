@@ -8,7 +8,7 @@ When a topic becomes actionable, link its individual GitHub issue here. Record a
 
 **Scratchtree** is the accepted name, with “Fast Markdown notes, organized into note trees” as its description. Use note, note tree / tree, parent, sibling, and child note. Root is the top navigation destination. Library refers to all stored data; use notes, Root, or editor in their specific contexts. The [branding record](docs/branding/README.md) preserves the terminology and selected icon family.
 
-The rename uses a new native identity and current-only storage/backup contracts. Alpha compatibility is not promised; actual notes still need a deliberate private backup and transfer. Historical alpha releases can be removed once the new package and private recovery path are verified. Remaining discussion concerns light/dark treatments, platform containers, and future icon/style refinements, rather than the accepted name and vocabulary.
+The rename uses a new native identity and current-only storage/backup contracts. Alpha compatibility is not promised; actual notes still need a deliberate private backup and transfer. Historical alpha releases can be removed once the new package and private recovery path are verified. The application now offers System, Light, and Dark appearance, with a device-local preference separate from notes and backups. Platform icon containers and future icon/style refinements remain open, including alternate icon treatments for each appearance.
 
 ## Styling experiment
 
