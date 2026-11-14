@@ -16,6 +16,7 @@ import { filterNotes } from '../domain/search';
 import { subtreeIds } from '../domain/items';
 import type {
   Repository,
+  RemoteBuffer,
   RestorePreview,
   CaptureItem,
   CreateChildTree,
@@ -45,6 +46,7 @@ export type WorkspaceOperation =
 export interface ViewState {
   snapshot: WorkspaceSnapshot;
   purgedItemIds: string[];
+  cacheGeneration: number;
   ownerId: string | null;
   location: Location;
   mutationRetry: boolean;
@@ -64,6 +66,7 @@ export class WorkspaceController {
   state: ViewState = {
     snapshot: emptyWorkspace(),
     purgedItemIds: [],
+    cacheGeneration: 0,
     ownerId: null,
     location: { scope: 'live', itemId: null },
     mutationRetry: false,
@@ -86,6 +89,7 @@ export class WorkspaceController {
   private saving: Promise<boolean> | null = null;
   private creating: Promise<boolean> | null = null;
   private dirty = new Set<string>();
+  private pendingRemoteOrigin: string | undefined;
   private queryRevision = 0;
   private editIntentRevision = 0;
   private completionIntent = 0;
@@ -96,7 +100,17 @@ export class WorkspaceController {
   private reconciledCaptures = new Set<string>();
   private creationIntent: CreateChildTree | null = null;
   private childIntents = new Map<string, CreateChildTree>();
-  private retryIntent: (() => Promise<boolean>) | null = null;
+  private storedRetryIntent: (() => Promise<boolean>) | null = null;
+  private retryGenerations = new WeakMap<() => Promise<boolean>, number>();
+  private completionGenerations = new WeakMap<object, number>();
+  private get retryIntent() {
+    return this.storedRetryIntent;
+  }
+  private set retryIntent(intent: (() => Promise<boolean>) | null) {
+    this.storedRetryIntent = intent;
+    if (intent && !this.retryGenerations.has(intent))
+      this.retryGenerations.set(intent, this.state.cacheGeneration);
+  }
   // Lost purge replies retain their exact reconciliation independently of newer
   // failed commands, which may need to checkpoint an already removed owner.
   private uncertainPurgeRetries = new Map<string, () => Promise<boolean>>();
@@ -120,8 +134,19 @@ export class WorkspaceController {
         : 'The local operation failed. Your input is retained.';
     this.patch({ error: safe, status: 'Needs retry' });
   }
-  private run<T>(fn: () => Promise<T>): Promise<T> {
-    const task = this.queue.then(fn);
+  private run<T>(fn: () => Promise<T>, allowReplacement = false): Promise<T> {
+    const generation = this.state.cacheGeneration;
+    const task = this.queue.then(() => {
+      if (!allowReplacement && generation !== this.state.cacheGeneration) {
+        this.error(
+          new Error(
+            'The library was replaced. Captured work is retained for recovery.',
+          ),
+        );
+        return false as T;
+      }
+      return fn();
+    });
     this.queue = task.catch(() => {});
     return task;
   }
@@ -185,6 +210,128 @@ export class WorkspaceController {
       }
     });
   }
+  /** Invalidation carries no snapshot: read only after all older controller work. */
+  refreshFromRepository() {
+    return this.run(async () => {
+      try {
+        const prior = this.state.snapshot;
+        let captured: RemoteBuffer[] = [];
+        let originEpoch: string | undefined = this.pendingRemoteOrigin;
+        const collect = () =>
+          [...this.dirty].map((key) => ({
+            key,
+            markdown: this.state.buffers[key].source,
+            revision: this.state.buffers[key].revision,
+            ...(originEpoch ? { originEpoch } : {}),
+          }));
+        captured = collect();
+        let refresh = this.repo.refreshFromRemote
+          ? await this.repo.refreshFromRemote(captured)
+          : null;
+        if (refresh && this.pendingRemoteOrigin)
+          refresh = {
+            ...refresh,
+            replaced: true,
+            originEpoch: this.pendingRemoteOrigin,
+          };
+        let s = refresh?.workspace ?? (await this.repo.loadWorkspace());
+        originEpoch = this.pendingRemoteOrigin ?? refresh?.originEpoch;
+        if (refresh?.replaced) this.pendingRemoteOrigin = originEpoch;
+        // Input remains editable during IO. Preserve each newer revision before losing
+        // its owner, including a same-UUID item in a replacement epoch.
+        while (
+          (refresh &&
+            captured.some(
+              (b) => this.state.buffers[b.key]?.revision !== b.revision,
+            )) ||
+          (refresh &&
+            [...this.dirty].some((key) => !captured.some((b) => b.key === key)))
+        ) {
+          captured = collect();
+          const newer = await this.repo.refreshFromRemote!(captured);
+          if (newer.replaced)
+            this.pendingRemoteOrigin ??= originEpoch ?? newer.originEpoch;
+          refresh = {
+            ...newer,
+            replaced: refresh!.replaced || newer.replaced,
+            removedIds: [
+              ...new Set([...refresh!.removedIds, ...newer.removedIds]),
+            ],
+          };
+          s = newer.workspace;
+        }
+        if (this.disposed) return false;
+        const ids = new Set(s.items.map((x) => x.id));
+        const removed = refresh?.replaced
+          ? prior.items.map((x) => x.id)
+          : (refresh?.removedIds ??
+            prior.items.filter((x) => !ids.has(x.id)).map((x) => x.id));
+        const gone = (key: string) =>
+          removed.includes(key) ||
+          (key.startsWith('compose:') && removed.includes(key.slice(8)));
+        const buffers = { ...this.state.buffers };
+        for (const key of Object.keys(buffers)) {
+          if (refresh?.replaced || gone(key)) {
+            delete buffers[key];
+            this.dirty.delete(key);
+          } else if (!this.dirty.has(key)) {
+            const item = s.items.find((x) => x.id === key),
+              draft = s.drafts.find((x) => x.key === key);
+            buffers[key] = {
+              source: draft?.markdown ?? item?.markdown ?? '',
+              revision: buffers[key].revision,
+            };
+          }
+        }
+        if (refresh?.replaced) {
+          this.captureIntents.clear();
+          this.reconciledCaptures.clear();
+          this.childIntents.clear();
+          this.creationIntent = null;
+          for (const draft of s.drafts)
+            buffers[draft.key] = {
+              source: draft.markdown,
+              revision: draft.revision,
+            };
+        } else
+          for (const [key, intent] of this.captureIntents)
+            if (gone(key) || removed.includes(intent.id))
+              this.captureIntents.delete(key);
+        this.patch({
+          buffers,
+          purgedItemIds: removed,
+          operation: 'navigation-reconcile',
+          ...(refresh?.replaced
+            ? {
+                cacheGeneration: this.state.cacheGeneration + 1,
+                location: { scope: 'live', itemId: null },
+                ownerId: null,
+              }
+            : {}),
+        });
+        this.snapshot(s);
+        this.pendingRemoteOrigin = undefined;
+        if (refresh?.replaced || gone(this.state.activeKey))
+          this.context(composeKey(this.state.location));
+        else {
+          const key = this.state.activeKey;
+          this.patch({
+            source:
+              buffers[key]?.source ??
+              s.items.find((x) => x.id === key)?.markdown ??
+              '',
+            revision: buffers[key]?.revision ?? 0,
+          });
+        }
+        return true;
+      } catch (e) {
+        this.error(e);
+        return false;
+      } finally {
+        this.patch({ operation: null });
+      }
+    }, true);
+  }
   private resetBuffers(snapshot: WorkspaceSnapshot) {
     this.dirty.clear();
     this.patch({
@@ -236,6 +383,14 @@ export class WorkspaceController {
   }
   // Called only inside the repository queue. Captures checkpoint; existing notes commit.
   private async checkpoint() {
+    if (this.pendingRemoteOrigin) {
+      this.error(
+        new Error(
+          'The replaced library needs recovery retry before editing can continue. Your input is retained.',
+        ),
+      );
+      return false;
+    }
     while (!this.disposed && this.dirty.size) {
       clearTimeout(this.timer);
       const key = this.dirty.values().next().value!;
@@ -529,6 +684,14 @@ export class WorkspaceController {
   async retryMutation() {
     const intent = this.pendingMutationRetry;
     if (!intent) return false;
+    if (this.retryGenerations.get(intent) !== this.state.cacheGeneration) {
+      this.error(
+        new Error(
+          'The library was replaced. Captured work is retained for recovery.',
+        ),
+      );
+      return false;
+    }
     const ok = await intent();
     if (ok && this.retryIntent === intent) {
       this.retryIntent = null;
@@ -674,6 +837,7 @@ export class WorkspaceController {
   setNoteDone(id: string, done: boolean) {
     const intent = { id, done },
       revision = ++this.completionIntent;
+    this.completionGenerations.set(intent, this.state.cacheGeneration);
     return this.run(async () => {
       this.patch({ operation: 'completion', error: '' });
       try {
@@ -708,6 +872,17 @@ export class WorkspaceController {
   }
   retryCompletion() {
     const intent = this.state.completionRetry;
+    if (
+      intent &&
+      this.completionGenerations.get(intent) !== this.state.cacheGeneration
+    ) {
+      this.error(
+        new Error(
+          'The library was replaced. Captured work is retained for recovery.',
+        ),
+      );
+      return Promise.resolve(false);
+    }
     return intent
       ? this.setNoteDone(intent.id, intent.done)
       : Promise.resolve(false);

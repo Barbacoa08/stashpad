@@ -1,3 +1,11 @@
+import {
+  retainRawBuffers,
+  readRawBuffers,
+  rawBufferKey,
+  RAW_BUFFER_PREFIX,
+  rawViewValid,
+} from './recovery';
+import { toSharedItem as share, orderRows as orders } from './representation';
 import { liveQuery } from 'dexie';
 import type {
   ColorToken,
@@ -8,7 +16,7 @@ import type {
 } from '../domain/notes';
 import { emptyWorkspace, MAX_ENVELOPE } from '../domain/notes';
 import * as rules from '../domain/items';
-import { scopeIndex, composeOwner } from '../domain/hierarchy';
+import { composeOwner } from '../domain/hierarchy';
 import type { BackupFiles } from '../platform/backup-files';
 import type {
   CaptureItem,
@@ -18,6 +26,8 @@ import type {
   PurgeItem,
   ReorderItem,
   Repository,
+  RemoteBuffer,
+  RemoteRefresh,
   RestorePreview,
   TransitionLocation,
   UndoDeleteRequest,
@@ -34,6 +44,9 @@ import {
 import {
   digest,
   canonicalJson,
+  preservePendingIntent,
+  orderedIntents,
+  readJournalMetadata,
   type IntentCommand,
   type PendingIntent,
   type ExpectedOutcome,
@@ -55,43 +68,6 @@ const placement = (item: Item): Placement => ({
   restoreParentId: item.restoreParentId,
   restoreIndex: item.restoreIndex,
 });
-const share = (item: Item, epoch: string): SharedItem => {
-  const {
-    parentId,
-    position: _position,
-    deletedAt,
-    restoreParentId,
-    restoreIndex,
-    ...source
-  } = item;
-  return {
-    ...source,
-    epoch,
-    placement: { parentId, deletedAt, restoreParentId, restoreIndex },
-  };
-};
-function orders(snapshot: WorkspaceSnapshot, epoch: string): OrderRow[] {
-  const scopes = scopeIndex(snapshot.items),
-    groups = new Map<string, OrderRow>();
-  for (const item of snapshot.items) {
-    const scope = item.parentId === null ? scopes.get(item.id)! : 'live';
-    const id = item.parentId ?? `root:${scope}`;
-    const row = groups.get(id) ?? {
-      id,
-      epoch,
-      parentId: item.parentId,
-      scope,
-      ids: [],
-    };
-    row.ids.push(item.id);
-    groups.set(id, row);
-  }
-  const positions = new Map(snapshot.items.map((x) => [x.id, x.position]));
-  return [...groups.values()].map((x) => ({
-    ...x,
-    ids: x.ids.sort((a, b) => positions.get(a)! - positions.get(b)!),
-  }));
-}
 interface State {
   epoch: string;
   snapshot: WorkspaceSnapshot;
@@ -176,7 +152,15 @@ export class DexieRepository implements Repository {
       }
     });
   }
-  private async read(capturedEpoch?: string): Promise<State> {
+  private async read(
+    capturedEpoch?: string,
+    allowRawBuffers = false,
+  ): Promise<State> {
+    if (
+      !allowRawBuffers &&
+      (await this.db.device.where('key').startsWith(RAW_BUFFER_PREFIX).count())
+    )
+      throw new Error('Raw input needs recovery adoption.');
     const library = await this.db.libraries.get(this.libraryId);
     if (!library) throw stale();
     const epoch = capturedEpoch ?? library.epoch;
@@ -294,47 +278,143 @@ export class DexieRepository implements Repository {
         value: { epoch: state.epoch, snapshot: state.snapshot },
       });
   }
-  loadWorkspace() {
-    return this.serial(async () => {
-      await this.initialize();
-      const state = await this.db.transaction('rw', this.tables(), async () => {
-        const current = await this.read();
-        const marker = (await this.db.device.get(this.viewKey()))?.value as
-          { epoch: string; snapshot: WorkspaceSnapshot } | undefined;
-        if (
-          marker &&
-          marker.epoch !== current.epoch &&
-          !current.recovery.some(
-            (x) => x.kind === 'library' && x.originEpoch === marker.epoch,
-          )
-        ) {
-          let retired: WorkspaceSnapshot;
-          try {
-            retired = (await this.read(marker.epoch)).snapshot;
-          } catch {
-            retired = marker.snapshot;
-          }
-          if (
-            retired.items.length ||
-            retired.drafts.length ||
-            (await this.db.pending.where('epoch').equals(marker.epoch).count())
-          )
-            current.recovery.push({
-              id: crypto.randomUUID(),
-              kind: 'library',
-              snapshot: retired,
-              reason: 'replaced',
-              originEpoch: marker.epoch,
-              recordedAt: Date.now(),
-            });
+  private async adoptRemote(buffers: RemoteBuffer[] = []) {
+    await this.initialize();
+    const state = await this.db.transaction('rw', this.tables(), async () => {
+      let current = await this.read(undefined, true);
+      const rawInputs = await readRawBuffers(this.db);
+      const ids = new Set(current.snapshot.items.map((item) => item.id));
+      for (const input of buffers) {
+        const origin = input.originEpoch ?? this.boundEpoch ?? current.epoch;
+        const owner = composeOwner(input.key);
+        const id = owner ? owner.ownerId : input.key;
+        if (origin === current.epoch && (id === null || ids.has(id))) continue;
+        if (!Number.isSafeInteger(input.revision) || input.revision < 0)
+          throw new Error('Invalid draft revision.');
+        const retired =
+          origin === current.epoch ? current : await this.read(origin, true);
+        await this.retainRejectedDraft(retired, input, Date.now());
+        await this.persistRecovery(retired);
+        current = await this.read(undefined, true);
+      }
+      const marker = (await this.db.device.get(this.viewKey()))?.value as
+        { epoch: string; snapshot: WorkspaceSnapshot } | undefined;
+      if (
+        marker &&
+        marker.epoch !== current.epoch &&
+        !current.recovery.some(
+          (x) => x.kind === 'library' && x.originEpoch === marker.epoch,
+        )
+      ) {
+        let retired: WorkspaceSnapshot;
+        try {
+          retired = (await this.read(marker.epoch, true)).snapshot;
+        } catch {
+          retired = marker.snapshot;
         }
-        this.encode(current);
-        await this.local(current);
-        return current;
-      });
-      this.boundEpoch = state.epoch;
-      return state.snapshot;
+        if (
+          retired.items.length ||
+          retired.drafts.length ||
+          (await this.db.pending.where('epoch').equals(marker.epoch).count())
+        )
+          current.recovery.push({
+            id: crypto.randomUUID(),
+            kind: 'library',
+            snapshot: retired,
+            reason: 'replaced',
+            originEpoch: marker.epoch,
+            recordedAt: Date.now(),
+          });
+      }
+      for (const input of rawInputs) {
+        const owner = composeOwner(input.key),
+          id = owner ? owner.ownerId : input.key;
+        if (
+          input.epoch === current.epoch &&
+          (id === null || current.snapshot.items.some((item) => item.id === id))
+        ) {
+          const existing = current.snapshot.drafts.find(
+            (d) => d.key === input.key,
+          );
+          if (!existing || existing.revision < input.revision) {
+            current.snapshot.drafts = current.snapshot.drafts.filter(
+              (d) => d.key !== input.key,
+            );
+            current.snapshot.drafts.push({
+              key: input.key,
+              markdown: input.markdown,
+              revision: input.revision,
+              updatedAt: input.recordedAt,
+            });
+          }
+        } else {
+          const alternative = { ...current, epoch: input.epoch };
+          await this.retainRejectedDraft(alternative, input, input.recordedAt);
+          current.recovery = alternative.recovery;
+        }
+      }
+      this.encode(current);
+      await this.local(current);
+      for (const input of rawInputs)
+        await this.db.device.delete(rawBufferKey(input.epoch, input.key));
+      return current;
     });
+    this.boundEpoch = state.epoch;
+    return state;
+  }
+  loadWorkspace() {
+    return this.serial(async () => (await this.adoptRemote()).snapshot);
+  }
+  refreshFromRemote(buffers: RemoteBuffer[]): Promise<RemoteRefresh> {
+    const captured = structuredClone(buffers);
+    return this.serial(async () => {
+      const originEpoch =
+        this.boundEpoch ?? (await this.readCurrentEpochUnqueued());
+      const marker = (await this.db.device.get(this.viewKey()))?.value as
+        { epoch: string; snapshot: WorkspaceSnapshot } | undefined;
+      let state: State;
+      try {
+        state = await this.adoptRemote(captured);
+      } catch (error) {
+        await retainRawBuffers(this.db, captured, originEpoch);
+        throw error;
+      }
+      return {
+        workspace: state.snapshot,
+        originEpoch,
+        replaced: originEpoch !== state.epoch,
+        removedIds: (marker?.snapshot.items ?? [])
+          .filter(
+            (item) => !state.snapshot.items.some((next) => next.id === item.id),
+          )
+          .map((item) => item.id),
+      };
+    });
+  }
+  private async readCurrentEpochUnqueued() {
+    await this.initialize();
+    const row = await this.db.libraries.get(this.libraryId);
+    if (!row) throw stale();
+    return row.epoch;
+  }
+  /** Protected local transfer; does not adopt a newer remote epoch or touch dialogs. */
+  readTransfer() {
+    return this.serial(async () =>
+      this.db.transaction('rw', this.tables(), async () => {
+        const epoch = this.requireEpoch();
+        if ((await this.db.libraries.get(this.libraryId))?.epoch !== epoch)
+          throw replaced();
+        const state = await this.read(epoch);
+        const checked = validateCloudBackup(this.encode(state));
+        if ('code' in checked) throw new Error(checked.message);
+        return {
+          epoch,
+          backup: checked,
+          pending: orderedIntents(await this.db.pending.toArray()),
+          journal: await readJournalMetadata(this.db),
+        };
+      }),
+    );
   }
   /** Epoch of the last acknowledged view; reading this never adopts a remote replacement. */
   getEpoch() {
@@ -504,10 +584,13 @@ export class DexieRepository implements Repository {
     return this.serial(async () => {
       await this.initialize();
       const commandEpoch = capturedEpoch ?? this.requireEpoch();
-      const result = await this.db.transaction(
-        'rw',
-        this.tables(),
-        async () => {
+      let result: {
+        snapshot: WorkspaceSnapshot;
+        changed: boolean;
+        unavailable?: boolean;
+      };
+      try {
+        result = await this.db.transaction('rw', this.tables(), async () => {
           const pointer = await this.db.libraries.get(this.libraryId),
             changed = pointer?.epoch !== commandEpoch;
           if (changed && !preserveCheckpoint) throw replaced();
@@ -558,8 +641,18 @@ export class DexieRepository implements Repository {
           this.encode(state);
           await this.local(state, !changed);
           return { snapshot: state.snapshot, changed, unavailable: false };
-        },
-      );
+        });
+      } catch (error) {
+        let exceptional = false;
+        try {
+          await rawViewValid(this.db, this.libraryId);
+        } catch {
+          exceptional = true;
+        }
+        if (exceptional && preserveCheckpoint)
+          await retainRawBuffers(this.db, [preserveCheckpoint], commandEpoch);
+        throw error;
+      }
       if (result.changed) throw replaced();
       if (result.unavailable) throw unavailable();
       return result.snapshot;
@@ -879,6 +972,7 @@ export class DexieRepository implements Repository {
           command,
           expected,
           localApplied: false,
+          sequence: 0,
         };
       }
       const intent = pending;
@@ -886,6 +980,7 @@ export class DexieRepository implements Repository {
         'rw',
         this.db.pending,
         this.db.recovery,
+        this.db.device,
         async () => {
           const current = await this.db.pending.toArray();
           if (
@@ -897,7 +992,7 @@ export class DexieRepository implements Repository {
             throw new Error(
               'Pending recovery capacity reached. Export recovery before continuing.',
             );
-          await this.db.pending.put(intent);
+          await preservePendingIntent(this.db, intent);
           for (const record of after.recovery)
             await this.db.recovery.put(record);
         },
@@ -1114,17 +1209,22 @@ export class DexieRepository implements Repository {
         digest: await digest({ command, expected }),
         recordedAt: Date.now(),
         localApplied: false,
+        sequence: 0,
       };
-      await this.db.transaction('rw', this.db.pending, async () => {
-        const rows = await this.db.pending.toArray();
-        if (
-          (!existing && rows.length >= 1000) ||
-          bytes([...rows.filter((x) => x.id !== intent.id), intent]) >
-            MAX_ENVELOPE
-        )
-          throw new Error('Pending recovery capacity reached.');
-        await this.db.pending.put(intent);
-      });
+      await this.db.transaction(
+        'rw',
+        [this.db.pending, this.db.device],
+        async () => {
+          const rows = await this.db.pending.toArray();
+          if (
+            (!existing && rows.length >= 1000) ||
+            bytes([...rows.filter((x) => x.id !== intent.id), intent]) >
+              MAX_ENVELOPE
+          )
+            throw new Error('Pending recovery capacity reached.');
+          await preservePendingIntent(this.db, intent);
+        },
+      );
       const result = await this.db.transaction(
         'rw',
         this.tables(),

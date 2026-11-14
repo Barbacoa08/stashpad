@@ -33,9 +33,16 @@ export type SyncState = {
   lastConfirmed: number | null;
   detail: string | null;
   recoveries: number;
+  overflow?: { items: number };
 };
 export type SyncPort = {
   subscribe(listener: (s: SyncState) => void): () => void;
   retry(): Promise<void>;
   exportRecovery(): Promise<void>;
+  inspectOverflow?(): Promise<{
+    epoch: string;
+    overflow: boolean;
+    rows: { id: string; markdown: string }[];
+  }>;
+  purgeOverflow?(request: { epoch: string; ids: string[] }): Promise<void>;
 };

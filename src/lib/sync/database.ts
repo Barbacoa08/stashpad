@@ -48,19 +48,32 @@ export class ScratchtreeDatabase extends Dexie {
       purges: '[epoch+id],epoch',
       libraries: 'id',
       witnesses: 'id,epoch',
-      drafts: '[epoch+key],epoch',
-      undo: 'epoch',
-      recovery: 'id',
-      pending: 'id,epoch,fingerprint',
-      device: 'key',
+      deviceDrafts: '[epoch+key],epoch',
+      deviceUndo: 'epoch',
+      deviceRecovery: 'id',
+      devicePending: 'id,epoch,fingerprint',
+      deviceState: 'key',
     });
+    this.drafts = this.table('deviceDrafts');
+    this.undo = this.table('deviceUndo');
+    this.recovery = this.table('deviceRecovery');
+    this.pending = this.table('devicePending');
+    this.device = this.table('deviceState');
     if (options.databaseUrl)
       this.cloud.configure({
         databaseUrl: options.databaseUrl,
         requireAuth: false,
         customLoginGui: true,
         tryUseServiceWorker: false,
-        unsyncedTables: ['drafts', 'undo', 'recovery', 'pending', 'device'],
+        unsyncedTables: [
+          'deviceDrafts',
+          'deviceUndo',
+          'deviceRecovery',
+          'devicePending',
+          'deviceState',
+        ],
+        largeStringThreshold: Infinity,
+        socialAuth: false,
         disableEagerSync: !options.automaticSync,
         disableWebSocket: !options.automaticSync,
       });
