@@ -2,6 +2,7 @@ pub mod backup;
 mod external;
 pub mod files;
 pub mod model;
+pub mod recovery;
 pub mod store;
 mod window_geometry;
 use model::*;
@@ -279,6 +280,67 @@ async fn backup_safety_text(app: tauri::AppHandle, text: String) -> Result<()> {
 }
 
 #[tauri::command]
+async fn recovery_begin(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<recovery::RecoveryExports>>,
+) -> Result<Option<String>> {
+    let exports = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = app
+            .dialog()
+            .file()
+            .add_filter("Scratchtree recovery archive", &["json"])
+            .set_file_name("scratchtree-recovery.json")
+            .blocking_save_file();
+        let Some(path) = path else { return Ok(None) };
+        exports
+            .begin(path.into_path().map_err(storage_error)?)
+            .map(Some)
+    })
+    .await
+    .map_err(storage_error)?
+}
+
+#[tauri::command]
+async fn recovery_append(
+    state: State<'_, Arc<recovery::RecoveryExports>>,
+    id: String,
+    index: u64,
+    chunk: String,
+) -> Result<()> {
+    let exports = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || exports.append(&id, index, &chunk))
+        .await
+        .map_err(storage_error)?
+}
+
+#[tauri::command]
+async fn recovery_finish(
+    state: State<'_, Arc<recovery::RecoveryExports>>,
+    id: String,
+) -> Result<String> {
+    let exports = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        exports
+            .finish(&id)
+            .map(|path| path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(storage_error)?
+}
+
+#[tauri::command]
+async fn recovery_abort(
+    state: State<'_, Arc<recovery::RecoveryExports>>,
+    id: String,
+) -> Result<()> {
+    let exports = Arc::clone(state.inner());
+    tauri::async_runtime::spawn_blocking(move || exports.abort(&id))
+        .await
+        .map_err(storage_error)?
+}
+
+#[tauri::command]
 async fn backup_export(
     app: tauri::AppHandle,
     state: State<'_, NativeState>,
@@ -388,6 +450,7 @@ pub fn run() {
             app.manage(window_geometry::GeometryState::new(
                 app.path().app_config_dir().ok(),
             ));
+            app.manage(Arc::new(recovery::RecoveryExports::default()));
             let path = app.path().app_data_dir()?.join("notes.sqlite3");
             app.manage(NativeState {
                 path,
@@ -426,6 +489,10 @@ pub fn run() {
             backup_read_text,
             backup_write_text,
             backup_safety_text,
+            recovery_begin,
+            recovery_append,
+            recovery_finish,
+            recovery_abort,
             backup_export,
             backup_preview_restore,
             backup_confirm_restore
