@@ -44,7 +44,7 @@
 </script>
 
 <fieldset class="appearance-setting">
-  <legend>Appearance</legend>
+  <legend class="sr-only">Appearance</legend>
   <div class="appearance-options">
     {#each choices as choice, index}
       <label class="appearance-option" title={choice.label}>
