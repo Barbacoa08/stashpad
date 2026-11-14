@@ -13,6 +13,12 @@ Keep a short `status.md` in each task folder with its purpose, active/completed 
 - Stop task-owned processes, and remove only disposable material from the selected task/worktree. Do not blanket-delete `.projects`, use `git clean -fdx`, follow symlinks into other folders, or remove work merely because it is old.
 - There is no automatic cleanup job or additional fixed retention period. Preserve active, unresolved, or explicitly retained material until its disposition is settled.
 
+## Retained local notes
+
+Completed worktree notes may be consolidated into the main checkout's `.projects` directory before the worktree is retired. When present, `.projects/LOCAL-NOTES.md` in that checkout indexes retained research and decisions. Use `git worktree list --porcelain` to locate the main checkout when working in a linked worktree; ignored notes are not shared or copied automatically between worktrees.
+
+These files remain available to later local sessions while the main checkout is retained. They are not included in GitHub, fresh clones, or other machines. Keep durable product decisions and required contributor guidance in tracked files so a fresh clone remains usable without private research.
+
 ## What stays in Git
 
 Application source, dependencies/configuration, lockfiles, reusable tests and synthetic fixtures, and concise current maintenance/test instructions stay tracked as they become applicable. A fresh clone must remain usable without local research. Do not require ignored notes to build, test, or understand supported recovery.
