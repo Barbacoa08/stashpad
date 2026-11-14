@@ -70,7 +70,21 @@ export interface MoveItems {
   afterFrom: string[];
   afterTo: string[];
 }
+/** Captured dirty input; origin fences repeats after a remote epoch was adopted. */
+export interface RemoteBuffer {
+  key: string;
+  markdown: string;
+  revision: number;
+  originEpoch?: string;
+}
+export interface RemoteRefresh {
+  workspace: WorkspaceSnapshot;
+  replaced: boolean;
+  removedIds: string[];
+  originEpoch: string;
+}
 export interface Repository {
+  refreshFromRemote?(buffers: RemoteBuffer[]): Promise<RemoteRefresh>;
   loadWorkspace(): Promise<WorkspaceSnapshot>;
   checkpointDraft(
     key: string,

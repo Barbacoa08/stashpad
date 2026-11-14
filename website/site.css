@@ -1,0 +1,112 @@
+/* The shared library supplies typography, colors, spacing, focus, and the shell. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--barba-space-3);
+}
+.brand img {
+  flex: none;
+  border-radius: var(--barba-radius-sm);
+}
+main.landing {
+  inline-size: min(calc(100% - 2rem), 70rem);
+  margin-block: clamp(2rem, 6vw, 5rem);
+}
+.intro {
+  max-inline-size: 46rem;
+  margin-inline: auto;
+}
+.eyebrow {
+  color: var(--barba-color-text-muted);
+  font-size: var(--barba-font-size-sm);
+}
+.intro h1 {
+  font-size: clamp(2.75rem, 7vw, 5rem);
+  line-height: 1.05;
+  letter-spacing: -0.045em;
+  margin-block: var(--barba-space-3) var(--barba-space-6);
+}
+.tagline {
+  font-size: clamp(1.5rem, 3.3vw, 2.5rem);
+  line-height: 1.25;
+  font-weight: 600;
+  margin-block: 0 var(--barba-space-6);
+}
+.description {
+  max-inline-size: 58ch;
+}
+.download-area {
+  margin-block: var(--barba-space-8);
+}
+.download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--barba-space-2);
+  min-block-size: 2.75rem;
+  padding: var(--barba-space-3) var(--barba-space-6);
+  border: 1px solid var(--barba-color-link);
+  border-radius: var(--barba-radius-md);
+  background: var(--barba-color-link);
+  color: var(--barba-color-surface);
+  font-weight: 600;
+  text-decoration: none;
+  text-align: center;
+}
+.download:link,
+.download:visited,
+.download:focus {
+  color: var(--barba-color-surface);
+}
+.download:is(:hover, :active) {
+  background: var(--barba-color-link-hover);
+  border-color: var(--barba-color-link-hover);
+  color: var(--barba-color-surface);
+}
+.download svg {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.release,
+.compatibility,
+.install-note,
+figcaption,
+.landing-footer {
+  font-size: var(--barba-font-size-sm);
+}
+.release {
+  margin-block: var(--barba-space-3) var(--barba-space-1);
+}
+.compatibility,
+.install-note {
+  margin-block: var(--barba-space-1);
+}
+.preview {
+  margin: clamp(2rem, 5vw, 4rem) 0;
+}
+.preview img {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  border: 1px solid var(--barba-color-border);
+  border-radius: var(--barba-radius-md);
+}
+.preview figcaption {
+  margin-block-start: var(--barba-space-2);
+}
+.about {
+  max-inline-size: 46rem;
+  margin-inline: auto;
+}
+.about li {
+  margin-block: var(--barba-space-2);
+}
+.landing-footer {
+  padding: var(--barba-space-4);
+  text-align: center;
+  border-block-start: 1px solid var(--barba-color-border);
+}

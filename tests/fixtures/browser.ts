@@ -1,3 +1,4 @@
+import type { Repository } from '../../src/lib/platform/workspace';
 import type { CloseAdapter } from '../../src/lib/platform/lifecycle';
 import { MemoryRepository } from './memory';
 import type { Item, WorkspaceSnapshot } from '../../src/lib/domain/notes';
@@ -24,7 +25,8 @@ export const windowAdapter: CloseAdapter = {
     windowState.hidden++;
   },
 };
-export const repository = new MemoryRepository();
+export const repository: MemoryRepository &
+  Pick<Repository, 'refreshFromRemote'> = new MemoryRepository();
 if (new URL(location.href).searchParams.has('failLoad'))
   repository.fail = 'load';
 if (new URL(location.href).searchParams.has('visual'))
@@ -64,6 +66,20 @@ export function ready(controller: WorkspaceController) {
       };
     },
     controller,
+    async remoteReplace(snapshot: WorkspaceSnapshot) {
+      repository.snapshot = structuredClone(snapshot);
+      repository.refreshFromRemote = async () => ({
+        workspace: structuredClone(snapshot),
+        replaced: true,
+        removedIds: [],
+        originEpoch: 'fixture-prior-epoch',
+      });
+      try {
+        return await controller.refreshFromRepository();
+      } finally {
+        delete repository.refreshFromRemote;
+      }
+    },
     delay() {
       repository.delaySave = new Promise<void>((r) => (release = r));
     },

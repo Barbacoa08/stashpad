@@ -17,5 +17,7 @@ build/
 src-tauri/target/
 test-results/
 playwright-report/
+.netlify/
+website/dist/
 
 src-tauri/gen/

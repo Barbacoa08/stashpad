@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scratchtree — fast Markdown notes</title>
+    <meta
+      name="description"
+      content="Fast Markdown notes, organized into note trees. A keyboard-friendly Mac app for code snippets, short notes, and related ideas."
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/assets/icon-16.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/assets/icon-32.png"
+    />
+    <link rel="stylesheet" href="/barbajoe.css" />
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body class="app-shell">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="site-header-brand brand" href="/" aria-label="Scratchtree home">
+        <img
+          src="/assets/icon-32.png"
+          srcset="/assets/icon-64.png 2x"
+          width="32"
+          height="32"
+          alt=""
+        />
+        <span>Scratchtree</span>
+      </a>
+      <nav aria-label="Main">
+        <ul class="site-header-links">
+          <li>
+            <a href="https://github.com/Barbacoa08/scratchtree">GitHub</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <main id="main" class="landing" tabindex="-1">
+      <section class="intro" aria-labelledby="title">
+        <p class="eyebrow">Markdown notes for developers</p>
+        <h1 id="title">Scratchtree</h1>
+        <p class="tagline">
+          Fast Markdown notes,<br />organized into note trees.
+        </p>
+        <p class="description">
+          Write Markdown without hiding the syntax. Keep snippets, short notes,
+          and related ideas together, and move through them with familiar
+          keyboard commands.
+        </p>
+        <div class="download-area">
+          <a class="download" href="{{downloadUrl}}">
+            <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 2v8m-3-3 3 3 3-3M3 11v3h10v-3" />
+            </svg>
+            Download for Apple Silicon Mac
+          </a>
+          <p class="release">DMG · v{{version}} · early alpha</p>
+          <p class="compatibility">Tested with {{testedOn}}.</p>
+          <p class="install-note">
+            This alpha is not notarized.
+            <a
+              href="https://github.com/Barbacoa08/scratchtree#download-and-install"
+              >Installation steps</a
+            >
+          </p>
+        </div>
+      </section>
+      <figure class="preview">
+        <img
+          src="/assets/workspace-overview.png"
+          width="1180"
+          height="820"
+          alt="Scratchtree’s editor showing sample Markdown notes, syntax-highlighted code, and a sidebar of note trees."
+        />
+        <figcaption>Development preview with sample notes.</figcaption>
+      </figure>
+      <section class="about" aria-label="About the alpha">
+        <ul>
+          <li>Visible Markdown syntax with live formatting.</li>
+          <li>Notes that can contain child notes.</li>
+          <li>Local notes, available offline.</li>
+        </ul>
+        <p>
+          The current download stores your notes on this Mac. Cloud sync is in
+          development.
+        </p>
+        <p>
+          <a href="{{releaseUrl}}">Release notes</a> ·
+          <a href="https://github.com/Barbacoa08/scratchtree"
+            >Source and project details</a
+          >
+        </p>
+      </section>
+    </main>
+    <footer class="landing-footer">
+      <p>An independent project by Joe, inspired by Stashpad Lists.</p>
+    </footer>
+  </body>
+</html>

@@ -15,12 +15,24 @@
       | 'sun'
       | 'monitor'
       | 'moon'
-      | 'trash';
+      | 'trash'
+      | 'account'
+      | 'sync'
+      | 'warning'
+      | 'check';
   } = $props();
 </script>
 
 <svg class="icon" viewBox="0 0 16 16" aria-hidden="true">
-  {#if name === 'back'}<path d="m10 3-5 5 5 5" />
+  {#if name === 'warning'}<path d="M8 2 15 14H1L8 2ZM8 6v4M8 12v.1" />
+  {:else if name === 'check'}<path d="m3 8 3 3 7-7" />
+  {:else if name === 'account'}<circle cx="8" cy="5" r="2.5" /><path
+      d="M3 14c0-3 2-4.5 5-4.5s5 1.5 5 4.5"
+    />
+  {:else if name === 'sync'}<path
+      d="M3 6a5 5 0 0 1 9-2l1 1M13 2v3h-3M13 10a5 5 0 0 1-9 2l-1-1M3 14v-3h3"
+    />
+  {:else if name === 'back'}<path d="m10 3-5 5 5 5" />
   {:else if name === 'panel'}<rect
       x="2"
       y="2.5"

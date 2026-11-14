@@ -71,6 +71,7 @@
   let host: HTMLDivElement;
   let view = $state.raw<EditorView>();
   let applyingSource = false;
+  let currentStates: Map<string, EditorState> | undefined;
   let currentKey = '';
   const editable = new Compartment();
   let lastContext: boolean | undefined;
@@ -228,7 +229,8 @@
     }
     host.addEventListener('keydown', composingEnter, true);
     currentKey = contextKey;
-    const saved = states?.get(contextKey);
+    currentStates = states;
+    const saved = currentStates?.get(contextKey);
     view = new EditorView({
       state: restoreState(saved, source),
       parent: host,
@@ -237,7 +239,7 @@
     measure(view);
     return () => {
       host.removeEventListener('keydown', composingEnter, true);
-      if (view) states?.set(currentKey, view.state);
+      if (view) currentStates?.set(currentKey, view.state);
       view?.destroy();
       view = undefined;
     };
@@ -247,9 +249,10 @@
       text = source,
       disabled = readOnly;
     if (!view) return;
-    if (key !== currentKey) {
-      states?.set(currentKey, view.state);
-      const saved = states?.get(key);
+    if (key !== currentKey || states !== currentStates) {
+      currentStates?.set(currentKey, view.state);
+      currentStates = states;
+      const saved = currentStates?.get(key);
       view.setState(restoreState(saved, text));
       currentKey = key;
       lastContext = undefined;

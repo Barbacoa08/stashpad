@@ -1604,3 +1604,78 @@ main:has(.workspace) .sidebar {
 html[data-theme='light'] .note-card.done .markdown-view {
   opacity: 1;
 }
+
+.auth-footer {
+  border-top: 1px solid var(--root-divider);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+.sidebar .auth-footer button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding-left: calc(24px + 2px);
+  border-color: transparent;
+  border-radius: 0;
+}
+.auth-footer .icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.auth-dialog {
+  max-width: min(28rem, calc(100vw - 2rem));
+  width: 100%;
+  color: var(--foreground);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+.auth-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+.auth-dialog form {
+  display: grid;
+  gap: 0.6rem;
+}
+.auth-dialog h2 {
+  margin: 0 0 0.5rem;
+}
+.auth-dialog input {
+  width: 100%;
+}
+.auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.sync-status-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.sync-status-toggle .icon {
+  width: 1rem;
+  height: 1rem;
+}
+.sync-status-details {
+  margin-top: 0.4rem;
+}
+.auth-unavailable {
+  display: block;
+  padding: 0.2rem calc(24px + 2px);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.auth-dialog input:disabled {
+  opacity: 0.55;
+  background: var(--panel);
+  border-style: dashed;
+}
+.auth-instruction {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
