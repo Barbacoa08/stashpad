@@ -12,6 +12,9 @@
       | 'upload'
       | 'undo'
       | 'info'
+      | 'sun'
+      | 'monitor'
+      | 'moon'
       | 'trash';
   } = $props();
 </script>
@@ -39,6 +42,19 @@
     />
   {:else if name === 'undo'}<path
       d="M6 2.5 2.5 5.5 6 8.5M3 5.5h6a3 3 0 0 1 0 6"
+    />
+  {:else if name === 'sun'}<circle cx="8" cy="8" r="3" /><path
+      d="M8 1v1M8 14v1M1 8h1M14 8h1M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"
+    />
+  {:else if name === 'monitor'}<rect
+      x="1.5"
+      y="2.5"
+      width="13"
+      height="9"
+      rx="1"
+    /><path d="M8 11.5V14M5.5 14h5" />
+  {:else if name === 'moon'}<path
+      d="M13.8 9.5A6 6 0 0 1 6.5 2.2 6 6 0 1 0 13.8 9.5Z"
     />
   {:else}<circle cx="8" cy="8" r="6" /><path d="M8 7v4M8 4.5v.1" />{/if}
 </svg>

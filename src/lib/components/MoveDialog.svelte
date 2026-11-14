@@ -171,12 +171,12 @@
     max-height: calc(100dvh - 2rem);
     box-sizing: border-box;
     overflow: auto;
-    border: 1px solid #4b4b4b;
+    border: 1px solid var(--popup-border);
     border-radius: 0.75rem;
     padding: 1.25rem;
-    background: #252525;
-    color: #e7e7e7;
-    box-shadow: 0 1rem 4rem #0009;
+    background: var(--popup-background);
+    color: var(--popup-text);
+    box-shadow: 0 1rem 4rem var(--overlay-shadow);
   }
   dialog[open] {
     display: flex;
@@ -188,7 +188,7 @@
     flex-shrink: 0;
   }
   dialog::backdrop {
-    background: #0009;
+    background: var(--overlay-shadow);
   }
   h2 {
     margin: 0 0 0.75rem;
@@ -201,7 +201,7 @@
     min-height: 0;
     max-height: min(22rem, 50dvh);
     overflow: auto;
-    border: 1px solid #555;
+    border: 1px solid var(--border);
     border-radius: 0.4rem;
   }
   [role='option'] {
@@ -210,15 +210,16 @@
     overflow-wrap: anywhere;
   }
   [role='option'].staged {
-    background: #3b526d;
-    box-shadow: inset 3px 0 #95c6ff;
+    background: var(--nav-background);
+    color: var(--nav-text);
+    box-shadow: inset 3px 0 var(--focus);
   }
   [role='option'] span,
   small {
     display: block;
   }
   small {
-    color: #c0c0c0;
+    color: var(--muted);
     margin-top: 0.2rem;
   }
   .actions {
@@ -229,10 +230,10 @@
     margin-top: 1rem;
   }
   button {
-    border: 1px solid #666;
+    border: 1px solid var(--border);
     border-radius: 0.35rem;
     color: inherit;
-    background: #383838;
+    background: var(--control);
     padding: 0.5rem 0.85rem;
     font: inherit;
   }
@@ -240,7 +241,7 @@
     opacity: 0.6;
   }
   :focus-visible {
-    outline: 2px solid #94c4ff;
+    outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
 </style>

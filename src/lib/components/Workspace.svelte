@@ -12,6 +12,8 @@
   import type { MoveItems } from '../platform/workspace';
   import Icon from './Icon.svelte';
   import TreeSidebar from './TreeSidebar.svelte';
+  import ThemeSelector from './ThemeSelector.svelte';
+  import type { AppearancePreference } from '../platform/appearance';
   import {
     composeKey,
     composeOwner,
@@ -46,9 +48,13 @@
     repository = nativeRepository,
     onready,
     windowAdapter,
+    appearance = 'system',
+    onappearancechange = () => {},
   }: {
     repository?: Repository;
     windowAdapter?: CloseAdapter;
+    appearance?: AppearancePreference;
+    onappearancechange?: (preference: AppearancePreference) => void;
     onready?: (controller: WorkspaceController) => void;
   } = $props();
   const controller = new WorkspaceController(untrack(() => repository));
@@ -1778,6 +1784,7 @@
               : undefined}><Icon name="undo" /> Undo delete</button
           >
         </div>
+        <ThemeSelector preference={appearance} onchange={onappearancechange} />
       </aside>
       <section class="notes-column" aria-label="Notes editor">
         <div class="stream-header">

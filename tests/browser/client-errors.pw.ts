@@ -109,6 +109,7 @@ for (const deniedStorage of [false, true])
     page,
   }) => {
     const { repo, saveCalls } = await nativeMock(page, 'render', deniedStorage);
+    await page.emulateMedia({ colorScheme: 'dark' });
     await page.goto('/');
     await expect(capture(page)).toBeVisible();
     await typeCapture(page, 'Saved synthetic capture');
@@ -117,6 +118,14 @@ for (const deniedStorage of [false, true])
       exact: true,
     });
     await expect(reload).toBeVisible();
+    // Appearance outlives the failed page, including when preferences cannot
+    // be stored. Changing the OS theme must keep recovery controls readable.
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('.error-page')).toHaveCSS(
+      'background-color',
+      'rgb(255, 255, 255)',
+    );
     await expect(
       page.getByRole('heading', {
         name: 'The notes view encountered an error',
