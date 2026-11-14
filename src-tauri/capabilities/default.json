@@ -5,6 +5,7 @@
     "core:default",
     "core:window:allow-close",
     "core:app:allow-app-hide",
+    "core:app:allow-set-app-theme",
     "core:window:allow-start-dragging"
   ]
 }
