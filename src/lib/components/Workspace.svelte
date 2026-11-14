@@ -84,6 +84,8 @@
     detail: null,
     recoveries: 0,
   });
+  let syncAttention = $state(false);
+  let recoveryModal = $state(false);
   let authTrigger = $state<HTMLButtonElement>();
   let dialogWasOpen = false;
   const controller = new WorkspaceController(untrack(() => repository));
@@ -276,7 +278,7 @@
       : viewState.snapshot.items.find((x) => x.id === viewState.ownerId),
   );
   let destination = $derived(locationHierarchy.label(viewState.ownerId).text);
-  const editorStates = new Map<string, EditorState>();
+  let editorStates = $state.raw(new Map<string, EditorState>());
   const focusRequestCleanups = new Set<() => void>();
   let disposed = false;
   let visibleNotes = $derived(
@@ -316,7 +318,11 @@
     });
   });
   let modal = $derived(
-    !!viewState.preview || closeFailed || !!moveSession || authState.open,
+    !!viewState.preview ||
+      closeFailed ||
+      !!moveSession ||
+      authState.open ||
+      recoveryModal,
   );
   let blocked = $derived(
     (viewState.operation !== null && viewState.operation !== 'save') || modal,
@@ -469,6 +475,23 @@
     let previous = controller.state;
     navigation.reset(previous.location);
     const unsubscribe = controller.subscribe((next) => {
+      const replaced = next.cacheGeneration !== previous.cacheGeneration;
+      if (replaced) {
+        editorStates = new Map();
+        editHeights = {};
+        expandedNotes = {};
+        composerEpochs = {};
+        selectedEditingContext = null;
+        paletteRetry = null;
+        undoRetry = null;
+        palette = null;
+        moveSession = null;
+        selection.clear();
+        setSelected('');
+        clearDrag();
+        workspaceEpoch++;
+        navigation.reset(next.location);
+      }
       const locationChanged =
         next.location.scope !== previous.location.scope ||
         next.location.itemId !== previous.location.itemId;
@@ -508,7 +531,11 @@
       }
       // Subscribe sees each patch synchronously; Svelte effects can coalesce the
       // operation/location/finally patches and lose the structural cause.
-      if (locationChanged && next.operation !== 'navigation-reconcile') {
+      if (
+        !replaced &&
+        locationChanged &&
+        next.operation !== 'navigation-reconcile'
+      ) {
         const structural =
           next.operation === 'delete' ||
           next.operation === 'purge' ||
@@ -1678,15 +1705,19 @@
         sync &&
         (syncState.state === 'needs-sync' ||
           syncState.detail ||
-          syncState.recoveries)
+          syncState.recoveries ||
+          syncState.overflow ||
+          syncAttention)
       )}
     aria-label="Editor status"
   >
     <h2 class:sr-only={compact}><Icon name="info" /> Local activity</h2>
     {#if !compact}<p>Notes and drafts on this Mac.</p>{/if}
-    {#if sync && (!compact || syncState.state === 'needs-sync' || syncState.detail || syncState.recoveries)}<SyncStatus
+    {#if sync && (!compact || syncState.state === 'needs-sync' || syncState.detail || syncState.recoveries || syncState.overflow || syncAttention)}<SyncStatus
         {sync}
         value={syncState}
+        onattentionchange={(active) => (syncAttention = active)}
+        onmodalchange={(active) => (recoveryModal = active)}
       />{/if}
     <p role="status" aria-live="polite">{viewState.status}</p>
     <p role="alert">{viewState.error}</p>

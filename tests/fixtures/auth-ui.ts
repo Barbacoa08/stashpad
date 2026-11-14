@@ -20,6 +20,16 @@ let syncState: SyncState = {
   recoveries: 0,
 };
 const authListeners = new Set<(state: AuthState) => void>();
+let failRecovery = false;
+let replaceAfterPurge = false;
+let lastPurge: { epoch: string; ids: string[] } | null = null;
+let overflowEpoch = 'captured-epoch';
+let overflowRows = [
+  {
+    id: '00000000-0000-4000-8000-000000000001',
+    markdown: 'Synthetic oversized note',
+  },
+];
 const syncListeners = new Set<(state: SyncState) => void>();
 function setAuth(patch: Partial<AuthState>) {
   authState = { ...authState, ...patch };
@@ -70,9 +80,41 @@ export const sync: SyncPort = {
     setSync({ state: 'syncing' });
   },
   async exportRecovery() {
+    if (failRecovery) throw new Error('Synthetic export failure');
     setSync({ detail: 'Recovery export requested.' });
+  },
+  async inspectOverflow() {
+    return { epoch: overflowEpoch, overflow: true, rows: overflowRows };
+  },
+  async purgeOverflow(request) {
+    lastPurge = structuredClone(request);
+    if (request.epoch !== overflowEpoch) throw new Error('Wrong epoch');
+    if (replaceAfterPurge) {
+      overflowEpoch = 'replacement-epoch';
+      overflowRows = [{ id: overflowRows[0].id, markdown: 'New epoch note' }];
+      return;
+    }
+    overflowRows = overflowRows.filter((row) => !request.ids.includes(row.id));
+    setSync({ detail: 'Selected raw notes removed.', overflow: undefined });
   },
 };
 export function install() {
-  Object.assign(window, { authUiFixture: { setAuth, setSync } });
+  Object.assign(window, {
+    authUiFixture: {
+      setAuth,
+      setSync,
+      setRows(rows: typeof overflowRows) {
+        overflowRows = rows;
+      },
+      lastPurge() {
+        return lastPurge;
+      },
+      replaceDuringPurge() {
+        replaceAfterPurge = true;
+      },
+      failRecovery(value: boolean) {
+        failRecovery = value;
+      },
+    },
+  });
 }

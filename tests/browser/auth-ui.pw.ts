@@ -296,3 +296,256 @@ test('restore preview blocks auth until its decision settles', async ({
   await page.getByRole('button', { name: 'Cancel restore' }).click();
   await expect(trigger).toBeEnabled();
 });
+
+test('overflow recovery is reachable with no ordinary recovery records and exact correction', async ({
+  page,
+}) => {
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('button', { name: 'Local only' }).waitFor();
+  await page.evaluate(() =>
+    (window as any).authUiFixture.setSync({
+      state: 'needs-sync',
+      detail: 'Merged library needs recovery.',
+      recoveries: 0,
+      overflow: { items: 1 },
+    }),
+  );
+  await page.getByRole('button', { name: 'Hide Details' }).click();
+  await page.getByRole('button', { name: 'Needs sync' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Export recovery' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Review raw notes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Recover merged notes' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText('00000000-0000');
+  await expect(
+    dialog.getByRole('button', { name: 'Permanently remove selected' }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole('checkbox', { name: 'Synthetic oversized note' })
+    .check();
+  await dialog
+    .getByRole('button', { name: 'Permanently remove selected' })
+    .click();
+  await expect(dialog.getByText('No raw notes remain.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('button', { name: 'Needs sync' })).toBeFocused();
+});
+
+test('recovery file errors are caught and remain actionable', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('button', { name: 'Local only' }).waitFor();
+  await page.evaluate(() => {
+    const f = (window as any).authUiFixture;
+    f.setSync({ recoveries: 1 });
+    f.failRecovery(true);
+  });
+  await page.getByRole('button', { name: 'Local only' }).click();
+  await page.getByRole('button', { name: 'Export recovery' }).click();
+  await expect(page.locator('.sync-status [role="alert"]')).toHaveText(
+    'Synthetic export failure',
+  );
+  await page.evaluate(() => (window as any).authUiFixture.failRecovery(false));
+  await page.getByRole('button', { name: 'Export recovery' }).click();
+  await expect(page.getByText('Recovery export requested.')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('raw recovery selection never carries into a replacement epoch with reused IDs', async ({
+  page,
+}) => {
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('button', { name: 'Local only' }).waitFor();
+  await page.evaluate(() => {
+    const f = (window as any).authUiFixture;
+    f.setSync({ state: 'needs-sync', overflow: { items: 1 } });
+    f.replaceDuringPurge();
+  });
+  await page.getByRole('button', { name: 'Needs sync' }).click();
+  await page.getByRole('button', { name: 'Review raw notes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Recover merged notes' });
+  await dialog
+    .getByRole('checkbox', { name: 'Synthetic oversized note' })
+    .check();
+  await dialog
+    .getByRole('button', { name: 'Permanently remove selected' })
+    .click();
+  await expect(
+    dialog.getByRole('checkbox', { name: 'New epoch note' }),
+  ).not.toBeChecked();
+  await expect(
+    dialog.getByRole('button', { name: 'Permanently remove selected' }),
+  ).toBeDisabled();
+});
+
+test('recovery dialog traps keyboard commands and fits narrow light and dark views', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('button', { name: 'Sign in / sign up' }).waitFor();
+  await page.evaluate(() =>
+    (window as any).authUiFixture.setSync({
+      state: 'needs-sync',
+      overflow: { items: 1 },
+    }),
+  );
+  await page.getByRole('button', { name: 'Needs sync' }).click();
+  for (const theme of ['Light', 'Dark']) {
+    await page.getByRole('radio', { name: theme, exact: true }).check();
+    await page.getByRole('button', { name: 'Review raw notes' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Recover merged notes' });
+    const checkbox = dialog.getByRole('checkbox');
+    await checkbox.focus();
+    await checkbox.press('Shift+Tab');
+    await expect(
+      dialog.getByRole('button', { name: 'Close', exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(checkbox).toBeFocused();
+    await page.keyboard.press('Meta+n');
+    await expect(page.locator('.note-card')).toHaveCount(0);
+    expect(
+      await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
+    await page.screenshot({
+      path: `.projects/2026-11-14-dexie-cloud-implementation/recovery-ui-${theme.toLowerCase()}.png`,
+    });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Needs sync' }),
+    ).toBeFocused();
+  }
+});
+
+test('raw recovery blocks capture commands and mouse history until closed', async ({
+  page,
+}) => {
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('textbox', { name: 'New note Markdown' }).waitFor();
+  await page.evaluate(async () => {
+    const t = (window as any).__test;
+    t.seed({
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000001',
+          markdown: 'Parent',
+          kind: 'tree',
+        },
+        {
+          id: '00000000-0000-4000-8000-000000000002',
+          markdown: 'Child',
+          kind: 'tree',
+          parentId: '00000000-0000-4000-8000-000000000001',
+        },
+      ],
+      drafts: [],
+      undoDeleteIds: [],
+    });
+    await t.controller.start();
+  });
+  await page
+    .locator(
+      '[data-entry-id="00000000-0000-4000-8000-000000000001"] .note-body',
+    )
+    .click();
+  await page.keyboard.press('ArrowRight');
+  await page
+    .locator(
+      '[data-entry-id="00000000-0000-4000-8000-000000000002"] .note-body',
+    )
+    .click();
+  await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => {
+    const t = (window as any).__test;
+    const original = t.controller.flush.bind(t.controller);
+    t.flushCalls = 0;
+    t.controller.flush = (...args: unknown[]) => {
+      t.flushCalls++;
+      return original(...args);
+    };
+    (window as any).authUiFixture.setSync({
+      state: 'needs-sync',
+      overflow: { items: 1 },
+    });
+  });
+  await page.getByRole('button', { name: 'Needs sync' }).click();
+  await page.getByRole('button', { name: 'Review raw notes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Recover merged notes' });
+  await dialog.getByRole('checkbox').focus();
+  for (const key of ['Meta+1', 'Meta+/']) await page.keyboard.press(key);
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new MouseEvent('mouseup', { button: 3, bubbles: true }),
+    ),
+  );
+  expect(
+    await page.evaluate(() => (window as any).__test.controller.state.ownerId),
+  ).toBe('00000000-0000-4000-8000-000000000002');
+  expect(await page.evaluate(() => (window as any).__test.flushCalls)).toBe(0);
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('button', { name: 'Needs sync' })).toBeFocused();
+  await page.keyboard.press('Meta+1');
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__test.controller.state.ownerId),
+    )
+    .toBe(null);
+});
+
+test('raw recovery inspects exact matching-prefix sources before removing the chosen row', async ({
+  page,
+}) => {
+  await page.goto('/?fixture&authFixture');
+  await page.getByRole('button', { name: 'Local only' }).waitFor();
+  await page.evaluate(() => {
+    const f = (window as any).authUiFixture;
+    const prefix = '# Same heading\n' + 'x'.repeat(180);
+    f.setRows([
+      {
+        id: '00000000-0000-4000-8000-000000000001',
+        markdown: prefix + '\nFirst unique body',
+      },
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        markdown: prefix + '\nSecond unique body',
+      },
+    ]);
+    f.setSync({ state: 'needs-sync', overflow: { items: 2 } });
+  });
+  await page.getByRole('button', { name: 'Needs sync' }).click();
+  await page.getByRole('button', { name: 'Review raw notes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Recover merged notes' });
+  await page.setViewportSize({ width: 375, height: 600 });
+  const inspect = dialog.getByRole('button', { name: /Inspect raw Markdown/ });
+  await inspect.nth(0).focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    dialog.getByRole('textbox', { name: 'Raw Markdown' }),
+  ).toHaveValue('# Same heading\n' + 'x'.repeat(180) + '\nFirst unique body');
+  await inspect.nth(1).focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    dialog.getByRole('textbox', { name: 'Raw Markdown' }),
+  ).toHaveValue('# Same heading\n' + 'x'.repeat(180) + '\nSecond unique body');
+  await dialog.getByRole('checkbox').nth(1).check();
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await expect(dialog).not.toContainText('00000000-0000');
+  await dialog
+    .getByRole('button', { name: 'Permanently remove selected' })
+    .click();
+  expect(
+    await page.evaluate(() => (window as any).authUiFixture.lastPurge()),
+  ).toEqual({
+    epoch: 'captured-epoch',
+    ids: ['00000000-0000-4000-8000-000000000002'],
+  });
+});
